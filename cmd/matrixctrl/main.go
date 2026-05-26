@@ -113,5 +113,17 @@ func staticHandler(f fs.FS) http.Handler {
 	if err != nil {
 		return http.NotFoundHandler()
 	}
-	return http.FileServer(http.FS(sub))
+	fileServer := http.FileServer(http.FS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try to serve the file; fall back to index.html for SPA client-side routes.
+		_, statErr := fs.Stat(sub, r.URL.Path[1:])
+		if r.URL.Path == "/" || statErr == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// Serve index.html for unknown paths so the SPA router can handle them.
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		fileServer.ServeHTTP(w, r2)
+	})
 }
