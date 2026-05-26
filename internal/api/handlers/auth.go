@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
@@ -35,8 +36,12 @@ func (h *AuthHandler) BootstrapLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
 	token, err := h.svc.Login(r.Context(), req.Username, req.Password,
-		r.RemoteAddr, r.UserAgent())
+		ip, r.UserAgent())
 	if err != nil {
 		Error(w, http.StatusUnauthorized, "invalid credentials")
 		return
