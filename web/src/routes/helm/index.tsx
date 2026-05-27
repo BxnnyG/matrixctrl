@@ -21,6 +21,10 @@ interface ESSVersion {
   published_at?: string;
 }
 
+function essVersion(v: string) {
+  return v.replace(/^matrix-stack-/, "");
+}
+
 function HelmPage() {
   const { data: release } = useQuery({
     queryKey: ["helm", "release"],
@@ -35,22 +39,19 @@ function HelmPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Helm Release</h1>
-        <Link
-          to="/helm/upgrade"
-          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-        >
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Helm Release</h1>
+        <Link to="/helm/upgrade" className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
           Upgrade
         </Link>
       </div>
 
       {release && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
           <div className="flex items-center gap-3 mb-4">
             <Package className="w-5 h-5 text-blue-500" />
             <div>
-              <h2 className="font-medium">{release.name}</h2>
-              <p className="text-xs text-gray-500">Namespace: {release.namespace}</p>
+              <h2 className="font-medium text-gray-900 dark:text-gray-100">{release.name}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Namespace: {release.namespace}</p>
             </div>
             <div className="ml-auto">
               <ReleaseStatusBadge status={release.status} />
@@ -58,19 +59,23 @@ function HelmPage() {
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-500">Version</span>
-              <p className="font-mono font-medium">{release.chart_version}</p>
+              <span className="text-gray-500 dark:text-gray-400 text-xs">ESS Version</span>
+              <p className="font-mono font-medium text-gray-900 dark:text-gray-100">
+                {essVersion(release.chart_version)}
+              </p>
             </div>
             <div>
-              <span className="text-gray-500">Revision</span>
-              <p className="font-mono font-medium">#{release.revision}</p>
+              <span className="text-gray-500 dark:text-gray-400 text-xs">Revision</span>
+              <p className="font-mono font-medium text-gray-900 dark:text-gray-100">#{release.revision}</p>
             </div>
             <div>
-              <span className="text-gray-500">Zuletzt deployed</span>
-              <p className="font-medium">
-                {release.deployed_at
-                  ? new Date(release.deployed_at).toLocaleString("de-DE")
-                  : "—"}
+              <span className="text-gray-500 dark:text-gray-400 text-xs">Chart</span>
+              <p className="font-mono text-xs text-gray-600 dark:text-gray-400">{release.chart_version}</p>
+            </div>
+            <div>
+              <span className="text-gray-500 dark:text-gray-400 text-xs">Zuletzt deployed</span>
+              <p className="text-sm text-gray-900 dark:text-gray-100">
+                {release.deployed_at ? new Date(release.deployed_at).toLocaleString("de-DE") : "—"}
               </p>
             </div>
           </div>
@@ -79,16 +84,21 @@ function HelmPage() {
 
       {versions && versions.length > 0 && (
         <div>
-          <h2 className="text-lg font-medium mb-3">Verfügbare Versionen</h2>
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Verfügbare Versionen</h2>
           <div className="space-y-2">
-            {versions.slice(0, 5).map((v) => (
-              <div
-                key={v.version}
-                className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm"
-              >
-                <span className="font-mono">{v.version}</span>
+            {versions.slice(0, 8).map((v, i) => (
+              <div key={v.version} className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-gray-900 dark:text-gray-100">{essVersion(v.version)}</span>
+                  {i === 0 && (
+                    <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">latest</span>
+                  )}
+                  {v.version === release?.chart_version && (
+                    <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">aktuell</span>
+                  )}
+                </div>
                 {v.published_at && (
-                  <span className="text-gray-500 text-xs">
+                  <span className="text-gray-500 dark:text-gray-400 text-xs">
                     {new Date(v.published_at).toLocaleDateString("de-DE")}
                   </span>
                 )}
@@ -99,10 +109,7 @@ function HelmPage() {
       )}
 
       <div className="flex justify-end">
-        <Link
-          to="/helm/history"
-          className="text-sm text-blue-600 hover:text-blue-700"
-        >
+        <Link to="/helm/history" className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700">
           Upgrade-History →
         </Link>
       </div>
@@ -112,10 +119,10 @@ function HelmPage() {
 
 function ReleaseStatusBadge({ status }: { status: string }) {
   const map: Record<string, { icon: React.ReactNode; cls: string }> = {
-    deployed: { icon: <CheckCircle className="w-3.5 h-3.5" />, cls: "bg-green-100 text-green-700" },
-    failed: { icon: <XCircle className="w-3.5 h-3.5" />, cls: "bg-red-100 text-red-700" },
-    "hooks-failed": { icon: <AlertTriangle className="w-3.5 h-3.5" />, cls: "bg-yellow-100 text-yellow-700" },
-    pending: { icon: <Clock className="w-3.5 h-3.5" />, cls: "bg-blue-100 text-blue-700" },
+    deployed: { icon: <CheckCircle className="w-3.5 h-3.5" />, cls: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" },
+    failed: { icon: <XCircle className="w-3.5 h-3.5" />, cls: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" },
+    "hooks-failed": { icon: <AlertTriangle className="w-3.5 h-3.5" />, cls: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" },
+    pending: { icon: <Clock className="w-3.5 h-3.5" />, cls: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" },
   };
   const s = map[status] ?? map["pending"];
   return (

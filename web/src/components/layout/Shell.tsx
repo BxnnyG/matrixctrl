@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, Package, Settings } from "lucide-react";
+import { LayoutDashboard, Zap, Package, LogOut, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTheme } from "@/lib/theme";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -10,15 +11,16 @@ const nav = [
 
 export function Shell({ children }: { children: ReactNode }) {
   const state = useRouterState();
+  const { theme, toggle } = useTheme();
   const isAuth = state.location.pathname.startsWith("/auth");
 
   if (isAuth) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col">
-        <div className="px-4 py-5 border-b border-gray-200">
-          <h1 className="text-base font-bold text-gray-900">MatrixCtrl</h1>
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+      <aside className="w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+        <div className="px-4 py-5 border-b border-gray-200 dark:border-gray-800">
+          <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">MatrixCtrl</h1>
           <p className="text-xs text-gray-500 mt-0.5">ESS Admin</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -32,8 +34,8 @@ export function Shell({ children }: { children: ReactNode }) {
                 to={to}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
                   active
-                    ? "bg-blue-50 text-blue-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
+                    ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400 font-medium"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -42,15 +44,22 @@ export function Shell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="px-3 py-4 border-t border-gray-200">
+        <div className="px-3 py-4 border-t border-gray-200 dark:border-gray-800 space-y-1">
+          <button
+            onClick={toggle}
+            className="flex items-center gap-2.5 px-3 py-2 w-full rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
+          </button>
           <button
             onClick={() => {
               localStorage.removeItem("matrixctrl_token");
               window.location.href = "/auth/login";
             }}
-            className="flex items-center gap-2.5 px-3 py-2 w-full rounded-lg text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+            className="flex items-center gap-2.5 px-3 py-2 w-full rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
-            <Settings className="w-4 h-4" />
+            <LogOut className="w-4 h-4" />
             Abmelden
           </button>
         </div>
