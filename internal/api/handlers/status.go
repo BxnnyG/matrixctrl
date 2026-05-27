@@ -8,11 +8,11 @@ import (
 )
 
 type StatusHandler struct {
-	k8s         *k8s.Client
-	helm        *helm.Client
-	essNS       string
-	essRelease  string
-	frontendFS  http.Handler
+	k8s        *k8s.Client
+	helm       *helm.Client
+	essNS      string
+	essRelease string
+	frontendFS http.Handler
 }
 
 func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, essRelease string, frontendFS http.Handler) *StatusHandler {
@@ -26,21 +26,23 @@ func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, ess
 }
 
 type statusResponse struct {
-	Release    interface{} `json:"release"`
-	Components interface{} `json:"components"`
+	Release     interface{} `json:"release"`
+	Components  interface{} `json:"components"`
+	Nodes       interface{} `json:"nodes"`
+	EvictedPods int         `json:"evicted_pods"`
 }
 
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
-	components, err := h.k8s.ComponentHealth(r.Context(), h.essNS)
-	if err != nil {
-		components = nil
-	}
-
+	components, _ := h.k8s.ComponentHealth(r.Context(), h.essNS)
 	release, _ := h.helm.GetRelease(h.essRelease)
+	nodes, _ := h.k8s.NodeInfo(r.Context())
+	evicted := h.k8s.EvictedPodCount(r.Context(), h.essNS)
 
 	JSON(w, http.StatusOK, statusResponse{
-		Release:    release,
-		Components: components,
+		Release:     release,
+		Components:  components,
+		Nodes:       nodes,
+		EvictedPods: evicted,
 	})
 }
 
@@ -60,6 +62,15 @@ func (h *StatusHandler) Release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, rel)
+}
+
+func (h *StatusHandler) DeleteEvictedPods(w http.ResponseWriter, r *http.Request) {
+	deleted, err := h.k8s.DeleteEvictedPods(r.Context(), h.essNS)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]int{"deleted": deleted})
 }
 
 func (h *StatusHandler) ServeFrontend(w http.ResponseWriter, r *http.Request) {

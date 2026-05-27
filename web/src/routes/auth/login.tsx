@@ -22,10 +22,7 @@ function Login() {
     setError("");
     setLoading(true);
     try {
-      const res = await api.post<LoginResponse>("/api/v1/auth/bootstrap/login", {
-        username,
-        password,
-      });
+      const res = await api.post<LoginResponse>("/api/v1/auth/bootstrap/login", { username, password });
       localStorage.setItem("matrixctrl_token", res.token);
       navigate({ to: "/" });
     } catch (err: unknown) {
@@ -36,47 +33,40 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
       <div className="w-full max-w-sm">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">MatrixCtrl</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">MatrixCtrl</h1>
             <p className="text-sm text-gray-500 mt-1">ESS Admin Interface</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Benutzer
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Benutzer</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Passwort
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Passwort</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
-
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 dark:text-red-400 rounded-lg px-3 py-2">
                 {error}
               </p>
             )}
-
             <button
               type="submit"
               disabled={loading}
