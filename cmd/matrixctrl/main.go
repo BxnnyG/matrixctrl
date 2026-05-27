@@ -13,7 +13,9 @@ import (
 	"github.com/bxnny/matrixctrl/internal/api"
 	"github.com/bxnny/matrixctrl/internal/api/handlers"
 	"github.com/bxnny/matrixctrl/internal/auth"
+	"github.com/bxnny/matrixctrl/internal/config"
 	"github.com/bxnny/matrixctrl/internal/db"
+	gitpkg "github.com/bxnny/matrixctrl/internal/git"
 	"github.com/bxnny/matrixctrl/internal/helm"
 	"github.com/bxnny/matrixctrl/internal/hooks"
 	builtin "github.com/bxnny/matrixctrl/internal/hooks/builtin"
@@ -32,6 +34,8 @@ func main() {
 	addr := env("MATRIXCTRL_ADDR", ":8080")
 	essNS := env("MATRIXCTRL_ESS_NAMESPACE", "ess")
 	essRelease := env("MATRIXCTRL_ESS_RELEASE", "ess")
+	configRepoPath := env("MATRIXCTRL_CONFIG_REPO", "/data/config-repo")
+	configSeedPath := env("MATRIXCTRL_CONFIG_SEED", "/root/ess-config-values")
 
 	pool, err := db.New(ctx, dbURL)
 	if err != nil {
@@ -66,6 +70,15 @@ func main() {
 	}
 	engine := hooks.NewEngine(pool, runner)
 
+	configGit, err := gitpkg.OpenOrInit(configRepoPath)
+	if err != nil {
+		log.Fatalf("config repo: %v", err)
+	}
+	configStore := config.NewStore(configRepoPath, configGit)
+	if err := configStore.Init(ctx, configSeedPath); err != nil {
+		log.Printf("warning: config repo init: %v", err)
+	}
+
 	frontendFS := staticHandler(webDist)
 
 	authHandler := handlers.NewAuthHandler(bootstrapAuth)
@@ -73,6 +86,7 @@ func main() {
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease)
 	wsHandler := handlers.NewWSHandler(helmHandler)
+	configHandler := handlers.NewConfigHandler(configStore, configGit)
 
 	router := api.NewRouter(api.Deps{
 		Auth:   authHandler,
@@ -80,6 +94,7 @@ func main() {
 		Hooks:  hooksHandler,
 		Helm:   helmHandler,
 		WS:     wsHandler,
+		Config: configHandler,
 	})
 
 	srv := server.New(addr, router)
