@@ -16,6 +16,7 @@ type Deps struct {
 	Hooks  *handlers.HooksHandler
 	Helm   *handlers.HelmHandler
 	WS     *handlers.WSHandler
+	Config *handlers.ConfigHandler
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -57,6 +58,17 @@ func NewRouter(deps Deps) http.Handler {
 			r.Post("/{id}/trigger", deps.Hooks.Trigger)
 			r.Get("/{id}/runs", deps.Hooks.ListRuns)
 			r.Get("/{id}/runs/{runId}", deps.Hooks.GetRun)
+		})
+
+		r.Route("/api/v1/config", func(r chi.Router) {
+			r.Get("/slices", deps.Config.ListSlices)
+			r.Get("/slices/{name}", deps.Config.GetSlice)
+			r.Put("/slices/{name}", deps.Config.PutSlice)
+			r.Get("/merged", deps.Config.GetMerged)
+			r.Post("/validate", deps.Config.Validate)
+			r.Get("/diff", deps.Config.GetDiff)
+			r.Post("/apply", deps.Config.Apply)
+			r.Get("/history", deps.Config.GetHistory)
 		})
 
 		r.Route("/api/v1/helm", func(r chi.Router) {
