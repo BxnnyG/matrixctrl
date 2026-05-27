@@ -58,29 +58,31 @@ function HooksList() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Post-Upgrade Hooks</h1>
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Post-Upgrade Hooks</h1>
 
-      {isLoading && <div className="text-sm text-gray-500">Lade Hooks...</div>}
+      {isLoading && <div className="text-sm text-gray-500 dark:text-gray-400">Lade Hooks...</div>}
 
       <div className="space-y-3">
         {hooks?.map((hook) => (
           <div
             key={hook.id}
-            className={`bg-white border rounded-xl p-4 ${
-              hook.enabled ? "border-gray-200" : "border-gray-100 opacity-60"
+            className={`bg-white dark:bg-gray-800 border rounded-xl p-4 ${
+              hook.enabled
+                ? "border-gray-200 dark:border-gray-700"
+                : "border-gray-100 dark:border-gray-800 opacity-60"
             }`}
           >
             <div className="flex items-start gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{hook.name}</span>
+                  <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{hook.name}</span>
                   {hook.builtin && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                    <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
                       Built-in
                     </span>
                   )}
                   {!hook.enabled && (
-                    <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                    <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
                       Deaktiviert
                     </span>
                   )}
@@ -89,12 +91,12 @@ function HooksList() {
                   )}
                 </div>
                 {hook.description && (
-                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
                     {hook.description}
                   </p>
                 )}
-                <div className="text-xs text-gray-400 mt-1">
-                  <code className="bg-gray-100 px-1 rounded">{hook.trigger}</code>
+                <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1 rounded">{hook.trigger}</code>
                   {" · "}Priorität {hook.priority}
                   {" · "}{hook.actions.length} {hook.actions.length === 1 ? "Aktion" : "Aktionen"}
                 </div>
@@ -104,7 +106,7 @@ function HooksList() {
                 <button
                   onClick={() => trigger.mutate(hook.id)}
                   disabled={!hook.enabled || triggeringId !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 disabled:opacity-40 rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-40 rounded-lg transition-colors"
                   title="Jetzt ausführen"
                 >
                   {triggeringId === hook.id ? (
@@ -119,7 +121,7 @@ function HooksList() {
                   <button
                     onClick={() => toggle.mutate(hook)}
                     disabled={toggle.isPending}
-                    className="px-3 py-1.5 text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 rounded-lg transition-colors"
                   >
                     {hook.enabled ? "Deaktivieren" : "Aktivieren"}
                   </button>
@@ -128,7 +130,7 @@ function HooksList() {
                 <Link
                   to="/hooks/$id"
                   params={{ id: hook.id }}
-                  className="px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 rounded-lg transition-colors"
                 >
                   Details
                 </Link>
@@ -138,7 +140,7 @@ function HooksList() {
         ))}
 
         {hooks?.length === 0 && (
-          <p className="text-sm text-gray-500">Keine Hooks konfiguriert.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Keine Hooks konfiguriert.</p>
         )}
       </div>
     </div>
@@ -148,19 +150,19 @@ function HooksList() {
 function LastRunBadge({ status }: { status: string }) {
   if (status === "success")
     return (
-      <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+      <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950 px-1.5 py-0.5 rounded">
         <CheckCircle className="w-3 h-3" /> OK
       </span>
     );
   if (status === "failed" || status === "partial")
     return (
-      <span className="flex items-center gap-1 text-xs text-red-700 bg-red-50 px-1.5 py-0.5 rounded">
+      <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950 px-1.5 py-0.5 rounded">
         <XCircle className="w-3 h-3" /> {status}
       </span>
     );
   if (status === "running")
     return (
-      <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+      <span className="flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded">
         <Clock className="w-3 h-3 animate-spin" /> läuft
       </span>
     );
