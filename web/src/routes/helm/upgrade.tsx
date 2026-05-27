@@ -106,6 +106,11 @@ function UpgradeWizard() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Version wählen...</option>
+              {versions && versions.length > 0 && (
+                <option value={versions[0].version}>
+                  Latest — {versions[0].version}
+                </option>
+              )}
               {versions?.map((v) => (
                 <option key={v.version} value={v.version}>
                   {v.version}
