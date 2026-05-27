@@ -78,70 +78,70 @@ function HookDetail() {
     },
   });
 
-  if (!hook) return <div className="text-sm text-gray-500">Lade...</div>;
+  if (!hook) return <div className="text-sm text-gray-500 dark:text-gray-400">Lade...</div>;
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
-        <Link to="/hooks" className="text-gray-400 hover:text-gray-600">
+        <Link to="/hooks" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <h1 className="text-2xl font-semibold">{hook.name}</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{hook.name}</h1>
         {hook.builtin && (
-          <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+          <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
             Built-in
           </span>
         )}
         {!hook.enabled && (
-          <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+          <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
             Deaktiviert
           </span>
         )}
       </div>
 
       {/* Meta */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-3 gap-4 text-sm">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 grid grid-cols-3 gap-4 text-sm">
         <div>
-          <span className="text-xs text-gray-500 block mb-0.5">Trigger</span>
-          <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{hook.trigger}</code>
+          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Trigger</span>
+          <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded text-xs">{hook.trigger}</code>
         </div>
         <div>
-          <span className="text-xs text-gray-500 block mb-0.5">Priorität</span>
-          <span className="font-medium">{hook.priority}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Priorität</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">{hook.priority}</span>
         </div>
         <div>
-          <span className="text-xs text-gray-500 block mb-0.5">Status</span>
-          <span className={`font-medium ${hook.enabled ? "text-green-600" : "text-gray-400"}`}>
+          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Status</span>
+          <span className={`font-medium ${hook.enabled ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
             {hook.enabled ? "Aktiv" : "Deaktiviert"}
           </span>
         </div>
         {hook.description && (
           <div className="col-span-3">
-            <span className="text-xs text-gray-500 block mb-0.5">Beschreibung</span>
-            <p className="text-xs text-gray-600 leading-relaxed">{hook.description}</p>
+            <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Beschreibung</span>
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{hook.description}</p>
           </div>
         )}
       </div>
 
       {/* Actions */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-        <h2 className="font-medium text-sm">Aktionen</h2>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3">
+        <h2 className="font-medium text-sm text-gray-900 dark:text-gray-100">Aktionen</h2>
         {hook.actions.map((action, i) => (
-          <div key={i} className="flex items-start gap-3 text-sm border-t border-gray-50 pt-3 first:border-0 first:pt-0">
+          <div key={i} className="flex items-start gap-3 text-sm border-t border-gray-100 dark:border-gray-700 pt-3 first:border-0 first:pt-0">
             <span className="text-gray-400 text-xs mt-1 w-4 shrink-0">{i + 1}.</span>
             <div className="space-y-1 min-w-0">
-              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{action.type}</code>
+              <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded text-xs">{action.type}</code>
               {action.description && (
-                <p className="text-gray-600 text-xs">{action.description}</p>
+                <p className="text-gray-600 dark:text-gray-400 text-xs">{action.description}</p>
               )}
               {action.resource && (
-                <p className="text-gray-400 text-xs font-mono">
+                <p className="text-gray-400 dark:text-gray-500 text-xs font-mono">
                   {action.resource}/{action.namespace}/{action.name}
                   {action.patch_type && ` (${action.patch_type})`}
                 </p>
               )}
               {action.timeout_secs && (
-                <p className="text-gray-400 text-xs">Timeout: {action.timeout_secs}s</p>
+                <p className="text-gray-400 dark:text-gray-500 text-xs">Timeout: {action.timeout_secs}s</p>
               )}
             </div>
           </div>
@@ -159,19 +159,19 @@ function HookDetail() {
           Jetzt ausführen
         </button>
         {trigger.isError && (
-          <p className="text-sm text-red-600">{(trigger.error as Error).message}</p>
+          <p className="text-sm text-red-600 dark:text-red-400">{(trigger.error as Error).message}</p>
         )}
         {trigger.isSuccess && !triggering && (
-          <p className="text-sm text-green-600">Gestartet — sieh Ausführungen unten.</p>
+          <p className="text-sm text-green-600 dark:text-green-400">Gestartet — sieh Ausführungen unten.</p>
         )}
       </div>
 
       {/* Run history */}
       <div className="space-y-2">
-        <h2 className="font-medium text-sm">Letzte Ausführungen</h2>
+        <h2 className="font-medium text-sm text-gray-900 dark:text-gray-100">Letzte Ausführungen</h2>
 
         {runs?.length === 0 && (
-          <p className="text-sm text-gray-500">Noch keine Ausführungen.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Noch keine Ausführungen.</p>
         )}
 
         {runs?.map((run) => {
@@ -181,22 +181,22 @@ function HookDetail() {
             : null;
 
           return (
-            <div key={run.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div key={run.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
               <button
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 onClick={() => setExpandedRun(expanded ? null : run.id)}
               >
                 <RunStatusIcon status={run.status} />
                 <div className="flex-1 text-sm">
-                  <span className="font-medium capitalize">{run.status}</span>
-                  <span className="text-gray-500 ml-2 text-xs">
+                  <span className="font-medium capitalize text-gray-900 dark:text-gray-100">{run.status}</span>
+                  <span className="text-gray-500 dark:text-gray-400 ml-2 text-xs">
                     {new Date(run.ts_start).toLocaleString("de-DE")}
                   </span>
                   {durationSec && (
-                    <span className="text-gray-400 ml-2 text-xs">{durationSec}s</span>
+                    <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{durationSec}s</span>
                   )}
                 </div>
-                <span className="text-xs text-gray-400">{run.trigger_type}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{run.trigger_type}</span>
                 {expanded ? (
                   <ChevronDown className="w-4 h-4 text-gray-400" />
                 ) : (
@@ -205,7 +205,7 @@ function HookDetail() {
               </button>
 
               {expanded && run.action_results.length > 0 && (
-                <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 space-y-1.5 bg-gray-50 dark:bg-gray-900/40">
                   {run.action_results.map((r) => (
                     <div key={r.action_index} className="flex items-start gap-2 text-xs">
                       {r.status === "success" ? (
@@ -214,13 +214,13 @@ function HookDetail() {
                         <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
                       )}
                       <div className="min-w-0">
-                        <span className="text-gray-700">
+                        <span className="text-gray-700 dark:text-gray-300">
                           Aktion {r.action_index + 1}
                         </span>
-                        <code className="ml-1.5 bg-gray-100 px-1 rounded">{r.type}</code>
-                        <span className="text-gray-400 ml-1.5">{r.duration_ms}ms</span>
+                        <code className="ml-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1 rounded">{r.type}</code>
+                        <span className="text-gray-400 dark:text-gray-500 ml-1.5">{r.duration_ms}ms</span>
                         {r.error && (
-                          <p className="text-red-600 mt-0.5 leading-relaxed">{r.error}</p>
+                          <p className="text-red-600 dark:text-red-400 mt-0.5 leading-relaxed">{r.error}</p>
                         )}
                       </div>
                     </div>
@@ -229,7 +229,7 @@ function HookDetail() {
               )}
 
               {expanded && run.action_results.length === 0 && (
-                <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-400">
+                <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/40">
                   Keine Aktions-Details verfügbar.
                 </div>
               )}
