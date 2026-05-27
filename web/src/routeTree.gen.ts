@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HooksIndexRouteImport } from './routes/hooks/index'
 import { Route as HelmIndexRouteImport } from './routes/helm/index'
+import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as HooksIdRouteImport } from './routes/hooks/$id'
 import { Route as HelmUpgradeRouteImport } from './routes/helm/upgrade'
 import { Route as HelmHistoryRouteImport } from './routes/helm/history'
+import { Route as ConfigSliceRouteImport } from './routes/config/$slice'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 
 const IndexRoute = IndexRouteImport.update({
@@ -32,6 +34,11 @@ const HelmIndexRoute = HelmIndexRouteImport.update({
   path: '/helm/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigIndexRoute = ConfigIndexRouteImport.update({
+  id: '/config/',
+  path: '/config/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HooksIdRoute = HooksIdRouteImport.update({
   id: '/hooks/$id',
   path: '/hooks/$id',
@@ -47,6 +54,11 @@ const HelmHistoryRoute = HelmHistoryRouteImport.update({
   path: '/helm/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigSliceRoute = ConfigSliceRouteImport.update({
+  id: '/config/$slice',
+  path: '/config/$slice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/auth/login',
   path: '/auth/login',
@@ -56,18 +68,22 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/config/$slice': typeof ConfigSliceRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/config/': typeof ConfigIndexRoute
   '/helm/': typeof HelmIndexRoute
   '/hooks/': typeof HooksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/config/$slice': typeof ConfigSliceRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/config': typeof ConfigIndexRoute
   '/helm': typeof HelmIndexRoute
   '/hooks': typeof HooksIndexRoute
 }
@@ -75,9 +91,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/config/$slice': typeof ConfigSliceRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/config/': typeof ConfigIndexRoute
   '/helm/': typeof HelmIndexRoute
   '/hooks/': typeof HooksIndexRoute
 }
@@ -86,27 +104,33 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth/login'
+    | '/config/$slice'
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/config/'
     | '/helm/'
     | '/hooks/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth/login'
+    | '/config/$slice'
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/config'
     | '/helm'
     | '/hooks'
   id:
     | '__root__'
     | '/'
     | '/auth/login'
+    | '/config/$slice'
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/config/'
     | '/helm/'
     | '/hooks/'
   fileRoutesById: FileRoutesById
@@ -114,9 +138,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthLoginRoute: typeof AuthLoginRoute
+  ConfigSliceRoute: typeof ConfigSliceRoute
   HelmHistoryRoute: typeof HelmHistoryRoute
   HelmUpgradeRoute: typeof HelmUpgradeRoute
   HooksIdRoute: typeof HooksIdRoute
+  ConfigIndexRoute: typeof ConfigIndexRoute
   HelmIndexRoute: typeof HelmIndexRoute
   HooksIndexRoute: typeof HooksIndexRoute
 }
@@ -144,6 +170,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelmIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/': {
+      id: '/config/'
+      path: '/config'
+      fullPath: '/config/'
+      preLoaderRoute: typeof ConfigIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/hooks/$id': {
       id: '/hooks/$id'
       path: '/hooks/$id'
@@ -165,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelmHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/$slice': {
+      id: '/config/$slice'
+      path: '/config/$slice'
+      fullPath: '/config/$slice'
+      preLoaderRoute: typeof ConfigSliceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/login': {
       id: '/auth/login'
       path: '/auth/login'
@@ -178,9 +218,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthLoginRoute: AuthLoginRoute,
+  ConfigSliceRoute: ConfigSliceRoute,
   HelmHistoryRoute: HelmHistoryRoute,
   HelmUpgradeRoute: HelmUpgradeRoute,
   HooksIdRoute: HooksIdRoute,
+  ConfigIndexRoute: ConfigIndexRoute,
   HelmIndexRoute: HelmIndexRoute,
   HooksIndexRoute: HooksIndexRoute,
 }
