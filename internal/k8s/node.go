@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -38,9 +39,11 @@ func (c *Client) NodeInfo(ctx context.Context) ([]NodeInfo, error) {
 	}
 
 	metricsMap := map[string]metricsItem{}
+	metricsCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	if raw, err := c.Static.RESTClient().Get().
 		AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").
-		DoRaw(ctx); err == nil {
+		DoRaw(metricsCtx); err == nil {
 		var ml metricsList
 		if json.Unmarshal(raw, &ml) == nil {
 			for _, m := range ml.Items {

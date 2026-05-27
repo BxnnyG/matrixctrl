@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/bxnny/matrixctrl/internal/helm"
 	"github.com/bxnny/matrixctrl/internal/k8s"
@@ -33,10 +35,12 @@ type statusResponse struct {
 }
 
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
-	components, _ := h.k8s.ComponentHealth(r.Context(), h.essNS)
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	components, _ := h.k8s.ComponentHealth(ctx, h.essNS)
 	release, _ := h.helm.GetRelease(h.essRelease)
-	nodes, _ := h.k8s.NodeInfo(r.Context())
-	evicted := h.k8s.EvictedPodCount(r.Context(), h.essNS)
+	nodes, _ := h.k8s.NodeInfo(ctx)
+	evicted := h.k8s.EvictedPodCount(ctx, h.essNS)
 
 	JSON(w, http.StatusOK, statusResponse{
 		Release:     release,
