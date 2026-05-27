@@ -16,6 +16,10 @@ interface UpgradeEntry {
   helm_revision?: number;
 }
 
+function essVersion(v: string) {
+  return v.replace(/^matrix-stack-/, "");
+}
+
 function HelmHistory() {
   const { data: history } = useQuery({
     queryKey: ["helm", "history"],
@@ -25,24 +29,21 @@ function HelmHistory() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link to="/helm" className="text-gray-400 hover:text-gray-600">
+        <Link to="/helm" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <h1 className="text-2xl font-semibold">Upgrade-History</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Upgrade-History</h1>
       </div>
 
       <div className="space-y-3">
         {history?.map((entry) => (
-          <div
-            key={entry.id}
-            className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4"
-          >
+          <div key={entry.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 flex items-center gap-4">
             <StatusIcon status={entry.status} />
             <div className="flex-1">
-              <div className="text-sm font-medium">
-                {entry.from_version} → {entry.to_version}
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 font-mono">
+                {essVersion(entry.from_version)} → {essVersion(entry.to_version)}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {new Date(entry.ts_initiated).toLocaleString("de-DE")}
                 {entry.helm_revision && ` · Revision #${entry.helm_revision}`}
               </div>
@@ -67,13 +68,9 @@ function StatusIcon({ status }: { status: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const cls =
-    status === "success" ? "bg-green-100 text-green-700" :
-    status === "failed" ? "bg-red-100 text-red-700" :
-    status === "hooks-failed" ? "bg-yellow-100 text-yellow-700" :
-    "bg-gray-100 text-gray-600";
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full font-medium ${cls}`}>
-      {status}
-    </span>
-  );
+    status === "success" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
+    status === "failed" ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" :
+    status === "hooks-failed" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
+    "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300";
+  return <span className={`text-xs px-2 py-1 rounded-full font-medium ${cls}`}>{status}</span>;
 }

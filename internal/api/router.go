@@ -45,6 +45,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/", deps.Status.Get)
 			r.Get("/components", deps.Status.Components)
 			r.Get("/release", deps.Status.Release)
+			r.Delete("/evicted-pods", deps.Status.DeleteEvictedPods)
 		})
 
 		r.Route("/api/v1/hooks", func(r chi.Router) {
