@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle, XCircle, Zap } from "lucide-react";
 
 export const Route = createFileRoute("/helm/upgrade")({
   component: UpgradeWizard,
@@ -24,9 +24,12 @@ interface UpgradeResponse {
 
 function UpgradeWizard() {
   const navigate = useNavigate();
+  const logRef = useRef<HTMLDivElement>(null);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [upgradeId, setUpgradeId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [done, setDone] = useState(false);
+  const [finalStatus, setFinalStatus] = useState<string | null>(null);
 
   const { data: current } = useQuery({
     queryKey: ["helm", "release"],
@@ -42,15 +45,25 @@ function UpgradeWizard() {
       api.post<UpgradeResponse>("/api/v1/helm/releases/ess/upgrade", { to_version: toVersion }),
     onSuccess: (res) => {
       setUpgradeId(res.upgrade_id);
-      setLogs([`Upgrade gestartet: ${res.upgrade_id}`]);
+      setLogs([]);
+      setDone(false);
+      setFinalStatus(null);
     },
   });
 
   useUpgradeStream(upgradeId, {
-    onLog: (line) => setLogs((prev) => [...prev, line]),
+    onLog: (line) => {
+      setLogs((prev) => [...prev, line]);
+      // Auto-scroll
+      setTimeout(() => {
+        logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+      }, 30);
+    },
     onDone: (status) => {
+      setDone(true);
+      setFinalStatus(status);
       if (status === "success") {
-        setTimeout(() => navigate({ to: "/helm" }), 2000);
+        setTimeout(() => navigate({ to: "/helm" }), 3000);
       }
     },
   });
@@ -96,6 +109,7 @@ function UpgradeWizard() {
               {versions?.map((v) => (
                 <option key={v.version} value={v.version}>
                   {v.version}
+                  {v.version === current?.chart_version ? " (aktuell)" : ""}
                 </option>
               ))}
             </select>
@@ -106,21 +120,85 @@ function UpgradeWizard() {
             disabled={!selectedVersion || upgrade.isPending}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
           >
-            {upgrade.isPending ? "Starte Upgrade..." : "Upgrade starten"}
+            {upgrade.isPending ? "Starte..." : "Upgrade starten"}
           </button>
 
           {upgrade.isError && (
-            <p className="text-sm text-red-600">
-              {(upgrade.error as Error).message}
-            </p>
+            <p className="text-sm text-red-600">{(upgrade.error as Error).message}</p>
           )}
         </div>
       ) : (
-        <div className="bg-gray-900 rounded-xl p-4 font-mono text-xs text-green-400 min-h-48 max-h-96 overflow-y-auto">
-          {logs.map((line, i) => (
-            <div key={i}>{line}</div>
-          ))}
-          <div className="animate-pulse">▋</div>
+        <div className="space-y-4">
+          {/* Log terminal */}
+          <div
+            ref={logRef}
+            className="bg-gray-950 rounded-xl p-4 font-mono text-xs text-green-400 min-h-48 max-h-96 overflow-y-auto"
+          >
+            {logs.map((line, i) => (
+              <div key={i} className="leading-relaxed">{line}</div>
+            ))}
+            {!done && <div className="animate-pulse mt-1">▋</div>}
+          </div>
+
+          {/* Final status banner */}
+          {done && finalStatus === "success" && (
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
+              <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+              <div>
+                <strong className="text-green-800">Upgrade erfolgreich.</strong>
+                <span className="text-green-600 ml-2">Weiterleitung...</span>
+              </div>
+            </div>
+          )}
+
+          {done && finalStatus === "hooks-failed" && (
+            <div className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <div>
+                  <strong className="text-yellow-800">Helm-Upgrade erfolgreich, aber Hooks fehlgeschlagen.</strong>
+                  <p className="text-yellow-700 mt-0.5">
+                    Der ESS-Release ist auf dem neuen Stand. Die Post-Upgrade-Patches (SFU hostNetwork etc.) wurden jedoch nicht vollständig angewendet — WebRTC-Calling könnte beeinträchtigt sein.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Link
+                    to="/hooks"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-medium"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Hooks manuell ausführen
+                  </Link>
+                  <Link
+                    to="/helm"
+                    className="px-3 py-1.5 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 rounded-lg text-xs"
+                  >
+                    Zur Helm-Übersicht
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {done && finalStatus === "failed" && (
+            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
+              <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <div>
+                  <strong className="text-red-800">Upgrade fehlgeschlagen.</strong>
+                  <p className="text-red-700 mt-0.5">
+                    Helm hat die vorherige Revision automatisch wiederhergestellt. Sieh die Logs oben für Details.
+                  </p>
+                </div>
+                <Link
+                  to="/helm"
+                  className="inline-block px-3 py-1.5 bg-white border border-red-300 text-red-700 hover:bg-red-50 rounded-lg text-xs"
+                >
+                  Zur Helm-Übersicht
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
