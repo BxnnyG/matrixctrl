@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { FileText, ChevronRight, GitBranch, Clock } from "lucide-react";
+import { FileText, ChevronRight, GitBranch, Clock, History } from "lucide-react";
 
 export const Route = createFileRoute("/config/")({
   component: ConfigPage,
@@ -68,9 +68,18 @@ function ConfigPage() {
 
       {history && history.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <GitBranch className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-            <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">Letzte Änderungen</h2>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">Letzte Änderungen</h2>
+            </div>
+            <Link
+              to="/config/history"
+              className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              <History className="w-3.5 h-3.5" />
+              Vollständige History
+            </Link>
           </div>
           <div className="space-y-1">
             {history.slice(0, 5).map((c) => (

@@ -13,15 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
+	"github.com/bxnny/matrixctrl/internal/config"
 	"github.com/bxnny/matrixctrl/internal/helm"
 	"github.com/bxnny/matrixctrl/internal/hooks"
 )
 
 type HelmHandler struct {
-	helm       *helm.Client
-	db         *pgxpool.Pool
-	engine     *hooks.Engine
-	essRelease string
+	helm        *helm.Client
+	db          *pgxpool.Pool
+	engine      *hooks.Engine
+	essRelease  string
+	configStore *config.Store
 	// In-memory log streams for WebSocket consumers
 	mu      sync.RWMutex
 	streams map[string]*upgradeStream
@@ -35,13 +37,14 @@ type upgradeStream struct {
 	mu     sync.Mutex
 }
 
-func NewHelmHandler(helmClient *helm.Client, db *pgxpool.Pool, engine *hooks.Engine, essRelease string) *HelmHandler {
+func NewHelmHandler(helmClient *helm.Client, db *pgxpool.Pool, engine *hooks.Engine, essRelease string, cfgStore *config.Store) *HelmHandler {
 	return &HelmHandler{
-		helm:       helmClient,
-		db:         db,
-		engine:     engine,
-		essRelease: essRelease,
-		streams:    make(map[string]*upgradeStream),
+		helm:        helmClient,
+		db:          db,
+		engine:      engine,
+		essRelease:  essRelease,
+		configStore: cfgStore,
+		streams:     make(map[string]*upgradeStream),
 	}
 }
 
@@ -132,10 +135,26 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		stream.emit("Starting upgrade to " + req.ToVersion + "...")
 
-		_, err := h.db.Exec(ctx, "UPDATE upgrade_history SET status='running' WHERE id=$1", upgradeUUID)
-		_ = err
+		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running' WHERE id=$1", upgradeUUID)
 
-		result, err := h.helm.Upgrade(ctx, name, req.ToVersion, nil)
+		// Load merged config values from the config store.
+		var values map[string]interface{}
+		if h.configStore != nil {
+			contents, err := h.configStore.MergedContent(ctx)
+			if err != nil {
+				stream.emit("WARNING: could not load config values: " + err.Error() + " — upgrading with empty values")
+			} else {
+				values, err = config.MergeToMap(contents)
+				if err != nil {
+					stream.emit("WARNING: could not merge config values: " + err.Error() + " — upgrading with empty values")
+					values = nil
+				} else {
+					stream.emit(fmt.Sprintf("Loaded %d config slices from config store.", len(contents)))
+				}
+			}
+		}
+
+		result, err := h.helm.Upgrade(ctx, name, req.ToVersion, values)
 		if err != nil {
 			stream.emit("ERROR: " + err.Error())
 			stream.finish("failed")
