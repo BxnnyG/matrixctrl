@@ -126,7 +126,7 @@ function Dashboard() {
 
           <section>
             <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Komponenten</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
               {status.components?.map((c) => (
                 <ComponentCard key={c.name} component={c} />
               ))}

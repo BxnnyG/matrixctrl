@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { ArrowLeft, GitCommit, ChevronDown, ChevronRight, RotateCcw, Loader2, AlertTriangle, Copy, Check } from "lucide-react";
+import { DiffView } from "@/components/config/DiffView";
 
 export const Route = createFileRoute("/config/history")({
   component: ConfigHistory,
@@ -25,52 +26,28 @@ function CopyableSha({ sha }: { sha: string }) {
     });
   }
   return (
-    <button
-      onClick={copy}
-      className="inline-flex items-center gap-1 font-mono text-blue-600 dark:text-blue-400 hover:underline group"
-      title="SHA kopieren"
-    >
+    <button onClick={copy} className="inline-flex items-center gap-1 font-mono text-blue-600 dark:text-blue-400 hover:underline group" title="SHA kopieren">
       {sha}
-      {copied
-        ? <Check className="w-3 h-3 text-green-500" />
-        : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-      }
+      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />}
     </button>
   );
 }
 
-function CommitDiff({ sha }: { sha: string }) {
-  const { data: diff, isLoading, error } = useQuery({
+function CommitDiffPanel({ sha }: { sha: string }) {
+  const { data, isLoading, error } = useQuery({
     queryKey: ["config", "history", sha, "diff"],
     queryFn: () => api.get<{ diff: string }>(`/api/v1/config/history/${sha}/diff`),
     staleTime: Infinity,
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 px-4 py-3 text-xs text-gray-400 dark:text-gray-500">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Lade Diff...
-      </div>
-    );
-  }
-  if (error) {
-    return <p className="px-4 py-3 text-xs text-red-500">{(error as Error).message}</p>;
-  }
-  if (!diff?.diff) {
-    return <p className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 italic">Kein Diff verfügbar (erster Commit).</p>;
-  }
-  return (
-    <pre className="px-4 py-3 text-xs font-mono overflow-x-auto bg-gray-50 dark:bg-gray-900 max-h-96 overflow-y-auto leading-relaxed">
-      {diff.diff.split("\n").map((line, i) => (
-        <span key={i} className={
-          line.startsWith("+") && !line.startsWith("+++") ? "text-green-600 dark:text-green-400 block" :
-          line.startsWith("-") && !line.startsWith("---") ? "text-red-600 dark:text-red-400 block" :
-          line.startsWith("@@") ? "text-blue-500 dark:text-blue-400 block" :
-          "text-gray-600 dark:text-gray-400 block"
-        }>{line || " "}</span>
-      ))}
-    </pre>
+  if (isLoading) return (
+    <div className="flex items-center gap-2 px-4 py-3 text-xs text-gray-400 dark:text-gray-500">
+      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Lade Diff...
+    </div>
   );
+  if (error) return <p className="px-4 py-3 text-xs text-red-500">{(error as Error).message}</p>;
+
+  return <DiffView raw={data?.diff ?? ""} />;
 }
 
 function ConfigHistory() {
@@ -98,7 +75,7 @@ function ConfigHistory() {
   });
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
       <div className="flex items-center gap-3">
         <Link to="/config" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <ArrowLeft className="w-5 h-5" />
@@ -107,10 +84,7 @@ function ConfigHistory() {
       </div>
 
       {isLoading && <p className="text-sm text-gray-500 dark:text-gray-400">Lade...</p>}
-
-      {commits?.length === 0 && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Noch keine Commits.</p>
-      )}
+      {commits?.length === 0 && <p className="text-sm text-gray-500 dark:text-gray-400">Noch keine Commits.</p>}
 
       <div className="space-y-2">
         {commits?.map((c, idx) => {
@@ -118,21 +92,26 @@ function ConfigHistory() {
           const isFirst = idx === 0;
           return (
             <div key={c.sha} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-              <div className="flex items-center gap-3 px-4 py-3">
+              {/* Clickable header row */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 select-none"
+                onClick={() => setExpandedSha(expanded ? null : c.sha)}
+              >
                 <GitCommit className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
-                    {c.message.split("\n")[0]}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                    <CopyableSha sha={c.sha} />
+                  <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{c.message.split("\n")[0]}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span onClick={(e) => e.stopPropagation()}><CopyableSha sha={c.sha} /></span>
                     <span>·</span>
                     <span>{c.author}</span>
                     <span>·</span>
                     <span>{new Date(c.time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
                   </p>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {isFirst && (
+                    <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950 px-2 py-1 rounded-lg">aktuell</span>
+                  )}
                   {!isFirst && (
                     <button
                       onClick={() => setConfirmSha(c.sha)}
@@ -143,21 +122,15 @@ function ConfigHistory() {
                       Rollback
                     </button>
                   )}
-                  {isFirst && (
-                    <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950 px-2 py-1 rounded-lg">aktuell</span>
-                  )}
-                  <button
-                    onClick={() => setExpandedSha(expanded ? null : c.sha)}
-                    className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
-                  >
-                    {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  </button>
+                </div>
+                <div className="shrink-0 text-gray-300 dark:text-gray-600">
+                  {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </div>
               </div>
 
               {expanded && (
                 <div className="border-t border-gray-100 dark:border-gray-700">
-                  <CommitDiff sha={c.sha} />
+                  <CommitDiffPanel sha={c.sha} />
                 </div>
               )}
             </div>
@@ -174,16 +147,14 @@ function ConfigHistory() {
               <div>
                 <h2 className="font-semibold text-gray-900 dark:text-gray-100">Rollback bestätigen</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Der Working-Tree wird auf Commit <code className="font-mono text-blue-600 dark:text-blue-400">{confirmSha}</code> zurückgesetzt.
-                  Alle ungespeicherten Änderungen gehen verloren.
+                  Der Working-Tree wird auf Commit{" "}
+                  <code className="font-mono text-blue-600 dark:text-blue-400">{confirmSha}</code>{" "}
+                  zurückgesetzt. Alle ungespeicherten Änderungen gehen verloren.
                 </p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setConfirmSha(null)}
-                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
+              <button onClick={() => setConfirmSha(null)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 Abbrechen
               </button>
               <button
