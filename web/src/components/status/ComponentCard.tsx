@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, AlertTriangle, Clock, ChevronDown, ChevronRight, RotateCcw, ScrollText, Loader2, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -38,6 +38,12 @@ function phaseClass(phase: string, ready: boolean) {
 }
 
 function LogsModal({ namespace: _ns, podName, onClose }: { namespace: string; podName: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["pod-logs", podName],
     queryFn: () => api.get<{ logs: string }>(`/api/v1/status/pods/${podName}/logs?tail=300`),
