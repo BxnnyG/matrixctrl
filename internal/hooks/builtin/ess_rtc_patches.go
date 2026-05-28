@@ -30,7 +30,7 @@ var ESSRTCHooks = []hooks.Hook{
 				Name:        "ess-matrix-rtc-sfu",
 				Namespace:   "ess",
 				PatchType:   "json",
-				Patch:       `[{"op":"add","path":"/spec/template/spec/hostNetwork","value":true}]`,
+				Patch:       `[{"op":"add","path":"/spec/template/spec/hostNetwork","value":true},{"op":"add","path":"/spec/template/spec/dnsPolicy","value":"ClusterFirstWithHostNet"}]`,
 			},
 			{
 				Type:        hooks.ActionWaitRollout,
@@ -92,13 +92,22 @@ func Seed(ctx context.Context, db *pgxpool.Pool) error {
 		if err != nil {
 			return err
 		}
-		if exists {
-			continue
-		}
-
 		actionsJSON, err := json.Marshal(h.Actions)
 		if err != nil {
 			return err
+		}
+
+		if exists {
+			// Always update built-in hooks so patch content stays in sync with the binary.
+			_, err = db.Exec(ctx, `
+				UPDATE hooks SET description=$2, actions=$3, priority=$4, updated_at=NOW()
+				WHERE name=$1 AND builtin=TRUE`,
+				h.Name, h.Description, actionsJSON, h.Priority,
+			)
+			if err != nil {
+				return err
+			}
+			continue
 		}
 
 		_, err = db.Exec(ctx, `

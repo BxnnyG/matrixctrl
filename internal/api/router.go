@@ -69,6 +69,8 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/diff", deps.Config.GetDiff)
 			r.Post("/apply", deps.Config.Apply)
 			r.Get("/history", deps.Config.GetHistory)
+			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
+			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
 		})
 
 		r.Route("/api/v1/helm", func(r chi.Router) {

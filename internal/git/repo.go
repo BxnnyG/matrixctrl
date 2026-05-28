@@ -7,6 +7,7 @@ import (
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -94,6 +95,104 @@ func (repo *Repo) Log(limit int) ([]CommitInfo, error) {
 		})
 	}
 	return out, nil
+}
+
+// GetFileAtCommit returns the content of a file at a specific commit SHA (short or full).
+func (repo *Repo) GetFileAtCommit(sha, filePath string) (string, error) {
+	hash, err := repo.resolveShortSHA(sha)
+	if err != nil {
+		return "", err
+	}
+	commit, err := repo.r.CommitObject(hash)
+	if err != nil {
+		return "", fmt.Errorf("commit %s: %w", sha, err)
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return "", err
+	}
+	return fileContentFromTree(tree, filePath)
+}
+
+// DiffAtCommit returns a unified diff introduced by a specific commit vs its parent.
+func (repo *Repo) DiffAtCommit(sha string) (string, error) {
+	hash, err := repo.resolveShortSHA(sha)
+	if err != nil {
+		return "", err
+	}
+	commit, err := repo.r.CommitObject(hash)
+	if err != nil {
+		return "", err
+	}
+	if commit.NumParents() == 0 {
+		return "(initial commit — no parent to diff against)", nil
+	}
+	parent, err := commit.Parent(0)
+	if err != nil {
+		return "", err
+	}
+	parentTree, err := parent.Tree()
+	if err != nil {
+		return "", err
+	}
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return "", err
+	}
+	changes, err := parentTree.Diff(commitTree)
+	if err != nil {
+		return "", err
+	}
+	var result string
+	for _, change := range changes {
+		patch, err := change.Patch()
+		if err != nil {
+			continue
+		}
+		result += patch.String()
+	}
+	return result, nil
+}
+
+// ResetToCommit hard-resets the working tree to the given commit SHA.
+// All uncommitted changes are discarded.
+func (repo *Repo) ResetToCommit(sha string) error {
+	hash, err := repo.resolveShortSHA(sha)
+	if err != nil {
+		return err
+	}
+	wt, err := repo.r.Worktree()
+	if err != nil {
+		return err
+	}
+	return wt.Reset(&gogit.ResetOptions{
+		Commit: hash,
+		Mode:   gogit.HardReset,
+	})
+}
+
+func (repo *Repo) resolveShortSHA(sha string) (plumbing.Hash, error) {
+	// Try exact match first.
+	hash := plumbing.NewHash(sha)
+	if _, err := repo.r.CommitObject(hash); err == nil {
+		return hash, nil
+	}
+	// Walk log to find a commit whose SHA starts with sha.
+	iter, err := repo.r.Log(&gogit.LogOptions{})
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	defer iter.Close()
+	for {
+		c, err := iter.Next()
+		if err != nil {
+			break
+		}
+		if len(sha) >= 6 && c.Hash.String()[:len(sha)] == sha {
+			return c.Hash, nil
+		}
+	}
+	return plumbing.ZeroHash, fmt.Errorf("commit %q not found", sha)
 }
 
 // Diff returns a unified diff of working-tree changes vs HEAD.
