@@ -84,7 +84,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(bootstrapAuth)
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
-	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease)
+	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit)
 

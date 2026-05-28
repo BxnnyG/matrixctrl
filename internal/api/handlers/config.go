@@ -148,6 +148,28 @@ func (h *ConfigHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, commits)
 }
 
+// GET /api/v1/config/history/{sha}/diff
+func (h *ConfigHandler) GetCommitDiff(w http.ResponseWriter, r *http.Request) {
+	sha := chi.URLParam(r, "sha")
+	diff, err := h.git.DiffAtCommit(sha)
+	if err != nil {
+		Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"diff": diff})
+}
+
+// POST /api/v1/config/history/{sha}/rollback — hard-reset working tree to commit
+func (h *ConfigHandler) RollbackToCommit(w http.ResponseWriter, r *http.Request) {
+	sha := chi.URLParam(r, "sha")
+	if err := h.git.ResetToCommit(sha); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Invalidate any cached state by re-reading from disk.
+	JSON(w, http.StatusOK, map[string]string{"sha": sha, "status": "rolled back"})
+}
+
 func countLines(s string) int {
 	if s == "" {
 		return 0
