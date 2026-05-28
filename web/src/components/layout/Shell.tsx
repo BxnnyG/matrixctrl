@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, Package, SlidersHorizontal, LogOut, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Zap, Package, SlidersHorizontal, LogOut, Moon, Sun, MonitorDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTheme } from "@/lib/theme";
 
@@ -8,6 +8,7 @@ const nav = [
   { to: "/config/", label: "Config", icon: SlidersHorizontal, exact: false },
   { to: "/helm/", label: "Helm", icon: Package, exact: false },
   { to: "/hooks/", label: "Hooks", icon: Zap, exact: false },
+  { to: "/system", label: "System", icon: MonitorDot, exact: false },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
