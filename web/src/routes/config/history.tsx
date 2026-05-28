@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { ArrowLeft, GitCommit, ChevronDown, ChevronRight, RotateCcw, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, GitCommit, ChevronDown, ChevronRight, RotateCcw, Loader2, AlertTriangle, Copy, Check } from "lucide-react";
 
 export const Route = createFileRoute("/config/history")({
   component: ConfigHistory,
@@ -15,6 +15,64 @@ interface CommitInfo {
   time: string;
 }
 
+function CopyableSha({ sha }: { sha: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(sha).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-1 font-mono text-blue-600 dark:text-blue-400 hover:underline group"
+      title="SHA kopieren"
+    >
+      {sha}
+      {copied
+        ? <Check className="w-3 h-3 text-green-500" />
+        : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+      }
+    </button>
+  );
+}
+
+function CommitDiff({ sha }: { sha: string }) {
+  const { data: diff, isLoading, error } = useQuery({
+    queryKey: ["config", "history", sha, "diff"],
+    queryFn: () => api.get<{ diff: string }>(`/api/v1/config/history/${sha}/diff`),
+    staleTime: Infinity,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 text-xs text-gray-400 dark:text-gray-500">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Lade Diff...
+      </div>
+    );
+  }
+  if (error) {
+    return <p className="px-4 py-3 text-xs text-red-500">{(error as Error).message}</p>;
+  }
+  if (!diff?.diff) {
+    return <p className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 italic">Kein Diff verfügbar (erster Commit).</p>;
+  }
+  return (
+    <pre className="px-4 py-3 text-xs font-mono overflow-x-auto bg-gray-50 dark:bg-gray-900 max-h-96 overflow-y-auto leading-relaxed">
+      {diff.diff.split("\n").map((line, i) => (
+        <span key={i} className={
+          line.startsWith("+") && !line.startsWith("+++") ? "text-green-600 dark:text-green-400 block" :
+          line.startsWith("-") && !line.startsWith("---") ? "text-red-600 dark:text-red-400 block" :
+          line.startsWith("@@") ? "text-blue-500 dark:text-blue-400 block" :
+          "text-gray-600 dark:text-gray-400 block"
+        }>{line || " "}</span>
+      ))}
+    </pre>
+  );
+}
+
 function ConfigHistory() {
   const qc = useQueryClient();
   const [expandedSha, setExpandedSha] = useState<string | null>(null);
@@ -24,12 +82,6 @@ function ConfigHistory() {
   const { data: commits, isLoading } = useQuery({
     queryKey: ["config", "history"],
     queryFn: () => api.get<CommitInfo[]>("/api/v1/config/history"),
-  });
-
-  const { data: diff } = useQuery({
-    queryKey: ["config", "history", expandedSha, "diff"],
-    queryFn: () => api.get<{ diff: string }>(`/api/v1/config/history/${expandedSha}/diff`),
-    enabled: !!expandedSha,
   });
 
   const rollback = useMutation({
@@ -72,10 +124,12 @@ function ConfigHistory() {
                   <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
                     {c.message.split("\n")[0]}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    <code className="font-mono text-blue-600 dark:text-blue-400">{c.sha}</code>
-                    {" · "}{c.author}
-                    {" · "}{new Date(c.time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                    <CopyableSha sha={c.sha} />
+                    <span>·</span>
+                    <span>{c.author}</span>
+                    <span>·</span>
+                    <span>{new Date(c.time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -103,22 +157,7 @@ function ConfigHistory() {
 
               {expanded && (
                 <div className="border-t border-gray-100 dark:border-gray-700">
-                  {!diff ? (
-                    <p className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">Lade Diff...</p>
-                  ) : diff.diff ? (
-                    <pre className="px-4 py-3 text-xs font-mono overflow-x-auto bg-gray-50 dark:bg-gray-900 max-h-96 overflow-y-auto leading-relaxed">
-                      {diff.diff.split("\n").map((line, i) => (
-                        <span key={i} className={
-                          line.startsWith("+") && !line.startsWith("+++") ? "text-green-600 dark:text-green-400 block" :
-                          line.startsWith("-") && !line.startsWith("---") ? "text-red-600 dark:text-red-400 block" :
-                          line.startsWith("@@") ? "text-blue-500 dark:text-blue-400 block" :
-                          "text-gray-600 dark:text-gray-400 block"
-                        }>{line || " "}</span>
-                      ))}
-                    </pre>
-                  ) : (
-                    <p className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 italic">Kein Diff verfügbar.</p>
-                  )}
+                  <CommitDiff sha={c.sha} />
                 </div>
               )}
             </div>
