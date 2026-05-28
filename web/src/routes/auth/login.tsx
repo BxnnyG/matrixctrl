@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/auth/login")({
@@ -16,6 +16,20 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+
+  // Pick up error messages forwarded by the OIDC callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err) setError(decodeURIComponent(err));
+  }, []);
+
+  useEffect(() => {
+    api.get<{ enabled: boolean }>("/api/v1/auth/oidc/available")
+      .then((r) => setOidcEnabled(r.enabled))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +46,11 @@ function Login() {
     }
   }
 
+  function handleOIDCLogin() {
+    // The backend generates the state and redirects to MAS — navigate directly.
+    window.location.href = "/api/v1/auth/oidc/redirect";
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
       <div className="w-full max-w-sm">
@@ -40,6 +59,28 @@ function Login() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">MatrixCtrl</h1>
             <p className="text-sm text-gray-500 mt-1">ESS Admin Interface</p>
           </div>
+
+          {oidcEnabled && (
+            <>
+              <button
+                type="button"
+                onClick={handleOIDCLogin}
+                className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 bg-[#0DBD8B] hover:bg-[#0aa87b] text-white text-sm font-medium rounded-lg transition-colors mb-4"
+              >
+                {/* Matrix logo mark */}
+                <svg viewBox="0 0 32 32" className="w-4 h-4 fill-white" aria-hidden="true">
+                  <path d="M1 1v30h2.5V3.5H29v27H1V30l-1 1v1h32V0H0v1h1z"/>
+                  <path d="M10.6 9.2v13.5h2.4v-5.1l4.8 5.1h3.2l-5.5-5.7 5.2-5.3h-3.1l-4.6 4.8V9.2h-2.4z"/>
+                </svg>
+                Mit Matrix anmelden
+              </button>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                <span className="text-xs text-gray-400">oder</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

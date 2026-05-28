@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matrixctrl-config
+  namespace: matrixctrl
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storage.config.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.config.size }}
