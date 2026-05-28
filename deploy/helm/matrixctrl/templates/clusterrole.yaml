@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: matrixctrl
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+rules:
+  # Helm SDK needs broad access to install/upgrade/rollback releases
+  # which can create arbitrary resources.  Scoping this tighter would
+  # break upgrades of releases that contain CRDs, ClusterRoles, etc.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  - nonResourceURLs: ["*"]
+    verbs: ["*"]

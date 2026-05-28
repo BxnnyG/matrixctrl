@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -48,6 +49,22 @@ func main() {
 		log.Printf("warning: bootstrap admin: %v", err)
 	}
 
+	// OIDC — optional; only wired when env vars are set.
+	oidcCfg := auth.OIDCConfig{
+		ClientID:     env("MATRIXCTRL_OIDC_CLIENT_ID", ""),
+		ClientSecret: env("MATRIXCTRL_OIDC_CLIENT_SECRET", ""),
+		Issuer:       env("MATRIXCTRL_OIDC_ISSUER", ""),
+		RedirectURI:  env("MATRIXCTRL_OIDC_REDIRECT_URI", ""),
+	}
+	if allowed := env("MATRIXCTRL_OIDC_ALLOWED_USERS", ""); allowed != "" {
+		oidcCfg.AllowedUsers = strings.Split(allowed, ",")
+	}
+	var oidcSvc *auth.OIDCService
+	if oidcCfg.ClientID != "" {
+		oidcSvc = auth.NewOIDCService(oidcCfg, pool, bootstrapAuth.JWTKey())
+		log.Printf("OIDC enabled: issuer=%s client_id=%s", oidcCfg.Issuer, oidcCfg.ClientID)
+	}
+
 	if err := builtin.Seed(ctx, pool); err != nil {
 		log.Printf("warning: seed hooks: %v", err)
 	}
@@ -81,7 +98,7 @@ func main() {
 
 	frontendFS := staticHandler(webDist)
 
-	authHandler := handlers.NewAuthHandler(bootstrapAuth)
+	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc)
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)

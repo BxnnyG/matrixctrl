@@ -1,0 +1,74 @@
+# MatrixCtrl Helm Chart — values.yaml
+# Minimal required fields: image.tag, secrets.*
+
+image:
+  repository: ghcr.io/bxnny/matrixctrl
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Resource limits
+resources:
+  matrixctrl:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  postgres:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ESS deployment to manage
+ess:
+  namespace: ess
+  release: ess
+
+# Persistent storage
+storage:
+  postgres:
+    size: 5Gi
+    storageClass: local-path
+  config:
+    size: 1Gi
+    storageClass: local-path
+
+# Ingress / hostname
+ingress:
+  enabled: true
+  host: admin.bxnny.de
+  # Traefik entrypoint — "websecure" for HTTPS, "web" for HTTP
+  entrypoint: websecure
+  tls: true
+  # Set to "letsencrypt" or your cert-manager ClusterIssuer name.
+  # Leave empty if TLS is terminated externally (Cloudflare Tunnel etc.).
+  certIssuer: ""
+
+# Bootstrap admin credentials — SET THESE before installing!
+secrets:
+  # Postgres password for the sidecar
+  dbPassword: "CHANGE_ME"
+  # HS256 signing key for JWT tokens (min 32 random chars)
+  jwtSecret: "CHANGE_ME_USE_openssl_rand_-base64_32"
+  # Initial bootstrap admin password (logged on first run if unset)
+  adminPassword: ""
+
+# OIDC via MAS — optional; leave clientId empty to disable
+oidc:
+  enabled: false
+  issuer: "https://mas-matrix.bxnny.de"
+  clientId: ""
+  clientSecret: ""
+  # Full public URL that MAS will redirect back to after login
+  redirectUri: "https://admin.bxnny.de/api/v1/auth/oidc/callback"
+  # Comma-separated list of allowed Matrix IDs, e.g. "@bxnny:bxnny.de"
+  # Leave empty to allow all authenticated OIDC users.
+  allowedUsers: ""
+
+# Config seed — path inside the container that is copied into the
+# git config repo on first start.  Leave empty to start with no slices.
+configSeedPath: ""

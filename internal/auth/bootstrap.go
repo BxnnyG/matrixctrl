@@ -23,6 +23,8 @@ type Bootstrap struct {
 	jwtKey []byte
 }
 
+func (b *Bootstrap) JWTKey() []byte { return b.jwtKey }
+
 func NewBootstrap(db *pgxpool.Pool) *Bootstrap {
 	key := []byte(os.Getenv("MATRIXCTRL_JWT_SECRET"))
 	if len(key) == 0 {

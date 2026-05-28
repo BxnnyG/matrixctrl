@@ -31,6 +31,7 @@ func NewRouter(deps Deps) http.Handler {
 	// Public auth routes
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/bootstrap/login", deps.Auth.BootstrapLogin)
+		r.Get("/oidc/available", deps.Auth.OIDCAvailable)
 		r.Get("/oidc/redirect", deps.Auth.OIDCRedirect)
 		r.Get("/oidc/callback", deps.Auth.OIDCCallback)
 	})
