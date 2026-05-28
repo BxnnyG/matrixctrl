@@ -1,0 +1,16 @@
+apiVersion: v2
+name: matrixctrl
+description: Admin layer for self-hosted Matrix / Element Server Suite (ESS)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - matrix
+  - element
+  - ess
+  - admin
+home: https://github.com/bxnny/matrixctrl
+sources:
+  - https://github.com/bxnny/matrixctrl
+maintainers:
+  - name: bxnny

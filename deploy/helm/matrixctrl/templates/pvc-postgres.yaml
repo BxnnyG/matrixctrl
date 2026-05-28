@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matrixctrl-postgres
+  namespace: matrixctrl
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+  annotations:
+    # Retain data even when the chart is deleted
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storage.postgres.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.postgres.size }}

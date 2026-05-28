@@ -20,6 +20,7 @@ import { Route as HelmHistoryRouteImport } from './routes/helm/history'
 import { Route as ConfigHistoryRouteImport } from './routes/config/history'
 import { Route as ConfigSliceRouteImport } from './routes/config/$slice'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
+import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
 const SystemRoute = SystemRouteImport.update({
   id: '/system',
@@ -76,10 +77,16 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/auth/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/system': typeof SystemRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
   '/config/history': typeof ConfigHistoryRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/system': typeof SystemRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
   '/config/history': typeof ConfigHistoryRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/system': typeof SystemRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
   '/config/history': typeof ConfigHistoryRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/system'
+    | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
     | '/config/history'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/system'
+    | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
     | '/config/history'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/system'
+    | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
     | '/config/history'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SystemRoute: typeof SystemRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
   ConfigSliceRoute: typeof ConfigSliceRoute
   ConfigHistoryRoute: typeof ConfigHistoryRoute
@@ -252,12 +265,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SystemRoute: SystemRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,
   ConfigSliceRoute: ConfigSliceRoute,
   ConfigHistoryRoute: ConfigHistoryRoute,

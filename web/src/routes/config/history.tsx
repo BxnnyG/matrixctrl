@@ -94,7 +94,7 @@ function ConfigHistory() {
             <div key={c.sha} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
               {/* Clickable header row */}
               <div
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 select-none"
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 select-none"
                 onClick={() => setExpandedSha(expanded ? null : c.sha)}
               >
                 <GitCommit className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
