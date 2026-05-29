@@ -48,13 +48,16 @@ ingress:
   # Leave empty if TLS is terminated externally (Cloudflare Tunnel etc.).
   certIssuer: ""
 
-# Bootstrap admin credentials — SET THESE before installing!
+# Secrets — leave empty to AUTO-GENERATE on first install.
+# Generated values are stored in the matrixctrl Secret and reused across upgrades
+# (the Secret carries helm.sh/resource-policy: keep). Only set these if you want
+# to manage credentials externally (e.g. SealedSecrets / external-secrets).
 secrets:
-  # Postgres password for the sidecar
-  dbPassword: "CHANGE_ME"
-  # HS256 signing key for JWT tokens (min 32 random chars)
-  jwtSecret: "CHANGE_ME_USE_openssl_rand_-base64_32"
-  # Initial bootstrap admin password (logged on first run if unset)
+  # Postgres password for the sidecar. Empty = auto-generate (randAlphaNum 32).
+  dbPassword: ""
+  # HS256 signing key for JWT tokens. Empty = auto-generate (randAlphaNum 48).
+  jwtSecret: ""
+  # Initial bootstrap admin password (logged on first run if unset).
   adminPassword: ""
 
 # OIDC via MAS — optional; leave clientId empty to disable

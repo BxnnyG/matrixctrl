@@ -44,7 +44,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	bootstrapAuth := auth.NewBootstrap(pool)
+	bootstrapAuth := auth.NewBootstrap(ctx, pool)
 	if err := bootstrapAuth.EnsureAdminExists(ctx); err != nil {
 		log.Printf("warning: bootstrap admin: %v", err)
 	}
@@ -104,6 +104,9 @@ func main() {
 	configStore := config.NewStore(configRepoPath, configGit)
 	if err := configStore.Init(ctx, configSeedPath); err != nil {
 		log.Printf("warning: config repo init: %v", err)
+	}
+	if err := configStore.EnsureEasySlice(ctx); err != nil {
+		log.Printf("warning: easy-mode slice migration: %v", err)
 	}
 
 	frontendFS := staticHandler(webDist)
