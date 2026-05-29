@@ -94,9 +94,9 @@ function ConfigPage() {
           <Wand2 className="w-4.5 h-4.5 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Easy Mode</div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Einstellungen</div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            WebRTC & häufige Einstellungen per Toggle — ohne YAML
+            Alle Optionen — Standard (Formular) oder YAML, pro Sektion
           </p>
         </div>
         <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 shrink-0" />

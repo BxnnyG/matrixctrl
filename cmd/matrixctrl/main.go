@@ -105,8 +105,8 @@ func main() {
 	if err := configStore.Init(ctx, configSeedPath); err != nil {
 		log.Printf("warning: config repo init: %v", err)
 	}
-	if err := configStore.EnsureEasySlice(ctx); err != nil {
-		log.Printf("warning: easy-mode slice migration: %v", err)
+	if err := configStore.MigrateToSections(ctx); err != nil {
+		log.Printf("warning: config section migration: %v", err)
 	}
 
 	frontendFS := staticHandler(webDist)
