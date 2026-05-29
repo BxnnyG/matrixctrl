@@ -4,8 +4,10 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,9 +20,29 @@ func New(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("ping: %w", err)
+
+	// Retry the initial connection — the Postgres sidecar may still be starting
+	// (same pod, started in parallel). Wait up to ~60s before giving up.
+	const maxWait = 60 * time.Second
+	deadline := time.Now().Add(maxWait)
+	for {
+		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		err = pool.Ping(pingCtx)
+		cancel()
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("ping (after %s): %w", maxWait, err)
+		}
+		log.Printf("database not ready yet, retrying: %v", err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
+
 	if err := migrate(ctx, pool); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
