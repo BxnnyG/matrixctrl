@@ -191,6 +191,72 @@ func (h *ConfigHandler) PutEasy(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok", "yaml": overlay})
 }
 
+// GET /api/v1/config/settings — everything the schema-driven settings UI needs:
+// the ESS JSON Schema (structure/types/enums), the current merged values, per-path
+// help text extracted from the commented template, and the current overlay.
+func (h *ConfigHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	contents, err := h.store.MergedContent(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	merged, err := config.MergeToMap(contents)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Help text from the commented base slices (values.yaml carries the most).
+	comments := map[string]string{}
+	for _, name := range []string{"values", "hostnames", "rtc", "tls"} {
+		sl, err := h.store.Get(r.Context(), name)
+		if err != nil {
+			continue
+		}
+		for k, v := range config.ExtractComments(sl.Content) {
+			if _, ok := comments[k]; !ok {
+				comments[k] = v
+			}
+		}
+	}
+
+	overlay := map[string]interface{}{}
+	if ov, _ := h.store.ReadEasyOverlay(); ov != "" {
+		overlay = config.YAMLToMap(ov)
+	}
+
+	resp := map[string]interface{}{
+		"values":   merged,
+		"comments": comments,
+		"overlay":  overlay,
+	}
+	if schemaData, err := cfgschema.Get(h.essVersion); err == nil {
+		resp["schema"] = json.RawMessage(schemaData)
+	}
+	JSON(w, http.StatusOK, resp)
+}
+
+// POST /api/v1/config/overlay — apply a set of path changes/removals to the
+// Easy-Mode overlay slice. Generalises PutEasy to arbitrary schema paths.
+func (h *ConfigHandler) PutOverlay(w http.ResponseWriter, r *http.Request) {
+	var edit config.OverlayEdit
+	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	existing, _ := h.store.ReadEasyOverlay()
+	out, err := config.ApplyOverlayEdit(existing, edit)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.store.WriteEasyOverlay(out); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "ok", "yaml": out})
+}
+
 // GET /api/v1/config/schema — returns the ESS values JSON Schema for the current version
 func (h *ConfigHandler) GetSchema(w http.ResponseWriter, r *http.Request) {
 	data, err := cfgschema.Get(h.essVersion)
