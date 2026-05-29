@@ -11,7 +11,8 @@ import (
 type ReleaseInfo struct {
 	Name         string    `json:"name"`
 	Namespace    string    `json:"namespace"`
-	ChartVersion string    `json:"chart_version"`
+	ChartVersion string    `json:"chart_version"` // e.g. "matrix-stack-26.5.1"
+	Version      string    `json:"version"`        // e.g. "26.5.1" (semver only)
 	Revision     int       `json:"revision"`
 	Status       string    `json:"status"`
 	DeployedAt   time.Time `json:"deployed_at,omitempty"`
@@ -59,6 +60,7 @@ func toReleaseInfo(r *release.Release) *ReleaseInfo {
 		Name:         r.Name,
 		Namespace:    r.Namespace,
 		ChartVersion: r.Chart.Metadata.Name + "-" + r.Chart.Metadata.Version,
+		Version:      r.Chart.Metadata.Version,
 		Revision:     r.Version,
 		Status:       r.Info.Status.String(),
 	}

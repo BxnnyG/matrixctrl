@@ -1,11 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
+import * as jsYaml from "js-yaml";
 import { api } from "@/lib/api";
-import { ArrowLeft, Save, GitCommit, AlertCircle, CheckCircle2, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { useUpgradeStream } from "@/lib/ws";
+import { ArrowLeft, Save, GitCommit, AlertCircle, CheckCircle2, Loader2, ChevronDown, ChevronRight, Rocket, AlertTriangle, XCircle, Zap, X } from "lucide-react";
 import { useTheme } from "@/lib/theme";
+import { Link as LinkTo } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/config/$slice")({
   component: SliceEditor,
@@ -16,6 +20,16 @@ interface Slice {
   file: string;
   description?: string;
   content: string;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  errors: Array<{ field: string; message: string }> | null;
+}
+
+interface DeployResponse {
+  upgrade_id: string;
+  history_id: string;
 }
 
 function SliceEditor() {
@@ -30,9 +44,21 @@ function SliceEditor() {
   const [showCommit, setShowCommit] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
 
+  // Deploy state
+  const [showDeploy, setShowDeploy] = useState(false);
+  const [deployMsg, setDeployMsg] = useState("");
+  const [deployId, setDeployId] = useState<string | null>(null);
+  const [deployLogs, setDeployLogs] = useState<string[]>([]);
+  const [deployDone, setDeployDone] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string | null>(null);
+  const [schemaErrors, setSchemaErrors] = useState<Array<{ field: string; message: string }>>([]);
+  const [validating, setValidating] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
+
   // Refs so Monaco command closure always sees current values
   const saveRef = useRef<() => void>(() => {});
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const monacoRef = useRef<typeof monaco | null>(null);
 
   const { data: slice, isLoading } = useQuery({
     queryKey: ["config", "slice", sliceName],
@@ -52,7 +78,6 @@ function SliceEditor() {
     }
   }, [slice]);
 
-  // Warn on browser close / tab close with unsaved changes
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (isDirty) {
@@ -63,6 +88,33 @@ function SliceEditor() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
+
+  // YAML syntax validation via js-yaml → Monaco markers
+  const validateYamlSyntax = useCallback((val: string) => {
+    if (!editorRef.current || !monacoRef.current) return;
+    const model = editorRef.current.getModel();
+    if (!model) return;
+    const markers: monaco.editor.IMarkerData[] = [];
+    try {
+      jsYaml.load(val);
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "mark" in e) {
+        const mark = (e as { mark?: { line?: number; column?: number } }).mark;
+        const msg = (e as { message?: string }).message ?? "YAML syntax error";
+        const line = (mark?.line ?? 0) + 1;
+        const col = (mark?.column ?? 0) + 1;
+        markers.push({
+          severity: monacoRef.current.MarkerSeverity.Error,
+          message: msg,
+          startLineNumber: line,
+          endLineNumber: line,
+          startColumn: col,
+          endColumn: col + 1,
+        });
+      }
+    }
+    monacoRef.current.editor.setModelMarkers(model, "yaml-syntax", markers);
+  }, []);
 
   const save = useMutation({
     mutationFn: (c: string) =>
@@ -76,7 +128,6 @@ function SliceEditor() {
     },
   });
 
-  // Keep saveRef current so the Monaco keyboard shortcut always has fresh state
   useEffect(() => {
     saveRef.current = () => {
       if (isDirty && !save.isPending) {
@@ -97,17 +148,79 @@ function SliceEditor() {
     },
   });
 
-  const handleEditorMount: OnMount = (editor, monaco) => {
+  const deploy = useMutation({
+    mutationFn: (msg: string) =>
+      api.post<DeployResponse>("/api/v1/helm/releases/ess/apply-config", { message: msg }),
+    onSuccess: (res) => {
+      setDeployId(res.upgrade_id);
+      setDeployLogs([]);
+      setDeployDone(false);
+      setDeployStatus(null);
+    },
+  });
+
+  useUpgradeStream(deployId, {
+    onLog: (line) => {
+      setDeployLogs((prev) => [...prev, line]);
+      setTimeout(() => {
+        logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+      }, 30);
+    },
+    onDone: (status) => {
+      setDeployDone(true);
+      setDeployStatus(status);
+      if (status === "success") {
+        qc.invalidateQueries({ queryKey: ["helm"] });
+        qc.invalidateQueries({ queryKey: ["config", "history"] });
+      }
+    },
+  });
+
+  const handleEditorMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor;
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+    monacoRef.current = monacoInstance as unknown as typeof monaco;
+    editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
       saveRef.current();
     });
+    // Initial syntax check
+    if (content) validateYamlSyntax(content);
   };
 
   function handleEditorChange(val: string | undefined) {
-    setContent(val ?? "");
+    const v = val ?? "";
+    setContent(v);
     setIsDirty(true);
     setSaved(false);
+    validateYamlSyntax(v);
+  }
+
+  async function handleDeploy() {
+    // Validate merged config against JSON Schema first (non-blocking — user can override)
+    setValidating(true);
+    setSchemaErrors([]);
+    try {
+      const result = await api.post<ValidationResult>("/api/v1/config/validate-merged", {});
+      if (!result.valid && result.errors && result.errors.length > 0) {
+        setSchemaErrors(result.errors);
+        setValidating(false);
+        return; // Show errors, user can override with "Trotzdem deployen"
+      }
+    } catch {
+      // If validate-merged fails, proceed anyway
+    }
+    setValidating(false);
+    deploy.mutate(deployMsg || `config: apply ${sliceName}.yaml`);
+  }
+
+  function resetDeploy() {
+    setShowDeploy(false);
+    setDeployId(null);
+    setDeployLogs([]);
+    setDeployDone(false);
+    setDeployStatus(null);
+    setDeployMsg("");
+    setSchemaErrors([]);
+    deploy.reset();
   }
 
   if (isLoading) {
@@ -162,19 +275,29 @@ function SliceEditor() {
           </button>
 
           <button
-            onClick={() => { setShowCommit(true); setShowDiff(false); }}
+            onClick={() => { setShowCommit(true); setShowDiff(false); setShowDeploy(false); }}
             disabled={isDirty}
-            title={isDirty ? "Erst speichern, dann committen" : "Änderungen committen"}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors"
+            title={isDirty ? "Erst speichern, dann committen" : "Nur git commit, kein Deploy"}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition-colors"
           >
             <GitCommit className="w-3.5 h-3.5" />
             Committen
+          </button>
+
+          <button
+            onClick={() => { setShowDeploy(true); setShowCommit(false); setSchemaErrors([]); deploy.reset(); setDeployId(null); }}
+            disabled={isDirty}
+            title={isDirty ? "Erst speichern, dann deployen" : "Config committen und auf Cluster anwenden"}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            <Rocket className="w-3.5 h-3.5" />
+            Deployen
           </button>
         </div>
       </div>
 
       {/* Commit panel */}
-      {showCommit && (
+      {showCommit && !showDeploy && (
         <div className="border-b border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 shrink-0">
           <div className="px-6 py-3 flex items-center gap-3">
             <input
@@ -192,29 +315,16 @@ function SliceEditor() {
             >
               {commit.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Commit"}
             </button>
-            <button
-              onClick={() => setShowCommit(false)}
-              className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            >
+            <button onClick={() => setShowCommit(false)} className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               Abbrechen
             </button>
-            {commit.isError && (
-              <span className="text-xs text-red-600 dark:text-red-400">{(commit.error as Error).message}</span>
-            )}
-            {commit.isSuccess && (
-              <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Committed!
-              </span>
-            )}
+            {commit.isError && <span className="text-xs text-red-600 dark:text-red-400">{(commit.error as Error).message}</span>}
+            {commit.isSuccess && <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Committed!</span>}
           </div>
 
-          {/* Diff preview toggle */}
           {diffData !== undefined && (
             <div className="px-6 pb-2">
-              <button
-                onClick={() => setShowDiff((v) => !v)}
-                className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              >
+              <button onClick={() => setShowDiff((v) => !v)} className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
                 {showDiff ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 {hasDiff ? "Diff anzeigen" : "Keine ungespeicherten Änderungen"}
               </button>
@@ -229,6 +339,123 @@ function SliceEditor() {
                     }>{line || " "}</span>
                   ))}
                 </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Deploy panel */}
+      {showDeploy && (
+        <div className="border-b border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 shrink-0">
+          {!deployId ? (
+            <div className="px-6 py-3 space-y-3">
+              <div className="flex items-center gap-3">
+                <Rocket className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Config committen und auf Cluster anwenden</span>
+                <button onClick={resetDeploy} className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  autoFocus
+                  value={deployMsg}
+                  onChange={(e) => setDeployMsg(e.target.value)}
+                  placeholder={`config: apply ${sliceName}.yaml`}
+                  className="flex-1 px-3 py-1.5 bg-white dark:bg-gray-900 border border-blue-300 dark:border-blue-700 text-sm text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleDeploy}
+                  disabled={deploy.isPending || validating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg"
+                >
+                  {validating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
+                  {validating ? "Validiere..." : "Jetzt deployen"}
+                </button>
+              </div>
+
+              {/* Schema validation errors */}
+              {schemaErrors.length > 0 && (
+                <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Schema-Fehler ({schemaErrors.length}) — Deploy trotzdem möglich:
+                  </div>
+                  {schemaErrors.slice(0, 5).map((e, i) => (
+                    <div key={i} className="text-xs text-red-600 dark:text-red-400 font-mono">
+                      <span className="text-red-400 dark:text-red-500">{e.field}: </span>{e.message}
+                    </div>
+                  ))}
+                  {schemaErrors.length > 5 && (
+                    <div className="text-xs text-red-500 dark:text-red-400">+{schemaErrors.length - 5} weitere Fehler</div>
+                  )}
+                  <button
+                    onClick={() => { setSchemaErrors([]); deploy.mutate(deployMsg || `config: apply ${sliceName}.yaml`); }}
+                    className="mt-1 text-xs text-red-600 dark:text-red-400 underline hover:no-underline"
+                  >
+                    Trotzdem deployen
+                  </button>
+                </div>
+              )}
+
+              {deploy.isError && (
+                <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {(deploy.error as Error).message}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="px-6 py-3 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Deploy läuft...</span>
+                {deployDone && deployStatus === "success" && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Erfolgreich
+                  </span>
+                )}
+                {deployDone && deployStatus === "hooks-failed" && (
+                  <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Hooks fehlgeschlagen
+                  </span>
+                )}
+                {deployDone && deployStatus === "failed" && (
+                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                    <XCircle className="w-3.5 h-3.5" /> Fehlgeschlagen
+                  </span>
+                )}
+                {deployDone && (
+                  <button onClick={resetDeploy} className="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                    Schließen
+                  </button>
+                )}
+              </div>
+
+              {/* Log terminal */}
+              <div
+                ref={logRef}
+                className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-green-400 max-h-48 overflow-y-auto"
+              >
+                {deployLogs.map((line, i) => (
+                  <div key={i} className={`leading-relaxed ${line.startsWith("ERROR") ? "text-red-400" : line.startsWith("WARNING") ? "text-yellow-400" : ""}`}>
+                    {line}
+                  </div>
+                ))}
+                {!deployDone && <div className="animate-pulse mt-1">▋</div>}
+              </div>
+
+              {deployDone && deployStatus === "hooks-failed" && (
+                <div className="flex items-center gap-2 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                  <span className="text-yellow-700 dark:text-yellow-400">
+                    Helm-Apply erfolgreich, aber Post-Upgrade-Hooks fehlgeschlagen (SFU-Patches).
+                  </span>
+                  <LinkTo to="/hooks" className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 underline">
+                    <Zap className="w-3 h-3" /> Hooks
+                  </LinkTo>
+                </div>
               )}
             </div>
           )}

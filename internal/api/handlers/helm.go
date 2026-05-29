@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -189,6 +190,117 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			stream.emit("All post-upgrade hooks completed successfully.")
 		} else {
 			stream.emit("WARNING: Post-upgrade hooks failed. Check hooks page and re-run manually.")
+		}
+		stream.finish(finalStatus)
+	}()
+
+	JSON(w, http.StatusAccepted, map[string]string{
+		"upgrade_id": upgradeID,
+		"history_id": upgradeUUID.String(),
+	})
+}
+
+// ApplyConfig commits the current config to git and runs an in-place helm upgrade
+// (same chart version, new merged values). Uses the same stream/WS mechanism as Upgrade.
+func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	userID := authmw.UserIDFromContext(r.Context())
+
+	var req struct {
+		Message string `json:"message"`
+	}
+	_ = Decode(r, &req)
+	if req.Message == "" {
+		req.Message = "config: apply changes via MatrixCtrl"
+	}
+
+	rel, err := h.helm.GetRelease(name)
+	if err != nil || rel == nil {
+		Error(w, http.StatusBadRequest, "could not determine current chart version — is the release deployed?")
+		return
+	}
+	currentVersion := rel.Version // semver only, e.g. "26.5.1"
+
+	upgradeID := uuid.New().String()
+	stream := &upgradeStream{status: "pending"}
+	h.mu.Lock()
+	h.streams[upgradeID] = stream
+	h.mu.Unlock()
+
+	upgradeUUID := uuid.New()
+	_, _ = h.db.Exec(r.Context(), `
+		INSERT INTO upgrade_history(id, user_id, from_version, to_version, status)
+		VALUES($1, $2, $3, $4, 'pending')`,
+		upgradeUUID, userID, currentVersion, currentVersion,
+	)
+
+	commitMsg := req.Message
+
+	go func() {
+		ctx := context.Background()
+
+		sha, commitErr := h.configStore.Commit(ctx, commitMsg, userID)
+		if commitErr != nil {
+			if strings.Contains(commitErr.Error(), "nothing to commit") || strings.Contains(commitErr.Error(), "clean") {
+				stream.emit("No config changes to commit — deploying current state.")
+			} else {
+				stream.emit("WARNING: git commit: " + commitErr.Error())
+			}
+		} else {
+			stream.emit("Config committed to git: " + sha)
+		}
+
+		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running' WHERE id=$1", upgradeUUID)
+
+		var values map[string]interface{}
+		if h.configStore != nil {
+			contents, err := h.configStore.MergedContent(ctx)
+			if err != nil {
+				stream.emit("WARNING: could not load config values: " + err.Error())
+			} else {
+				values, err = config.MergeToMap(contents)
+				if err != nil {
+					stream.emit("WARNING: could not merge config values: " + err.Error())
+					values = nil
+				} else {
+					stream.emit(fmt.Sprintf("Loaded %d config slices.", len(contents)))
+				}
+			}
+		}
+
+		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
+		result, err := h.helm.Upgrade(ctx, name, currentVersion, values)
+		if err != nil {
+			stream.emit("ERROR: " + err.Error())
+			stream.finish("failed")
+			_, _ = h.db.Exec(ctx, `UPDATE upgrade_history SET status='failed', error_message=$1, ts_completed=NOW() WHERE id=$2`,
+				err.Error(), upgradeUUID)
+			return
+		}
+
+		stream.emit(fmt.Sprintf("Helm apply successful (revision %s). Running post-upgrade hooks...", intToStr(result.Revision)))
+		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running-hooks', helm_revision=$1 WHERE id=$2",
+			result.Revision, upgradeUUID)
+
+		hookRunIDs, hookErr := h.engine.RunTrigger(ctx, hooks.TriggerPostUpgrade, upgradeUUID.String(), userID)
+		if hookErr != nil {
+			stream.emit("Hook execution error: " + hookErr.Error())
+		}
+
+		finalStatus := "success"
+		if hookErr != nil {
+			finalStatus = "hooks-failed"
+		}
+
+		idsJSON, _ := json.Marshal(hookRunIDs)
+		_, _ = h.db.Exec(ctx, `
+			UPDATE upgrade_history SET status=$1, hooks_run=$2, ts_completed=NOW() WHERE id=$3`,
+			finalStatus, idsJSON, upgradeUUID)
+
+		if finalStatus == "success" {
+			stream.emit("Config deployed successfully.")
+		} else {
+			stream.emit("WARNING: Post-upgrade hooks failed. Check the Hooks page.")
 		}
 		stream.finish(finalStatus)
 	}()

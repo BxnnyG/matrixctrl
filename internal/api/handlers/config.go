@@ -7,16 +7,18 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bxnny/matrixctrl/internal/config"
+	cfgschema "github.com/bxnny/matrixctrl/internal/config/schema"
 	gitpkg "github.com/bxnny/matrixctrl/internal/git"
 )
 
 type ConfigHandler struct {
-	store *config.Store
-	git   *gitpkg.Repo
+	store      *config.Store
+	git        *gitpkg.Repo
+	essVersion string // current deployed ESS version for schema selection
 }
 
-func NewConfigHandler(store *config.Store, git *gitpkg.Repo) *ConfigHandler {
-	return &ConfigHandler{store: store, git: git}
+func NewConfigHandler(store *config.Store, git *gitpkg.Repo, essVersion string) *ConfigHandler {
+	return &ConfigHandler{store: store, git: git, essVersion: essVersion}
 }
 
 // GET /api/v1/config/slices
@@ -87,7 +89,8 @@ func (h *ConfigHandler) GetMerged(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"yaml": merged})
 }
 
-// POST /api/v1/config/validate
+// POST /api/v1/config/validate — validates YAML syntax of a single config slice.
+// Full schema validation is done via /api/v1/config/validate-merged (validates the merged result).
 func (h *ConfigHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Content string `json:"content"`
@@ -96,13 +99,71 @@ func (h *ConfigHandler) Validate(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	// For now just check YAML syntax; full schema validation is Phase 1b.
-	var doc interface{}
-	if err := json.Unmarshal([]byte(req.Content), &doc); err != nil {
-		JSON(w, http.StatusOK, map[string]interface{}{"valid": false, "errors": []string{"invalid YAML syntax"}})
+
+	if err := config.ParseYAML(req.Content); err != nil {
+		JSON(w, http.StatusOK, map[string]interface{}{
+			"valid":  false,
+			"errors": []map[string]string{{"field": "(root)", "message": err.Error()}},
+		})
 		return
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{"valid": true, "errors": nil})
+}
+
+// POST /api/v1/config/validate-merged — merges all slices and validates against JSON Schema.
+func (h *ConfigHandler) ValidateMerged(w http.ResponseWriter, r *http.Request) {
+	contents, err := h.store.MergedContent(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	merged, err := config.Merge(contents)
+	if err != nil {
+		JSON(w, http.StatusOK, map[string]interface{}{
+			"valid":  false,
+			"errors": []map[string]string{{"field": "(root)", "message": err.Error()}},
+		})
+		return
+	}
+
+	schemaData, schemaErr := cfgschema.Get(h.essVersion)
+	if schemaErr != nil {
+		// No schema — just confirm YAML is syntactically valid
+		JSON(w, http.StatusOK, map[string]interface{}{"valid": true, "errors": nil, "note": "no schema available"})
+		return
+	}
+
+	errs, err := config.ValidateYAMLWithSchema(merged, schemaData)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	apiErrs := make([]map[string]string, len(errs))
+	for i, e := range errs {
+		apiErrs[i] = map[string]string{"field": e.Field, "message": e.Message}
+	}
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"valid":  len(errs) == 0,
+		"errors": apiErrs,
+	})
+}
+
+// GET /api/v1/config/schema — returns the ESS values JSON Schema for the current version
+func (h *ConfigHandler) GetSchema(w http.ResponseWriter, r *http.Request) {
+	data, err := cfgschema.Get(h.essVersion)
+	if err != nil {
+		// Return minimal schema if not found
+		JSON(w, http.StatusOK, map[string]interface{}{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"type":    "object",
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // GET /api/v1/config/diff

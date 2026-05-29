@@ -30,7 +30,10 @@ func NewRouter(deps Deps) http.Handler {
 
 	// Public auth routes
 	r.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/bootstrap/login", deps.Auth.BootstrapLogin)
+		// Bootstrap login only available when OIDC is not configured
+		if !deps.Auth.OIDCConfigured() {
+			r.Post("/bootstrap/login", deps.Auth.BootstrapLogin)
+		}
 		r.Get("/oidc/available", deps.Auth.OIDCAvailable)
 		r.Get("/oidc/redirect", deps.Auth.OIDCRedirect)
 		r.Get("/oidc/callback", deps.Auth.OIDCCallback)
@@ -71,6 +74,8 @@ func NewRouter(deps Deps) http.Handler {
 			r.Put("/slices/{name}", deps.Config.PutSlice)
 			r.Get("/merged", deps.Config.GetMerged)
 			r.Post("/validate", deps.Config.Validate)
+			r.Post("/validate-merged", deps.Config.ValidateMerged)
+			r.Get("/schema", deps.Config.GetSchema)
 			r.Get("/diff", deps.Config.GetDiff)
 			r.Post("/apply", deps.Config.Apply)
 			r.Get("/history", deps.Config.GetHistory)
@@ -83,6 +88,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/releases/{name}", deps.Helm.GetRelease)
 			r.Get("/releases/{name}/history", deps.Helm.GetHistory)
 			r.Post("/releases/{name}/upgrade", deps.Helm.Upgrade)
+			r.Post("/releases/{name}/apply-config", deps.Helm.ApplyConfig)
 			r.Post("/releases/{name}/rollback", deps.Helm.Rollback)
 			r.Get("/releases/{name}/upgrade/{upgradeId}", deps.Helm.GetUpgradeStatus)
 			r.HandleFunc("/releases/{name}/upgrade/{upgradeId}/logs", deps.WS.UpgradeLogs)
