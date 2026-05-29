@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { FileText, ChevronRight, GitBranch, Clock, History, Copy, Check, ChevronDown, Loader2 } from "lucide-react";
+import { FileText, ChevronRight, GitBranch, Clock, History, Copy, Check, ChevronDown, Loader2, Wand2 } from "lucide-react";
 import { DiffView } from "@/components/config/DiffView";
 
 export const Route = createFileRoute("/config/")({
@@ -85,8 +85,25 @@ function ConfigPage() {
         </div>
       </div>
 
+      {/* Easy Mode entry */}
+      <Link
+        to="/config/easy"
+        className="flex items-center gap-4 bg-gradient-to-r from-blue-50 to-[#0DBD8B]/10 dark:from-blue-950/40 dark:to-[#0DBD8B]/10 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3.5 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group"
+      >
+        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-[#0DBD8B] flex items-center justify-center shrink-0">
+          <Wand2 className="w-4.5 h-4.5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Easy Mode</div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            WebRTC & häufige Einstellungen per Toggle — ohne YAML
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 shrink-0" />
+      </Link>
+
       <div className="space-y-2">
-        {slices?.map((s) => (
+        {slices?.filter((s) => s.name !== "easy").map((s) => (
           <Link
             key={s.name}
             to="/config/$slice"

@@ -4,3 +4,12 @@ web/node_modules/
 *.env
 *.env.local
 .DS_Store
+
+# Compiled binary — built via `make build`, never committed
+/matrixctrl
+matrixctrl-*
+!cmd/matrixctrl/
+
+# Local dev artifacts
+*.log
+/tmp/

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -25,13 +27,62 @@ type Bootstrap struct {
 
 func (b *Bootstrap) JWTKey() []byte { return b.jwtKey }
 
-func NewBootstrap(db *pgxpool.Pool) *Bootstrap {
-	key := []byte(os.Getenv("MATRIXCTRL_JWT_SECRET"))
-	if len(key) == 0 {
-		// Derive a fixed key for dev; in production set MATRIXCTRL_JWT_SECRET
-		key = []byte("matrixctrl-dev-secret-change-in-prod")
+// NewBootstrap wires the auth service and resolves the JWT signing key.
+//
+// Key resolution order:
+//  1. MATRIXCTRL_JWT_SECRET env var (explicit override — useful for multi-replica
+//     setups that must share a key, or when injecting via a k8s Secret).
+//  2. Persisted key in the instance_settings table (auto-generated on first boot).
+//
+// This means a fresh install needs ZERO secret configuration: on first start a
+// cryptographically-random 32-byte key is generated and stored in Postgres, then
+// reused on every subsequent boot. Tokens survive restarts without any env var.
+func NewBootstrap(ctx context.Context, db *pgxpool.Pool) *Bootstrap {
+	if env := os.Getenv("MATRIXCTRL_JWT_SECRET"); env != "" {
+		return &Bootstrap{db: db, jwtKey: []byte(env)}
+	}
+
+	key, err := getOrCreateJWTSecret(ctx, db)
+	if err != nil {
+		// Last-resort fallback so the service still starts; logged loudly.
+		log.Printf("WARNING: could not persist JWT secret (%v) — using ephemeral key; tokens will not survive restart", err)
+		key = randomKey()
 	}
 	return &Bootstrap{db: db, jwtKey: key}
+}
+
+// getOrCreateJWTSecret reads the persisted JWT key, generating and storing one on
+// first run. Uses an atomic INSERT ... ON CONFLICT to be safe across replicas.
+func getOrCreateJWTSecret(ctx context.Context, db *pgxpool.Pool) ([]byte, error) {
+	newKey := base64.StdEncoding.EncodeToString(randomKey())
+
+	var stored string
+	err := db.QueryRow(ctx, `
+		INSERT INTO instance_settings(key, value)
+		VALUES('jwt_secret', $1)
+		ON CONFLICT (key) DO UPDATE SET key = instance_settings.key
+		RETURNING value`,
+		newKey,
+	).Scan(&stored)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(stored)
+	if err != nil {
+		// Stored value isn't base64 (e.g. legacy plain string) — use raw bytes.
+		return []byte(stored), nil
+	}
+	return decoded, nil
+}
+
+func randomKey() []byte {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand failing is catastrophic; fall back to a time-seeded value.
+		return []byte(fmt.Sprintf("matrixctrl-fallback-%d", time.Now().UnixNano()))
+	}
+	return b
 }
 
 // EnsureAdminExists creates the admin user on first run if not present.
