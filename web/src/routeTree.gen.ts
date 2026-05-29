@@ -18,6 +18,7 @@ import { Route as HooksIdRouteImport } from './routes/hooks/$id'
 import { Route as HelmUpgradeRouteImport } from './routes/helm/upgrade'
 import { Route as HelmHistoryRouteImport } from './routes/helm/history'
 import { Route as ConfigHistoryRouteImport } from './routes/config/history'
+import { Route as ConfigEasyRouteImport } from './routes/config/easy'
 import { Route as ConfigSliceRouteImport } from './routes/config/$slice'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
@@ -67,6 +68,11 @@ const ConfigHistoryRoute = ConfigHistoryRouteImport.update({
   path: '/config/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigEasyRoute = ConfigEasyRouteImport.update({
+  id: '/config/easy',
+  path: '/config/easy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConfigSliceRoute = ConfigSliceRouteImport.update({
   id: '/config/$slice',
   path: '/config/$slice',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
+  '/config/easy': typeof ConfigEasyRoute
   '/config/history': typeof ConfigHistoryRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
+  '/config/easy': typeof ConfigEasyRoute
   '/config/history': typeof ConfigHistoryRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
+  '/config/easy': typeof ConfigEasyRoute
   '/config/history': typeof ConfigHistoryRoute
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
+    | '/config/easy'
     | '/config/history'
     | '/helm/history'
     | '/helm/upgrade'
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
+    | '/config/easy'
     | '/config/history'
     | '/helm/history'
     | '/helm/upgrade'
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
+    | '/config/easy'
     | '/config/history'
     | '/helm/history'
     | '/helm/upgrade'
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
   ConfigSliceRoute: typeof ConfigSliceRoute
+  ConfigEasyRoute: typeof ConfigEasyRoute
   ConfigHistoryRoute: typeof ConfigHistoryRoute
   HelmHistoryRoute: typeof HelmHistoryRoute
   HelmUpgradeRoute: typeof HelmUpgradeRoute
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfigHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/easy': {
+      id: '/config/easy'
+      path: '/config/easy'
+      fullPath: '/config/easy'
+      preLoaderRoute: typeof ConfigEasyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/config/$slice': {
       id: '/config/$slice'
       path: '/config/$slice'
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,
   ConfigSliceRoute: ConfigSliceRoute,
+  ConfigEasyRoute: ConfigEasyRoute,
   ConfigHistoryRoute: ConfigHistoryRoute,
   HelmHistoryRoute: HelmHistoryRoute,
   HelmUpgradeRoute: HelmUpgradeRoute,

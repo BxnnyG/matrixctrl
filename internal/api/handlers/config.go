@@ -150,6 +150,47 @@ func (h *ConfigHandler) ValidateMerged(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/v1/config/easy — returns the Easy-Mode field registry plus the current
+// value of each field (read from the merged config).
+func (h *ConfigHandler) GetEasy(w http.ResponseWriter, r *http.Request) {
+	contents, err := h.store.MergedContent(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	merged, err := config.MergeToMap(contents)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"fields": config.EasyFields,
+		"values": config.GetEasyValues(merged),
+	})
+}
+
+// POST /api/v1/config/easy — writes the Easy-Mode overlay slice from submitted
+// {path: value} pairs. Does not commit or deploy; the UI drives those separately.
+func (h *ConfigHandler) PutEasy(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Values map[string]interface{} `json:"values"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	overlay, err := config.EasyOverlayYAML(req.Values)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.store.WriteEasyOverlay(overlay); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "ok", "yaml": overlay})
+}
+
 // GET /api/v1/config/schema — returns the ESS values JSON Schema for the current version
 func (h *ConfigHandler) GetSchema(w http.ResponseWriter, r *http.Request) {
 	data, err := cfgschema.Get(h.essVersion)

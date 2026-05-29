@@ -147,22 +147,22 @@ function UpgradeWizard() {
 
           {/* Final status banner */}
           {done && finalStatus === "success" && (
-            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
-              <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+            <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
               <div>
-                <strong className="text-green-800">Upgrade erfolgreich.</strong>
-                <span className="text-green-600 ml-2">Weiterleitung...</span>
+                <strong className="text-green-800 dark:text-green-300">Upgrade erfolgreich.</strong>
+                <span className="text-green-600 dark:text-green-400 ml-2">Weiterleitung...</span>
               </div>
             </div>
           )}
 
           {done && finalStatus === "hooks-failed" && (
-            <div className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-sm">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
               <div className="space-y-2">
                 <div>
-                  <strong className="text-yellow-800">Helm-Upgrade erfolgreich, aber Hooks fehlgeschlagen.</strong>
-                  <p className="text-yellow-700 mt-0.5">
+                  <strong className="text-yellow-800 dark:text-yellow-300">Helm-Upgrade erfolgreich, aber Hooks fehlgeschlagen.</strong>
+                  <p className="text-yellow-700 dark:text-yellow-400 mt-0.5">
                     Der ESS-Release ist auf dem neuen Stand. Die Post-Upgrade-Patches (SFU hostNetwork etc.) wurden jedoch nicht vollständig angewendet — WebRTC-Calling könnte beeinträchtigt sein.
                   </p>
                 </div>
@@ -176,7 +176,7 @@ function UpgradeWizard() {
                   </Link>
                   <Link
                     to="/helm"
-                    className="px-3 py-1.5 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 rounded-lg text-xs"
+                    className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-gray-700 rounded-lg text-xs"
                   >
                     Zur Helm-Übersicht
                   </Link>
@@ -186,18 +186,18 @@ function UpgradeWizard() {
           )}
 
           {done && finalStatus === "failed" && (
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
-              <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm">
+              <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <div className="space-y-2">
                 <div>
-                  <strong className="text-red-800">Upgrade fehlgeschlagen.</strong>
-                  <p className="text-red-700 mt-0.5">
+                  <strong className="text-red-800 dark:text-red-300">Upgrade fehlgeschlagen.</strong>
+                  <p className="text-red-700 dark:text-red-400 mt-0.5">
                     Helm hat die vorherige Revision automatisch wiederhergestellt. Sieh die Logs oben für Details.
                   </p>
                 </div>
                 <Link
                   to="/helm"
-                  className="inline-block px-3 py-1.5 bg-white border border-red-300 text-red-700 hover:bg-red-50 rounded-lg text-xs"
+                  className="inline-block px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-700 rounded-lg text-xs"
                 >
                   Zur Helm-Übersicht
                 </Link>

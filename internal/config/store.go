@@ -54,6 +54,7 @@ func (s *Store) Init(ctx context.Context, srcDir string) error {
 		{Name: "hostnames", File: "hostnames.yaml", Description: "Ingress hostnames per component"},
 		{Name: "rtc", File: "rtc.yaml", Description: "MatrixRTC / LiveKit SFU overrides"},
 		{Name: "tls", File: "tls.yaml", Description: "cert-manager TLS configuration"},
+		easySliceMeta, // overlay — must stay LAST in merge order
 	}
 
 	for _, m := range defaults {
@@ -85,6 +86,63 @@ func (s *Store) Init(ctx context.Context, srcDir string) error {
 		"MatrixCtrl", "matrixctrl@localhost",
 	)
 	return err
+}
+
+// easySliceMeta is the overlay slice that Easy Mode owns. It must always be the
+// LAST slice in merge order so its values override the hand-edited base slices.
+var easySliceMeta = SliceMeta{
+	Name:        "easy",
+	File:        "easy.yaml",
+	Description: "Easy-Mode overlay (managed by MatrixCtrl)",
+}
+
+// EnsureEasySlice adds the easy.yaml overlay to the manifest if it is missing.
+// This is a no-op migration for repos created before Easy Mode existed.
+func (s *Store) EnsureEasySlice(_ context.Context) error {
+	if !s.git.HasCommits() {
+		return nil // fresh repo — Init already includes it
+	}
+	m, err := s.manifest()
+	if err != nil {
+		return err
+	}
+	for _, sl := range m.Slices {
+		if sl.Name == easySliceMeta.Name {
+			return nil // already present
+		}
+	}
+	m.Slices = append(m.Slices, easySliceMeta)
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.path, "config-slices.json"), data, 0o644); err != nil {
+		return err
+	}
+	// Seed an empty overlay file so merge/diff have something to read.
+	overlay := filepath.Join(s.path, easySliceMeta.File)
+	if _, err := os.Stat(overlay); os.IsNotExist(err) {
+		_ = os.WriteFile(overlay, []byte("# Managed by MatrixCtrl Easy Mode\n"), 0o644)
+	}
+	_, err = s.git.CommitAll("matrixctrl: add Easy-Mode overlay slice", "MatrixCtrl", "matrixctrl@localhost")
+	return err
+}
+
+// ReadEasyOverlay returns the raw easy.yaml content, or "" if it does not exist.
+func (s *Store) ReadEasyOverlay() (string, error) {
+	data, err := os.ReadFile(filepath.Join(s.path, easySliceMeta.File))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// WriteEasyOverlay writes the generated overlay content to easy.yaml (no commit).
+func (s *Store) WriteEasyOverlay(content string) error {
+	return os.WriteFile(filepath.Join(s.path, easySliceMeta.File), []byte(content), 0o644)
 }
 
 // manifest reads config-slices.json from the repo.
