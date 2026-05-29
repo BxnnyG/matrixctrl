@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ComponentCard } from "@/components/status/ComponentCard";
 import { ReleaseCard } from "@/components/status/ReleaseCard";
@@ -72,6 +72,8 @@ function Dashboard() {
     queryKey: ["status"],
     queryFn: () => api.get<StatusResponse>("/api/v1/status"),
     refetchInterval: 15_000,
+    staleTime: 10_000,
+    placeholderData: keepPreviousData,
   });
 
   const cleanup = useMutation({
@@ -83,7 +85,18 @@ function Dashboard() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
 
-      {isLoading && <div className="text-sm text-gray-500">Lade Status...</div>}
+      {isLoading && (
+        <div className="space-y-4 animate-pulse">
+          <div className="h-20 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          <div className="h-28 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          <div className="space-y-2">
+            <div className="h-5 w-32 bg-gray-200 dark:bg-gray-800 rounded" />
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-16 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      )}
 
       {status && (
         <>

@@ -112,7 +112,7 @@ export function ComponentCard({ component: c }: { component: Component }) {
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
         {/* Header row */}
         <div
-          className="flex items-start p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 select-none"
+          className="flex items-start p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 select-none"
           onClick={() => setExpanded((v) => !v)}
         >
           <div className="flex-1 min-w-0">
