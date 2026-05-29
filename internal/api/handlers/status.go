@@ -39,10 +39,20 @@ type statusResponse struct {
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	components, _ := h.k8s.ComponentHealth(ctx, h.essNS)
-	release, _ := h.helm.GetRelease(h.essRelease)
-	nodes, _ := h.k8s.NodeInfo(ctx)
-	evicted := h.k8s.EvictedPodCount(ctx, h.essNS)
+
+	var components interface{}
+	var nodes interface{}
+	var evicted int
+	if h.k8s != nil {
+		components, _ = h.k8s.ComponentHealth(ctx, h.essNS)
+		nodes, _ = h.k8s.NodeInfo(ctx)
+		evicted = h.k8s.EvictedPodCount(ctx, h.essNS)
+	}
+
+	var release interface{}
+	if h.helm != nil {
+		release, _ = h.helm.GetRelease(h.essRelease)
+	}
 
 	JSON(w, http.StatusOK, statusResponse{
 		Release:     release,
@@ -53,6 +63,10 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatusHandler) Components(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		JSON(w, http.StatusOK, []interface{}{})
+		return
+	}
 	components, err := h.k8s.ComponentHealth(r.Context(), h.essNS)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
@@ -62,6 +76,10 @@ func (h *StatusHandler) Components(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatusHandler) Release(w http.ResponseWriter, r *http.Request) {
+	if h.helm == nil {
+		Error(w, http.StatusServiceUnavailable, "helm unavailable")
+		return
+	}
 	rel, err := h.helm.GetRelease(h.essRelease)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
@@ -71,6 +89,10 @@ func (h *StatusHandler) Release(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatusHandler) DeleteEvictedPods(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
 	deleted, err := h.k8s.DeleteEvictedPods(r.Context(), h.essNS)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
@@ -81,6 +103,10 @@ func (h *StatusHandler) DeleteEvictedPods(w http.ResponseWriter, r *http.Request
 
 // GET /api/v1/status/pods/{deployment} — list pods for a deployment in the ESS namespace
 func (h *StatusHandler) DeploymentPods(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
 	deployment := chi.URLParam(r, "deployment")
 	pods, err := h.k8s.ListDeploymentPods(r.Context(), h.essNS, deployment)
 	if err != nil {
@@ -92,6 +118,10 @@ func (h *StatusHandler) DeploymentPods(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/status/pods/{pod}/logs?tail=200 — get pod logs
 func (h *StatusHandler) PodLogs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
 	pod := chi.URLParam(r, "pod")
 	tail := int64(200)
 	if t := r.URL.Query().Get("tail"); t != "" {
@@ -111,6 +141,10 @@ func (h *StatusHandler) PodLogs(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/v1/status/pods/{pod} — delete (restart) a pod
 func (h *StatusHandler) RestartPod(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
 	pod := chi.URLParam(r, "pod")
 	if err := h.k8s.DeletePod(r.Context(), h.essNS, pod); err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
@@ -121,6 +155,10 @@ func (h *StatusHandler) RestartPod(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/status/sysinfo — node conditions, PVCs, pod counts
 func (h *StatusHandler) SysInfo(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 

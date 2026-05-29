@@ -13,6 +13,39 @@ type ValidationError struct {
 	Message string `json:"message"`
 }
 
+// ParseYAML parses YAML content for syntax errors only.
+func ParseYAML(content string) error {
+	var doc interface{}
+	return yaml.Unmarshal([]byte(content), &doc)
+}
+
+// ValidateYAMLWithSchema validates YAML content against a JSON Schema passed as bytes.
+func ValidateYAMLWithSchema(content string, schemaJSON []byte) ([]ValidationError, error) {
+	var doc interface{}
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return []ValidationError{{Field: "(root)", Message: "invalid YAML: " + err.Error()}}, nil
+	}
+	doc = normalizeForJSON(doc)
+
+	schemaLoader := gojsonschema.NewBytesLoader(schemaJSON)
+	docLoader := gojsonschema.NewGoLoader(doc)
+
+	result, err := gojsonschema.Validate(schemaLoader, docLoader)
+	if err != nil {
+		// Schema itself is broken — don't block the user, just warn
+		return nil, fmt.Errorf("schema validation internal error: %w", err)
+	}
+
+	var errs []ValidationError
+	for _, e := range result.Errors() {
+		errs = append(errs, ValidationError{
+			Field:   e.Field(),
+			Message: e.Description(),
+		})
+	}
+	return errs, nil
+}
+
 // ValidateYAML validates YAML content against a JSON schema file.
 // Returns an empty slice if valid. schemaPath is a file:// URI or absolute path.
 func ValidateYAML(content, schemaPath string) ([]ValidationError, error) {

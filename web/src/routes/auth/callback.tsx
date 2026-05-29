@@ -15,13 +15,12 @@ function OIDCCallback() {
 
     if (token) {
       localStorage.setItem("matrixctrl_token", token);
-      // Clean the token out of the URL before navigating
-      window.history.replaceState({}, "", "/auth/callback");
-      navigate({ to: "/" });
+      window.location.replace("/");
     } else {
-      // Forward any error to the login page
-      const dest = error ? `/auth/login?error=${encodeURIComponent(error)}` : "/auth/login";
-      navigate({ to: dest as "/" });
+      const dest = error
+        ? `/auth/login?error=${encodeURIComponent(error)}`
+        : "/auth/login";
+      window.location.replace(dest);
     }
   }, [navigate]);
 
