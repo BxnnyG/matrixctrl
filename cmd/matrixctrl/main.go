@@ -51,21 +51,19 @@ func main() {
 
 	// OIDC — optional; only wired when env vars are set.
 	oidcCfg := auth.OIDCConfig{
-		ClientID:            env("MATRIXCTRL_OIDC_CLIENT_ID", ""),
-		ClientSecret:        env("MATRIXCTRL_OIDC_CLIENT_SECRET", ""),
-		Issuer:              env("MATRIXCTRL_OIDC_ISSUER", ""),
-		RedirectURI:         env("MATRIXCTRL_OIDC_REDIRECT_URI", ""),
-		RequireSynapseAdmin: env("MATRIXCTRL_REQUIRE_ADMIN", "") == "true",
-		SynapseURL:          env("MATRIXCTRL_SYNAPSE_URL", "http://ess-synapse-main.ess.svc.cluster.local.:8008"),
-		SynapseAdminToken:   env("MATRIXCTRL_SYNAPSE_ADMIN_TOKEN", ""),
+		ClientID:     env("MATRIXCTRL_OIDC_CLIENT_ID", ""),
+		ClientSecret: env("MATRIXCTRL_OIDC_CLIENT_SECRET", ""),
+		Issuer:       env("MATRIXCTRL_OIDC_ISSUER", ""),
+		RedirectURI:  env("MATRIXCTRL_OIDC_REDIRECT_URI", ""),
+		RequireAdmin: env("MATRIXCTRL_REQUIRE_ADMIN", "true") != "false", // admin-only by default
 	}
 	if allowed := env("MATRIXCTRL_OIDC_ALLOWED_USERS", ""); allowed != "" {
 		oidcCfg.AllowedUsers = strings.Split(allowed, ",")
 	}
-	// Safety net: if OIDC is configured but no restriction is set, warn loudly
-	if oidcCfg.ClientID != "" && len(oidcCfg.AllowedUsers) == 0 && !oidcCfg.RequireSynapseAdmin {
-		log.Printf("WARNING: OIDC is enabled with no access restriction — any authenticated Matrix user can log in!")
-		log.Printf("WARNING: Set MATRIXCTRL_REQUIRE_ADMIN=true or MATRIXCTRL_OIDC_ALLOWED_USERS=@you:server.tld")
+	// Safety net: if OIDC is on with no restriction at all, warn loudly
+	if oidcCfg.ClientID != "" && len(oidcCfg.AllowedUsers) == 0 && !oidcCfg.RequireAdmin {
+		log.Printf("WARNING: OIDC enabled with no access restriction — any authenticated user can log in!")
+		log.Printf("WARNING: Set MATRIXCTRL_REQUIRE_ADMIN=true (default) or MATRIXCTRL_OIDC_ALLOWED_USERS=<ulid>")
 	}
 	var oidcSvc *auth.OIDCService
 	if oidcCfg.ClientID != "" {
