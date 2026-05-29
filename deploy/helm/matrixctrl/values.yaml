@@ -68,9 +68,12 @@ oidc:
   clientSecret: "REDACTED-rotated"
   # Full public URL that MAS will redirect back to after login
   redirectUri: "https://matrixctrl.bxnny.de/api/v1/auth/oidc/callback"
-  # Comma-separated list of allowed Matrix IDs, e.g. "@bxnny:bxnny.de"
-  # Leave empty to allow all authenticated OIDC users.
+  # Comma-separated list of allowed MAS user IDs (ULIDs). Takes priority over
+  # requireAdmin. Leave empty to use the admin check below.
   allowedUsers: ""
+  # When true (default), only MAS admins (can_request_admin=true) may log in.
+  # MatrixCtrl verifies this via the MAS Admin API using its own client creds.
+  requireAdmin: true
 
 # Config seed — path inside the container that is copied into the
 # git config repo on first start.  Leave empty to start with no slices.

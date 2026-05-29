@@ -1,0 +1,24 @@
+# Deployment values for the bxnny.de instance (in-cluster cutover).
+# Secrets (db-password, jwt-secret) auto-generate on first install.
+
+image:
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent   # use the image imported into k3s containerd
+
+ess:
+  namespace: ess
+  release: ess
+
+ingress:
+  enabled: true
+  host: matrixctrl.bxnny.de
+  tls: true
+  certIssuer: letsencrypt-prod   # match the other ESS ingresses
+
+oidc:
+  enabled: true
+  issuer: "https://mas-matrix.bxnny.de"
+  clientId: "01KSPV9ZMR7NB4B2BBWMPYSD1P"
+  clientSecret: "REDACTED-rotated"
+  redirectUri: "https://matrixctrl.bxnny.de/api/v1/auth/oidc/callback"
+  requireAdmin: true
