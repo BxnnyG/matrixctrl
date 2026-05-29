@@ -40,7 +40,7 @@ storage:
 # Ingress / hostname
 ingress:
   enabled: true
-  host: admin.bxnny.de
+  host: matrixctrl.bxnny.de
   # Traefik entrypoint — "websecure" for HTTPS, "web" for HTTP
   entrypoint: websecure
   tls: true
@@ -61,10 +61,10 @@ secrets:
 oidc:
   enabled: false
   issuer: "https://mas-matrix.bxnny.de"
-  clientId: ""
-  clientSecret: ""
+  clientId: "01KSPV9ZMR7NB4B2BBWMPYSD1P"
+  clientSecret: "REDACTED-rotated"
   # Full public URL that MAS will redirect back to after login
-  redirectUri: "https://admin.bxnny.de/api/v1/auth/oidc/callback"
+  redirectUri: "https://matrixctrl.bxnny.de/api/v1/auth/oidc/callback"
   # Comma-separated list of allowed Matrix IDs, e.g. "@bxnny:bxnny.de"
   # Leave empty to allow all authenticated OIDC users.
   allowedUsers: ""

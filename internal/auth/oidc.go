@@ -22,16 +22,14 @@ type OIDCConfig struct {
 	// Issuer is the base URL of MAS, e.g. https://mas-matrix.bxnny.de
 	Issuer      string
 	RedirectURI string
-	// AllowedUsers is an explicit allowlist of Matrix IDs (e.g. @bxnny:bxnny.de).
-	// If empty AND RequireSynapseAdmin is false, any authenticated OIDC user can log in.
+	// AllowedUsers is an explicit allowlist of MAS user IDs (ULIDs, the OIDC `sub`).
+	// If set, it takes priority over RequireAdmin.
 	AllowedUsers []string
-	// RequireSynapseAdmin checks the Synapse Admin API to verify the user has admin rights.
-	// When true, only Synapse admins can log in regardless of AllowedUsers.
-	RequireSynapseAdmin bool
-	// SynapseURL is the internal Synapse HTTP base URL, e.g. http://ess-synapse-main.ess.svc.cluster.local.:8008
-	SynapseURL string
-	// SynapseAdminToken is a Synapse shared secret or admin user token used to query /_synapse/admin.
-	SynapseAdminToken string
+	// RequireAdmin, when true, queries the MAS Admin API to verify the logged-in user
+	// has can_request_admin=true. Only MAS admins can then log in. This auto-tracks
+	// admin status — no manual user lists needed. Uses the same ClientID/ClientSecret
+	// via a client_credentials grant with the urn:mas:admin scope.
+	RequireAdmin bool
 }
 
 type oidcDiscovery struct {
@@ -164,7 +162,7 @@ func (o *OIDCService) ExchangeCode(ctx context.Context, code, state string) (str
 		return "", fmt.Errorf("no Matrix user identifier in token response")
 	}
 
-	// Allowlist check (explicit list takes priority over admin check)
+	// Allowlist check (explicit list of MAS user IDs takes priority over admin check)
 	if len(o.cfg.AllowedUsers) > 0 {
 		ok := false
 		for _, u := range o.cfg.AllowedUsers {
@@ -179,57 +177,98 @@ func (o *OIDCService) ExchangeCode(ctx context.Context, code, state string) (str
 		return mxid, nil
 	}
 
-	// Synapse admin check: if enabled, only Synapse admins can log in
-	if o.cfg.RequireSynapseAdmin {
-		isAdmin, err := o.isSynapseAdmin(ctx, mxid)
+	// MAS admin check: only users with can_request_admin=true may log in.
+	if o.cfg.RequireAdmin {
+		isAdmin, err := o.isMASAdmin(ctx, mxid)
 		if err != nil {
 			return "", fmt.Errorf("could not verify admin status: %w", err)
 		}
 		if !isAdmin {
-			return "", fmt.Errorf("user %s is not a Synapse admin — only admins can access MatrixCtrl", mxid)
+			return "", fmt.Errorf("nur Admins können sich bei MatrixCtrl anmelden")
 		}
 	}
 
 	return mxid, nil
 }
 
-// isSynapseAdmin calls the Synapse Admin API to check if the given MXID has admin rights.
-func (o *OIDCService) isSynapseAdmin(ctx context.Context, mxid string) (bool, error) {
-	if o.cfg.SynapseURL == "" || o.cfg.SynapseAdminToken == "" {
-		return false, fmt.Errorf("MATRIXCTRL_SYNAPSE_URL and MATRIXCTRL_SYNAPSE_ADMIN_TOKEN must be set when MATRIXCTRL_REQUIRE_ADMIN=true")
+// masAdminToken fetches a short-lived client_credentials token with the urn:mas:admin
+// scope, using MatrixCtrl's own OIDC client credentials.
+func (o *OIDCService) masAdminToken(ctx context.Context) (string, error) {
+	body := url.Values{
+		"grant_type": {"client_credentials"},
+		"scope":      {"urn:mas:admin"},
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", o.discovery.TokenEndpoint,
+		strings.NewReader(body.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(o.cfg.ClientID, o.cfg.ClientSecret)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("admin token request: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+
+	var tr struct {
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
+	}
+	if err := json.Unmarshal(raw, &tr); err != nil {
+		return "", fmt.Errorf("parse admin token: %w", err)
+	}
+	if tr.Error != "" {
+		return "", fmt.Errorf("admin token error %s: %s", tr.Error, tr.ErrorDesc)
+	}
+	return tr.AccessToken, nil
+}
+
+// isMASAdmin queries the MAS Admin API to check whether the given user ID (ULID, the
+// OIDC `sub`) has admin rights (can_request_admin=true).
+func (o *OIDCService) isMASAdmin(ctx context.Context, userID string) (bool, error) {
+	token, err := o.masAdminToken(ctx)
+	if err != nil {
+		return false, err
 	}
 
-	base := strings.TrimRight(o.cfg.SynapseURL, "/")
-	endpoint := base + "/_synapse/admin/v2/users/" + url.PathEscape(mxid)
+	base := strings.TrimRight(o.cfg.Issuer, "/")
+	endpoint := base + "/api/admin/v1/users/" + url.PathEscape(userID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+o.cfg.SynapseAdminToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("synapse admin API: %w", err)
+		return false, fmt.Errorf("mas admin API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return false, nil // user doesn't exist
+		return false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("synapse admin API returned %d", resp.StatusCode)
+		return false, fmt.Errorf("mas admin API returned %d", resp.StatusCode)
 	}
 
 	var result struct {
-		Admin int  `json:"admin"` // Synapse uses 0/1 integer
-		AdminBool bool `json:"admin_bool"` // some versions use bool
+		Data struct {
+			Attributes struct {
+				Admin bool `json:"admin"`
+			} `json:"attributes"`
+		} `json:"data"`
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if err := json.Unmarshal(body, &result); err != nil {
-		return false, fmt.Errorf("parse synapse response: %w", err)
+		return false, fmt.Errorf("parse mas admin response: %w", err)
 	}
-	return result.Admin == 1 || result.AdminBool, nil
+	return result.Data.Attributes.Admin, nil
 }
 
 // CreateOIDCSession creates a DB session for a Matrix user and returns a JWT.
