@@ -70,8 +70,47 @@ matrixctrl setup
 - **Idempotency**: re-running setup must detect an existing client and not dupe.
 - **Non-ESS / generic Matrix**: v1 targets ESS; keep discovery pluggable.
 
+## THE BOOTSTRAP PARADOX (greenfield: deploy Matrix *with* a tool that needs Matrix)
+
+If MatrixCtrl is meant to **deploy** ESS from scratch, it cannot depend on MAS for
+login during that first deployment — MAS doesn't exist yet. OIDC-admin login is a
+post-ESS capability. So setup must handle two distinct states:
+
+```
+State A — GREENFIELD (no ESS yet):
+  - MatrixCtrl runs in BOOTSTRAP auth (local bcrypt admin + JWT, already implemented;
+    auto-generated admin password printed on first start). OIDC is OFF.
+  - k8s + Helm operations DO NOT need MAS — so MatrixCtrl can fully deploy ESS in
+    this state: pick ESS version → seed an initial config (wizard / chart defaults)
+    → helm install ess.
+  - This is the bootstrap; the operator logs in with the local admin password.
+
+State B — POST-ESS (MAS now running):
+  - Run `matrixctrl setup` (or a UI "Connect Matrix login" flow):
+      register the MatrixCtrl OIDC client in MAS via the Admin API,
+      write OIDC config, flip oidc.enabled=true.
+  - MatrixCtrl restarts into OIDC/admin-only mode; bootstrap login auto-disables
+    (router already drops /bootstrap/login when OIDC is configured).
+```
+
+**Implication for the code today:** the OIDC-or-bootstrap switch already exists, but
+the *transition* (B) must be runtime-reconfigurable without hand-editing env/secrets,
+and greenfield (A) needs an "initial ESS config" wizard (seed the section files from
+the chart's default values.yaml, not from a live release). Both are setup-phase work.
+
+**Greenfield config seed:** State A can't `helm get values` (no release). Instead seed
+the section files from the ESS chart's bundled `values.yaml` (pull chart → split via
+the existing migrator) so the user starts from the documented defaults and edits down.
+
 ## Phasing
 
 This is **Phase 1.5** — between the current Phase 1 (config + helm + OIDC, done)
 and Phase 2 (user/room management). It's the difference between "works for bxnny"
 and "works for a colleague", so it's high-leverage but not a Phase-1 blocker.
+
+Setup-phase task list (deferred):
+1. Greenfield bootstrap-auth deploy flow (deploy ESS with local admin, OIDC off).
+2. Initial-config wizard: seed section files from the ESS chart's default values.yaml.
+3. `matrixctrl setup`: auto-register OIDC client via MAS Admin API + flip to OIDC.
+4. Runtime auth reconfiguration (bootstrap → OIDC) without manual secret edits.
+5. ESS discovery for the "manage existing" path (helm get values → seed).
