@@ -1,0 +1,1 @@
+import{l as e}from"./index-3bameViB.js";var t=e(`chevron-down`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};

@@ -79,7 +79,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/easy", deps.Config.GetEasy)
 			r.Post("/easy", deps.Config.PutEasy)
 			r.Get("/settings", deps.Config.GetSettings)
-			r.Post("/overlay", deps.Config.PutOverlay)
+			r.Post("/settings", deps.Config.PutSettings)
 			r.Get("/diff", deps.Config.GetDiff)
 			r.Post("/apply", deps.Config.Apply)
 			r.Get("/history", deps.Config.GetHistory)

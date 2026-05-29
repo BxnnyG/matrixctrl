@@ -206,29 +206,25 @@ func (h *ConfigHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Help text from the commented base slices (values.yaml carries the most).
+	// Help text: extract `##` comments from every section file (they carry the docs).
 	comments := map[string]string{}
-	for _, name := range []string{"values", "hostnames", "rtc", "tls"} {
-		sl, err := h.store.Get(r.Context(), name)
-		if err != nil {
-			continue
-		}
-		for k, v := range config.ExtractComments(sl.Content) {
-			if _, ok := comments[k]; !ok {
-				comments[k] = v
+	if slices, err := h.store.List(r.Context()); err == nil {
+		for _, sl := range slices {
+			for k, v := range config.ExtractComments(sl.Content) {
+				if _, ok := comments[k]; !ok {
+					comments[k] = v
+				}
 			}
 		}
 	}
 
-	overlay := map[string]interface{}{}
-	if ov, _ := h.store.ReadEasyOverlay(); ov != "" {
-		overlay = config.YAMLToMap(ov)
-	}
+	// top-level key → owning section file, so the UI can deep-link to YAML mode.
+	files, _ := h.store.SectionFileMap(r.Context())
 
 	resp := map[string]interface{}{
 		"values":   merged,
 		"comments": comments,
-		"overlay":  overlay,
+		"files":    files,
 	}
 	if schemaData, err := cfgschema.Get(h.essVersion); err == nil {
 		resp["schema"] = json.RawMessage(schemaData)
@@ -236,25 +232,22 @@ func (h *ConfigHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, resp)
 }
 
-// POST /api/v1/config/overlay — apply a set of path changes/removals to the
-// Easy-Mode overlay slice. Generalises PutEasy to arbitrary schema paths.
-func (h *ConfigHandler) PutOverlay(w http.ResponseWriter, r *http.Request) {
-	var edit config.OverlayEdit
-	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+// POST /api/v1/config/settings — apply form edits (path→value + removals) directly
+// to the owning section files, preserving comments. No commit (UI commits/deploys).
+func (h *ConfigHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Changes  map[string]interface{} `json:"changes"`
+		Removals []string               `json:"removals"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	existing, _ := h.store.ReadEasyOverlay()
-	out, err := config.ApplyOverlayEdit(existing, edit)
-	if err != nil {
-		Error(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := h.store.WriteEasyOverlay(out); err != nil {
+	if err := h.store.SetSectionValues(r.Context(), req.Changes, req.Removals); err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	JSON(w, http.StatusOK, map[string]string{"status": "ok", "yaml": out})
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // GET /api/v1/config/schema — returns the ESS values JSON Schema for the current version
