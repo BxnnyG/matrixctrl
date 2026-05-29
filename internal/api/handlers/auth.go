@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,10 @@ type AuthHandler struct {
 
 func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService) *AuthHandler {
 	return &AuthHandler{svc: svc, oidc: oidcSvc}
+}
+
+func (h *AuthHandler) OIDCConfigured() bool {
+	return h.oidc != nil && h.oidc.Enabled()
 }
 
 func (h *AuthHandler) ValidateToken(token string) (string, error) {
@@ -102,6 +107,7 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := h.oidc.ExchangeCode(r.Context(), code, state)
 	if err != nil {
+		log.Printf("OIDC callback error: %v", err)
 		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
 		return
 	}
