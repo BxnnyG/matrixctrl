@@ -14,12 +14,16 @@ const nav = [
 export function Shell({ children }: { children: ReactNode }) {
   const state = useRouterState();
   const { theme, toggle } = useTheme();
-  const isAuth = state.location.pathname.startsWith("/auth");
+  const path = state.location.pathname;
+  const isAuth = path.startsWith("/auth");
+  // Full-bleed pages manage their own height/scroll and must escape the centered
+  // max-width container (e.g. the settings page with its own category sidebar).
+  const fullBleed = path === "/config" || path === "/config/";
 
   if (isAuth) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
       <aside className="w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
         <div className="px-4 py-5 border-b border-gray-200 dark:border-gray-800">
           <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">MatrixCtrl</h1>
@@ -67,11 +71,15 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-5xl mx-auto px-6 py-8">
-          {children}
-        </div>
-      </main>
+      {fullBleed ? (
+        <main className="flex-1 overflow-hidden">{children}</main>
+      ) : (
+        <main className="flex-1 overflow-auto">
+          <div className="max-w-5xl mx-auto px-6 py-8">
+            {children}
+          </div>
+        </main>
+      )}
     </div>
   );
 }
