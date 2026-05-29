@@ -10,12 +10,14 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build backend
-FROM golang:1.24-alpine AS backend
+FROM golang:1.26-alpine AS backend
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-COPY --from=frontend /app/dist ./web/dist
+# The embed directive (cmd/matrixctrl/assets.go) reads cmd/matrixctrl/dist —
+# place the freshly built frontend there so the image never ships a stale UI.
+COPY --from=frontend /app/dist ./cmd/matrixctrl/dist
 ARG VERSION
 ARG GIT_COMMIT
 RUN CGO_ENABLED=0 GOOS=linux go build \

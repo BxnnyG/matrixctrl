@@ -22,17 +22,9 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: matrixctrl
-      # Postgres must be ready before matrixctrl starts
-      initContainers:
-        - name: wait-for-postgres
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z 127.0.0.1 5432; do
-                echo "waiting for postgres..."; sleep 2;
-              done
+      # NOTE: no wait-for-postgres initContainer — Postgres is a sidecar in this
+      # same pod and cannot start until initContainers finish (would deadlock).
+      # The matrixctrl container retries the DB connection on startup instead.
       containers:
         # ── MatrixCtrl ─────────────────────────────────────────────────────
         - name: matrixctrl
@@ -91,6 +83,8 @@ spec:
             - name: MATRIXCTRL_OIDC_ALLOWED_USERS
               value: {{ .Values.oidc.allowedUsers | quote }}
             {{- end }}
+            - name: MATRIXCTRL_REQUIRE_ADMIN
+              value: {{ .Values.oidc.requireAdmin | quote }}
             {{- end }}
           volumeMounts:
             - name: config-repo
