@@ -112,7 +112,7 @@ function Settings() {
     : null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -mt-8 -mx-6 -mb-8">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <Settings2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -149,20 +149,20 @@ function Settings() {
         {/* Category nav (second sidebar) */}
         <aside className="w-56 shrink-0 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 overflow-y-auto">
           <div className="p-3">
-            {mode === "standard" && (
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Suchen…" className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            )}
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Alle Optionen suchen…" className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             {fileList.map((f) => {
               const active = activeFile === f && !query;
               const leaves = (fileGroups[f] ?? []).reduce((n, top) => n + countLeaves(schema.properties?.[top]), 0);
               return (
-                <button key={f} onClick={() => { setFileSel(f); setQuery(""); }} className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm text-left transition-colors ${active ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
-                  <span className="truncate">{humanize(f.replace(/\.yaml$/, ""))}</span>
-                  {mode === "standard" && <span className="text-[10px] text-gray-400 dark:text-gray-600 tabular-nums">{leaves}</span>}
-                  {mode === "yaml" && <FileCode className="w-3 h-3 text-gray-400 dark:text-gray-600" />}
+                <button key={f} onClick={() => { setFileSel(f); setQuery(""); }} className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${active ? "bg-blue-50 dark:bg-blue-950/60" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm truncate ${active ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300"}`}>{humanize(f.replace(/\.yaml$/, ""))}</div>
+                    <div className="text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{f}</div>
+                  </div>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-600 tabular-nums shrink-0">{leaves}</span>
                 </button>
               );
             })}
@@ -170,29 +170,36 @@ function Settings() {
         </aside>
 
         {/* Full-width panel */}
-        <main className="flex-1 overflow-y-auto">
-          {mode === "yaml" && activeFile ? (
-            <YamlPane sliceName={activeFile.replace(/\.yaml$/, "")} theme={theme} qc={qc} />
-          ) : searchHits ? (
-            <div className="px-6 py-5 space-y-1">
+        <main className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-gray-950/30">
+          {searchHits ? (
+            <div className="px-8 py-6 space-y-2">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{searchHits.length} Treffer für „{query}"</p>
-              {searchHits.map((l) => (
-                <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} />
-              ))}
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700/60">
+                {searchHits.map((l) => (
+                  <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} />
+                ))}
+              </div>
             </div>
+          ) : mode === "yaml" && activeFile ? (
+            <YamlPane sliceName={activeFile.replace(/\.yaml$/, "")} theme={theme} qc={qc} />
           ) : activeFile ? (
-            <div className="px-6 py-5 space-y-5">
+            <div className="px-8 py-6 space-y-8">
               {(fileGroups[activeFile] ?? []).map((top) => {
                 const node = schema.properties?.[top];
                 if (!node) return null;
                 return (
-                  <div key={top}>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">{humanize(top)}</h2>
-                    {data?.comments[top] && <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{data.comments[top]}</p>}
+                  <section key={top}>
+                    <div className="mb-3">
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{humanize(top)}</h2>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">{activeFile}</code>
+                        {data?.comments[top] && <span className="text-sm text-gray-500 dark:text-gray-400">· {data.comments[top]}</span>}
+                      </div>
+                    </div>
                     {fieldKind(node) === "object"
-                      ? <SchemaGroup node={node} path={top} comments={data?.comments ?? {}} effectiveValue={effectiveValue} setValue={setValue} />
-                      : <Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} />}
-                  </div>
+                      ? <SchemaSection node={node} path={top} comments={data?.comments ?? {}} effectiveValue={effectiveValue} setValue={setValue} />
+                      : <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl"><Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} /></div>}
+                  </section>
                 );
               })}
 
@@ -268,36 +275,54 @@ interface GroupProps {
   node: JSONSchema; path: string; comments: Record<string, string>;
   effectiveValue: (p: string) => unknown; setValue: (p: string, v: unknown) => void; depth?: number;
 }
-function SchemaGroup(props: GroupProps) {
+
+// Uniform renderer: at every level the direct scalar/enum/bool fields go into ONE
+// card, and each nested object becomes its own collapsible card below. This makes
+// the hierarchy consistent and obvious — never a mix of loose rows and boxes.
+function SchemaSection(props: GroupProps) {
   const { node, path, comments, depth = 0 } = props;
   if (!node.properties) return null;
+  const entries = Object.entries(node.properties);
+  const leaves = entries.filter(([, c]) => fieldKind(c) !== "object");
+  const groups = entries.filter(([, c]) => fieldKind(c) === "object");
+
   return (
-    <div className="space-y-1">
-      {Object.entries(node.properties).map(([key, child]) => {
+    <div className="space-y-3">
+      {leaves.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700/60">
+          {leaves.map(([key, child]) => {
+            const childPath = `${path}.${key}`;
+            return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} />;
+          })}
+        </div>
+      )}
+      {groups.map(([key, child]) => {
         const childPath = `${path}.${key}`;
-        if (fieldKind(child) === "object") {
-          return (
-            <NestedGroup key={childPath} title={key} comment={comments[childPath]} depth={depth}>
-              <SchemaGroup {...props} node={child} path={childPath} depth={depth + 1} />
-            </NestedGroup>
-          );
-        }
-        return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} />;
+        const childLeaves = Object.values(child.properties ?? {}).filter((c) => fieldKind(c) !== "object").length;
+        const childGroups = Object.values(child.properties ?? {}).filter((c) => fieldKind(c) === "object").length;
+        return (
+          <CollapsibleCard key={childPath} title={humanize(key)} comment={comments[childPath]} count={`${childLeaves} Felder${childGroups ? `, ${childGroups} Gruppen` : ""}`} depth={depth}>
+            <SchemaSection {...props} node={child} path={childPath} depth={depth + 1} />
+          </CollapsibleCard>
+        );
       })}
     </div>
   );
 }
 
-function NestedGroup({ title, comment, depth, children }: { title: string; comment?: string; depth: number; children: ReactNode }) {
+function CollapsibleCard({ title, comment, count, depth, children }: { title: string; comment?: string; count: string; depth: number; children: ReactNode }) {
   const [open, setOpen] = useState(depth < 1);
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left">
-        <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{humanize(title)}</span>
-        {comment && <span className="text-xs text-gray-400 dark:text-gray-500 truncate">— {comment}</span>}
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left">
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-90" : ""}`} />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{title}</div>
+          {comment && <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{comment}</div>}
+        </div>
+        <span className="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">{count}</span>
       </button>
-      {open && <div className="p-3 space-y-1">{children}</div>}
+      {open && <div className="px-3 pb-3 pt-0 pl-6 space-y-3 border-t border-gray-100 dark:border-gray-700/60">{children}</div>}
     </div>
   );
 }
