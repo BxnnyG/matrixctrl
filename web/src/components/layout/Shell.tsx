@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, Package, SlidersHorizontal, LogOut, Moon, Sun, MonitorDot } from "lucide-react";
+import { LayoutDashboard, Zap, Package, SlidersHorizontal, LogOut, Moon, Sun, MonitorDot, Rocket } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTheme } from "@/lib/theme";
 
@@ -9,6 +9,7 @@ const nav = [
   { to: "/helm/", label: "Helm", icon: Package, exact: false },
   { to: "/hooks/", label: "Hooks", icon: Zap, exact: false },
   { to: "/system", label: "System", icon: MonitorDot, exact: false },
+  { to: "/setup", label: "Setup", icon: Rocket, exact: false },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -17,8 +18,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const path = state.location.pathname;
   const isAuth = path.startsWith("/auth");
   // Full-bleed pages manage their own height/scroll and must escape the centered
-  // max-width container (e.g. the settings page with its own category sidebar).
-  const fullBleed = path === "/config" || path === "/config/";
+  // max-width container (settings + the per-section YAML editor). History stays centered.
+  const fullBleed = path === "/config" || (path.startsWith("/config/") && path !== "/config/history");
 
   if (isAuth) return <>{children}</>;
 

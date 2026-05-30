@@ -17,6 +17,7 @@ type Deps struct {
 	Helm   *handlers.HelmHandler
 	WS     *handlers.WSHandler
 	Config *handlers.ConfigHandler
+	Setup  *handlers.SetupHandler
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -85,6 +86,11 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/history", deps.Config.GetHistory)
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
 			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
+		})
+
+		r.Route("/api/v1/setup", func(r chi.Router) {
+			r.Get("/status", deps.Setup.Status)
+			r.Get("/chart-defaults", deps.Setup.ChartDefaults)
 		})
 
 		r.Route("/api/v1/helm", func(r chi.Router) {

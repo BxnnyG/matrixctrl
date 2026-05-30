@@ -128,6 +128,7 @@ func main() {
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion)
+	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
 
 	router := api.NewRouter(api.Deps{
 		Auth:   authHandler,
@@ -136,6 +137,7 @@ func main() {
 		Helm:   helmHandler,
 		WS:     wsHandler,
 		Config: configHandler,
+		Setup:  setupHandler,
 	})
 
 	srv := server.New(addr, router)
