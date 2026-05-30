@@ -167,6 +167,39 @@ func sortSectionMetas(metas []SliceMeta) []SliceMeta {
 	return append(out, rest...)
 }
 
+// SeedSections initialises a fresh config repo from a chart's commented
+// values.yaml, splitting it into per-section files. Used by the greenfield deploy
+// wizard. Refuses to overwrite an already-populated repo unless force is set.
+func (s *Store) SeedSections(ctx context.Context, valuesYAML string, force bool) error {
+	if !force {
+		if slices, _ := s.List(ctx); len(slices) > 0 {
+			return fmt.Errorf("config repo already has %d sections — refusing to overwrite", len(slices))
+		}
+	}
+	files, err := BuildSectionFiles([]NamedSlice{{Name: "values", Content: valuesYAML}})
+	if err != nil {
+		return fmt.Errorf("build sections: %w", err)
+	}
+	metas := make([]SliceMeta, 0, len(files))
+	for fname, content := range files {
+		if err := os.WriteFile(filepath.Join(s.path, fname), []byte(content), 0o644); err != nil {
+			return err
+		}
+		name := fname[:len(fname)-len(".yaml")]
+		metas = append(metas, SliceMeta{Name: name, File: fname, Description: "Section: " + name})
+	}
+	manifest := slicesManifest{Slices: sortSectionMetas(metas)}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.path, "config-slices.json"), data, 0o644); err != nil {
+		return err
+	}
+	_, err = s.git.CommitAll("matrixctrl: seed config from ESS chart defaults", "MatrixCtrl", "matrixctrl@localhost")
+	return err
+}
+
 // SectionFileMap returns top-level-key → owning section file name, for every
 // key present across the current section files. Lets the UI link a setting to its
 // YAML file.
