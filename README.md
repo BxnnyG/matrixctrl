@@ -132,8 +132,9 @@ make test           # unit tests
 make dev            # run against a local Postgres (docker compose)
 ```
 
-Go 1.26, Node 20. See [`CLAUDE.md`](CLAUDE.md) for the full developer context and
-[`docs/SETUP.md`](docs/SETUP.md) for the onboarding design.
+Go 1.26, Node 20. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for status and phases,
+[`docs/SETUP.md`](docs/SETUP.md) for the onboarding design, and [`CLAUDE.md`](CLAUDE.md)
+for full developer context.
 
 ## License
 
