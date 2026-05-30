@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
+	"github.com/bxnny/matrixctrl/internal/auth"
 	"github.com/bxnny/matrixctrl/internal/config"
 	"github.com/bxnny/matrixctrl/internal/helm"
 	"github.com/bxnny/matrixctrl/internal/hooks"
@@ -25,10 +26,16 @@ type HelmHandler struct {
 	engine      *hooks.Engine
 	essRelease  string
 	configStore *config.Store
+	// oidcReloader hot-reloads the auth service after connect-OIDC (set in main).
+	oidcReloader func(context.Context) error
 	// In-memory log streams for WebSocket consumers
 	mu      sync.RWMutex
 	streams map[string]*upgradeStream
 }
+
+// SetOIDCReloader wires the auth service's hot-reload so connect-OIDC can switch
+// MatrixCtrl to OIDC without a restart.
+func (h *HelmHandler) SetOIDCReloader(fn func(context.Context) error) { h.oidcReloader = fn }
 
 type upgradeStream struct {
 	logs   []string
@@ -405,6 +412,142 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	JSON(w, http.StatusAccepted, map[string]string{"upgrade_id": upgradeID})
+}
+
+// ConnectOIDC registers MatrixCtrl's own OIDC client in MAS — via the config it
+// already manages (writes the client + admin_clients into the
+// matrixAuthenticationService section, then helm-upgrades ESS so MAS picks it up),
+// stores the OIDC settings in the DB, and hot-reloads auth into OIDC mode. This
+// closes the bootstrap→OIDC loop without manual MAS patching or a restart.
+func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromContext(r.Context())
+	var req struct {
+		Issuer    string `json:"issuer"`     // MAS public URL, e.g. https://mas-matrix.example.com
+		PublicURL string `json:"public_url"` // MatrixCtrl public base, e.g. https://matrixctrl.example.com
+	}
+	if err := Decode(r, &req); err != nil || req.Issuer == "" || req.PublicURL == "" {
+		Error(w, http.StatusBadRequest, "issuer and public_url are required")
+		return
+	}
+
+	// Idempotency guard: refuse if a MatrixCtrl client is already registered.
+	if contents, err := h.configStore.MergedContent(r.Context()); err == nil {
+		if merged, err := config.MergeToMap(contents); err == nil {
+			if nestedGet(merged, "matrixAuthenticationService", "additional", "0-matrixctrl-client") != nil {
+				Error(w, http.StatusConflict, "a MatrixCtrl OIDC client is already registered in MAS config")
+				return
+			}
+		}
+	}
+
+	clientID := auth.GenerateULID()
+	secret := auth.GenerateSecret()
+	issuer := strings.TrimRight(req.Issuer, "/")
+	redirect := strings.TrimRight(req.PublicURL, "/") + "/api/v1/auth/oidc/callback"
+	fragment := buildMASClientConfig(clientID, secret, redirect)
+
+	// Write the client into the matrixAuthenticationService section (comment-preserving).
+	changes := map[string]interface{}{
+		"matrixAuthenticationService.additional.0-matrixctrl-client.config": fragment,
+	}
+	if err := h.configStore.SetSectionValues(r.Context(), changes, nil); err != nil {
+		Error(w, http.StatusInternalServerError, "write MAS client config: "+err.Error())
+		return
+	}
+	if _, err := h.configStore.Commit(r.Context(), "config: register MatrixCtrl OIDC client in MAS", userID); err != nil {
+		// non-fatal
+		_ = err
+	}
+	// Persist OIDC settings so MatrixCtrl can use them after reload.
+	if err := auth.SaveOIDCConfig(r.Context(), h.db, auth.OIDCConfig{
+		Issuer: issuer, ClientID: clientID, ClientSecret: secret, RedirectURI: redirect,
+	}); err != nil {
+		Error(w, http.StatusInternalServerError, "save oidc config: "+err.Error())
+		return
+	}
+
+	upgradeID := uuid.New().String()
+	stream := &upgradeStream{status: "pending"}
+	h.mu.Lock()
+	h.streams[upgradeID] = stream
+	h.mu.Unlock()
+
+	go func() {
+		ctx := context.Background()
+		stream.emit("MatrixCtrl client written into MAS config (client_id=" + clientID + ").")
+
+		rel, err := h.helm.GetRelease(h.essRelease)
+		if err != nil || rel == nil {
+			stream.emit("ERROR: ESS release not found — deploy ESS first.")
+			stream.finish("failed")
+			return
+		}
+		contents, _ := h.configStore.MergedContent(ctx)
+		merged, _ := config.MergeToMap(contents)
+
+		stream.emit("Upgrading ESS so MAS loads the new client (this restarts MAS)…")
+		if _, err := h.helm.Upgrade(ctx, h.essRelease, rel.Version, merged); err != nil {
+			stream.emit("ERROR: helm upgrade: " + err.Error())
+			stream.finish("failed")
+			return
+		}
+
+		stream.emit("Waiting for MAS to come back up with the client…")
+		var reloadErr error
+		for i := 0; i < 12; i++ {
+			time.Sleep(5 * time.Second)
+			if h.oidcReloader == nil {
+				break
+			}
+			if reloadErr = h.oidcReloader(ctx); reloadErr == nil {
+				break
+			}
+			stream.emit("  …MAS not ready yet, retrying")
+		}
+		if reloadErr != nil {
+			stream.emit("WARNING: client registered but OIDC reload failed: " + reloadErr.Error())
+			stream.emit("Reload manually from Setup once MAS is ready.")
+			stream.finish("hooks-failed")
+			return
+		}
+
+		stream.emit("Matrix login connected. Log out and back in via Matrix.")
+		stream.finish("success")
+	}()
+
+	JSON(w, http.StatusAccepted, map[string]string{"upgrade_id": upgradeID, "client_id": clientID})
+}
+
+// buildMASClientConfig renders the inner MAS config fragment (a string the ESS
+// chart embeds verbatim) registering a static client + granting it admin.
+func buildMASClientConfig(clientID, secret, redirect string) string {
+	return fmt.Sprintf(`clients:
+  - client_id: "%s"
+    client_auth_method: client_secret_basic
+    client_secret: "%s"
+    redirect_uris:
+      - "%s"
+policy:
+  data:
+    admin_clients:
+      - "%s"
+`, clientID, secret, redirect, clientID)
+}
+
+// nestedGet walks a decoded map by keys, returning nil if any step is missing.
+func nestedGet(m map[string]interface{}, keys ...string) interface{} {
+	var cur interface{} = m
+	for _, k := range keys {
+		asMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		cur, ok = asMap[k]
+		if !ok {
+			return nil
+		}
+	}
+	return cur
 }
 
 func (h *HelmHandler) Rollback(w http.ResponseWriter, r *http.Request) {

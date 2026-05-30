@@ -6,6 +6,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
 	"github.com/bxnny/matrixctrl/internal/auth"
@@ -18,16 +21,46 @@ type TokenService interface {
 }
 
 type AuthHandler struct {
-	svc  TokenService
+	svc    TokenService
+	db     *pgxpool.Pool
+	jwtKey []byte
+
+	mu   sync.RWMutex
 	oidc *auth.OIDCService
 }
 
-func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService) *AuthHandler {
-	return &AuthHandler{svc: svc, oidc: oidcSvc}
+func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Pool, jwtKey []byte) *AuthHandler {
+	return &AuthHandler{svc: svc, oidc: oidcSvc, db: db, jwtKey: jwtKey}
+}
+
+func (h *AuthHandler) getOIDC() *auth.OIDCService {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.oidc
 }
 
 func (h *AuthHandler) OIDCConfigured() bool {
-	return h.oidc != nil && h.oidc.Enabled()
+	o := h.getOIDC()
+	return o != nil && o.Enabled()
+}
+
+// ReloadOIDC rebuilds the OIDC service from the DB-persisted config and swaps it
+// in atomically. Used by the connect-OIDC flow to switch from bootstrap to OIDC at
+// runtime (no restart). Safe to call repeatedly.
+func (h *AuthHandler) ReloadOIDC(ctx context.Context) error {
+	cfg, ok := auth.LoadOIDCConfig(ctx, h.db)
+	if !ok {
+		return nil // nothing persisted yet
+	}
+	svc, err := auth.NewOIDCService(cfg, h.db, h.jwtKey)
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.oidc = svc
+	h.mu.Unlock()
+	log.Printf("OIDC hot-reloaded: issuer=%s client_id=%s", cfg.Issuer, cfg.ClientID)
+	return nil
 }
 
 func (h *AuthHandler) ValidateToken(token string) (string, error) {
@@ -35,6 +68,11 @@ func (h *AuthHandler) ValidateToken(token string) (string, error) {
 }
 
 func (h *AuthHandler) BootstrapLogin(w http.ResponseWriter, r *http.Request) {
+	// Once OIDC is active, the local bootstrap login is disabled (public-facing).
+	if h.OIDCConfigured() {
+		Error(w, http.StatusForbidden, "bootstrap login disabled — use Matrix login")
+		return
+	}
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -73,16 +111,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/auth/oidc/available — lets the frontend know if OIDC is configured.
 func (h *AuthHandler) OIDCAvailable(w http.ResponseWriter, r *http.Request) {
-	JSON(w, http.StatusOK, map[string]bool{"enabled": h.oidc != nil && h.oidc.Enabled()})
+	o := h.getOIDC()
+	JSON(w, http.StatusOK, map[string]bool{"enabled": o != nil && o.Enabled()})
 }
 
 // GET /api/v1/auth/oidc/redirect — generates a state and redirects the browser to MAS.
 func (h *AuthHandler) OIDCRedirect(w http.ResponseWriter, r *http.Request) {
-	if h.oidc == nil || !h.oidc.Enabled() {
-		Error(w, http.StatusNotImplemented, "OIDC not configured — set MATRIXCTRL_OIDC_* env vars")
+	o := h.getOIDC()
+	if o == nil || !o.Enabled() {
+		Error(w, http.StatusNotImplemented, "OIDC not configured")
 		return
 	}
-	authURL, err := h.oidc.AuthURL(r.Context())
+	authURL, err := o.AuthURL(r.Context())
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -105,7 +145,12 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.oidc.ExchangeCode(r.Context(), code, state)
+	o := h.getOIDC()
+	if o == nil {
+		http.Redirect(w, r, "/auth/login?error=OIDC+not+configured", http.StatusFound)
+		return
+	}
+	userID, err := o.ExchangeCode(r.Context(), code, state)
 	if err != nil {
 		log.Printf("OIDC callback error: %v", err)
 		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
@@ -116,7 +161,7 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if ip == "" {
 		ip = r.RemoteAddr
 	}
-	token, err := h.oidc.CreateOIDCSession(r.Context(), userID, ip, r.UserAgent())
+	token, err := o.CreateOIDCSession(r.Context(), userID, ip, r.UserAgent())
 	if err != nil {
 		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
 		return

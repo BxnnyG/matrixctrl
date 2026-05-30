@@ -65,14 +65,25 @@ func main() {
 		log.Printf("WARNING: OIDC enabled with no access restriction — any authenticated user can log in!")
 		log.Printf("WARNING: Set MATRIXCTRL_REQUIRE_ADMIN=true (default) or MATRIXCTRL_OIDC_ALLOWED_USERS=<ulid>")
 	}
+	// If no OIDC env is set, fall back to DB-persisted config (set by the
+	// connect-OIDC setup flow). Env always wins.
+	if oidcCfg.ClientID == "" {
+		if dbCfg, ok := auth.LoadOIDCConfig(ctx, pool); ok {
+			oidcCfg = dbCfg
+			log.Printf("OIDC config loaded from DB (client_id=%s)", dbCfg.ClientID)
+		}
+	}
 	var oidcSvc *auth.OIDCService
 	if oidcCfg.ClientID != "" {
+		// Non-fatal: if MAS isn't reachable yet (e.g. just deployed), start in
+		// bootstrap mode and hot-reload OIDC later via the setup flow.
 		svc, err := auth.NewOIDCService(oidcCfg, pool, bootstrapAuth.JWTKey())
 		if err != nil {
-			log.Fatalf("OIDC init: %v", err)
+			log.Printf("WARNING: OIDC init failed (%v) — staying in bootstrap mode; reconnect via Setup", err)
+		} else {
+			oidcSvc = svc
+			log.Printf("OIDC enabled: issuer=%s client_id=%s", oidcCfg.Issuer, oidcCfg.ClientID)
 		}
-		oidcSvc = svc
-		log.Printf("OIDC enabled: issuer=%s client_id=%s", oidcCfg.Issuer, oidcCfg.ClientID)
 	}
 
 	if err := builtin.Seed(ctx, pool); err != nil {
@@ -122,10 +133,11 @@ func main() {
 		essVersion = "26.5.1" // fallback default
 	}
 
-	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc)
+	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc, pool, bootstrapAuth.JWTKey())
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
+	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion)
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())

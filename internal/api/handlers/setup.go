@@ -40,12 +40,26 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sections := 0
+	masHost := ""
 	if h.store != nil {
 		if slices, err := h.store.List(r.Context()); err == nil {
 			sections = len(slices)
 		}
+		// Best-effort: surface the MAS ingress host to prefill the OIDC issuer.
+		if contents, err := h.store.MergedContent(r.Context()); err == nil {
+			if merged, err := config.MergeToMap(contents); err == nil {
+				if mas, ok := merged["matrixAuthenticationService"].(map[string]interface{}); ok {
+					if ing, ok := mas["ingress"].(map[string]interface{}); ok {
+						if host, ok := ing["host"].(string); ok {
+							masHost = host
+						}
+					}
+				}
+			}
+		}
 	}
 	resp["config_sections"] = sections
+	resp["mas_host"] = masHost
 
 	JSON(w, http.StatusOK, resp)
 }
