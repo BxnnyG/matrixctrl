@@ -29,12 +29,10 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 
-	// Public auth routes
+	// Public auth routes. Bootstrap login is always registered but the handler
+	// refuses once OIDC is active — so we can switch auth modes at runtime.
 	r.Route("/api/v1/auth", func(r chi.Router) {
-		// Bootstrap login only available when OIDC is not configured
-		if !deps.Auth.OIDCConfigured() {
-			r.Post("/bootstrap/login", deps.Auth.BootstrapLogin)
-		}
+		r.Post("/bootstrap/login", deps.Auth.BootstrapLogin)
 		r.Get("/oidc/available", deps.Auth.OIDCAvailable)
 		r.Get("/oidc/redirect", deps.Auth.OIDCRedirect)
 		r.Get("/oidc/callback", deps.Auth.OIDCCallback)
@@ -92,6 +90,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/status", deps.Setup.Status)
 			r.Get("/chart-defaults", deps.Setup.ChartDefaults)
 			r.Post("/deploy-ess", deps.Helm.DeployESS)
+			r.Post("/connect-oidc", deps.Helm.ConnectOIDC)
 		})
 
 		r.Route("/api/v1/helm", func(r chi.Router) {
