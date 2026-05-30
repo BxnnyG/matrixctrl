@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/bxnny/matrixctrl/internal/hooks"
+	"github.com/bxnnyg/matrixctrl/internal/hooks"
 )
 
 // ESSRTCHooks are the built-in hooks that reproduce the manual patches
