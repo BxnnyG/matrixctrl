@@ -1,0 +1,48 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! For **security** issues do not file here — see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: matrixctrl-version
+    attributes:
+      label: MatrixCtrl version
+      placeholder: "0.1.9 (see the pod log on startup)"
+    validations:
+      required: true
+  - type: input
+    id: ess-version
+    attributes:
+      label: ESS / matrix-stack version
+      placeholder: "26.5.1"
+  - type: input
+    id: k8s
+    attributes:
+      label: Kubernetes distribution
+      placeholder: "k3s v1.31"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "`kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl` — redact secrets!"
+      render: shell
