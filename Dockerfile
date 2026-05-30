@@ -22,8 +22,8 @@ ARG VERSION
 ARG GIT_COMMIT
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s \
-      -X github.com/bxnny/matrixctrl/internal/version.Version=${VERSION} \
-      -X github.com/bxnny/matrixctrl/internal/version.Commit=${GIT_COMMIT}" \
+      -X github.com/bxnnyg/matrixctrl/internal/version.Version=${VERSION} \
+      -X github.com/bxnnyg/matrixctrl/internal/version.Commit=${GIT_COMMIT}" \
     -o /matrixctrl ./cmd/matrixctrl
 
 # Stage 3: Minimal runtime

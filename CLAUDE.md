@@ -118,6 +118,6 @@ Phase 1 complete + Phase 1.5 (setup/onboarding) mostly done; deployed in-cluster
 - Integration: `deploy/dev/` with real Postgres, in-cluster for k8s operations
 - Frontend: Vitest + Testing Library
 
-## Go Module: github.com/bxnny/matrixctrl (Go 1.24+)
+## Go Module: github.com/bxnnyg/matrixctrl (Go 1.24+)
 ## Node: 20 LTS
 ## Dev commands: `make dev` (backend), `make web-dev` (frontend), `make test`, `make build`
