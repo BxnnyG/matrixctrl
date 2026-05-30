@@ -19,7 +19,7 @@ import (
 type OIDCConfig struct {
 	ClientID     string
 	ClientSecret string
-	// Issuer is the base URL of MAS, e.g. https://mas-matrix.bxnny.de
+	// Issuer is the base URL of MAS, e.g. https://mas.example.com
 	Issuer      string
 	RedirectURI string
 	// AllowedUsers is an explicit allowlist of MAS user IDs (ULIDs, the OIDC `sub`).

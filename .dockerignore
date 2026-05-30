@@ -1,0 +1,30 @@
+# Keep the build context minimal and secret-free. The multi-stage build only
+# needs Go sources (cmd/, internal/), web/, and go.mod/sum. Everything below is
+# excluded so no instance config, secret, or homelab detail ever enters a layer.
+
+.git
+.gitignore
+.dockerignore
+
+# Docs + dev notes (contain homelab IPs/hostnames)
+*.md
+docs/
+
+# Deploy charts + instance values (contain the OIDC client secret)
+deploy/
+
+# Local build artifacts
+bin/
+/matrixctrl
+matrixctrl-*
+web/node_modules
+web/dist
+
+# Duplicate of internal/config/schema/schemas (the embed source)
+/schemas
+
+# Misc
+*.env
+*.env.local
+.claude/
+.DS_Store
