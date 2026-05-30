@@ -44,53 +44,52 @@ grows into full admin parity.
 
 ## Quick start
 
-> ⚠️ Helm cannot install from a GitHub URL. Use a **local chart path** or an **OCI
-> chart** (see below) — `github.com/bxnnyg/matrixctrl` is the source repo, not a
-> Helm chart endpoint.
-
 ### Prerequisites
 - A Kubernetes cluster (k3s works great) with an ingress controller (Traefik).
 - An existing ESS (`matrix-stack`) release, *or* let MatrixCtrl deploy one.
 
-### Option A — from the repo (works today)
+### Install (recommended) — OCI chart
+
+The chart and image are published to GHCR, so one command is all you need:
 
 ```bash
-git clone https://github.com/bxnnyg/matrixctrl
-cd matrixctrl
-helm install matrixctrl ./deploy/helm/matrixctrl \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
   --namespace matrixctrl --create-namespace \
   --set ingress.host=matrixctrl.example.com \
   --set ingress.certIssuer=letsencrypt-prod
 ```
 
-The container image is pulled from `ghcr.io/bxnnyg/matrixctrl`. Secrets
-(DB password, JWT key) auto-generate on first install — nothing to set.
+The image is pulled from `ghcr.io/bxnnyg/matrixctrl`. Secrets (DB password, JWT key)
+auto-generate on first install — nothing to set.
 
-### Option B — single-node k3s without a registry
+> Note: `helm install` can't read a GitHub URL — `github.com/bxnnyg/matrixctrl` is the
+> source repo. Use the OCI chart above, or a local path / image import below.
+
+<details>
+<summary><b>Alternative — from a clone (local chart path)</b></summary>
+
+```bash
+git clone https://github.com/bxnnyg/matrixctrl
+cd matrixctrl
+helm install matrixctrl ./deploy/helm/matrixctrl \
+  -n matrixctrl --create-namespace --set ingress.host=matrixctrl.example.com
+```
+</details>
+
+<details>
+<summary><b>Alternative — single-node k3s without pulling from a registry</b></summary>
 
 Build and import the image straight into k3s containerd:
 
 ```bash
 make docker            # or: docker build -t ghcr.io/bxnnyg/matrixctrl:dev .
 docker save ghcr.io/bxnnyg/matrixctrl:dev | sudo k3s ctr images import -
-helm install matrixctrl ./deploy/helm/matrixctrl -n matrixctrl --create-namespace \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
+  -n matrixctrl --create-namespace \
   --set image.tag=dev --set image.pullPolicy=IfNotPresent \
   --set ingress.host=matrixctrl.example.com
 ```
-
-### Option C — OCI chart (cleanest, once published)
-
-Package and push the chart to GHCR once, then anyone installs with one command:
-
-```bash
-# maintainer, once:
-helm package deploy/helm/matrixctrl
-helm push matrixctrl-*.tgz oci://ghcr.io/bxnnyg/charts
-
-# users:
-helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
-  -n matrixctrl --create-namespace --set ingress.host=matrixctrl.example.com
-```
+</details>
 
 ## First run
 

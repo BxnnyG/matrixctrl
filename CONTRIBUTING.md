@@ -54,6 +54,24 @@ cd web && npm install && npm run dev
 3. Run `make test` and ensure `go build ./...` and `npm run build` pass.
 4. Fill out the PR template; reference any related issue.
 
+## Releasing (maintainers)
+
+Publish a new version to GHCR (image + OCI chart):
+
+```bash
+VERSION=0.1.0
+# image
+docker build -t ghcr.io/bxnnyg/matrixctrl:$VERSION -t ghcr.io/bxnnyg/matrixctrl:latest .
+docker push ghcr.io/bxnnyg/matrixctrl:$VERSION
+docker push ghcr.io/bxnnyg/matrixctrl:latest
+# chart (bump version in deploy/helm/matrixctrl/Chart.yaml first)
+helm package deploy/helm/matrixctrl
+helm push matrixctrl-$VERSION.tgz oci://ghcr.io/bxnnyg/charts
+```
+
+New GHCR packages default to **private** — set both `matrixctrl` and `charts/matrixctrl`
+to **public** in the GitHub Packages UI so users can pull without auth.
+
 ## Reporting bugs / requesting features
 
 Use the issue templates. Include your ESS version, MatrixCtrl version, and relevant
