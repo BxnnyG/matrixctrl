@@ -75,8 +75,6 @@ func NewRouter(deps Deps) http.Handler {
 			r.Post("/validate", deps.Config.Validate)
 			r.Post("/validate-merged", deps.Config.ValidateMerged)
 			r.Get("/schema", deps.Config.GetSchema)
-			r.Get("/easy", deps.Config.GetEasy)
-			r.Post("/easy", deps.Config.PutEasy)
 			r.Get("/settings", deps.Config.GetSettings)
 			r.Post("/settings", deps.Config.PutSettings)
 			r.Get("/diff", deps.Config.GetDiff)

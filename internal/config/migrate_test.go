@@ -4,7 +4,7 @@ import "testing"
 
 func TestBuildSectionFiles(t *testing.T) {
 	values := `## The server name
-serverName: bxnny.de
+serverName: example.com
 ## Synapse config
 synapse:
   ## worker count
@@ -17,11 +17,11 @@ matrixRTC:
 `
 	hostnames := `synapse:
   ingress:
-    host: matrix.bxnny.de
+    host: matrix.example.com
 elementWeb:
   ingress:
-    host: element.bxnny.de
-serverName: bxnny.de
+    host: element.example.com
+serverName: example.com
 `
 	rtc := `matrixRTC:
   sfu:
@@ -49,7 +49,7 @@ serverName: bxnny.de
 		t.Errorf("synapse comment lost:\n%s", files["synapse.yaml"])
 	}
 	// Override value from hostnames merged into synapse.
-	if !contains(files["synapse.yaml"], "matrix.bxnny.de") {
+	if !contains(files["synapse.yaml"], "matrix.example.com") {
 		t.Errorf("synapse ingress host not merged:\n%s", files["synapse.yaml"])
 	}
 	// rtc override merged into matrixRTC, base comment preserved.
