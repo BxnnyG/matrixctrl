@@ -6,10 +6,28 @@ import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
 import { useTheme } from "@/lib/theme";
 import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves } from "@/lib/schema";
+import { groupNav, orderKeys } from "@/lib/sections";
 import {
   Save, Rocket, CheckCircle2, AlertTriangle, XCircle, Loader2,
-  Search, ChevronRight, Settings2, FileCode, SlidersHorizontal, History,
+  Search, ChevronRight, ChevronDown, Settings2, FileCode, SlidersHorizontal, History,
+  Server, ShieldCheck, Globe, Video, UserCog, Database, Link2, Box, type LucideIcon,
 } from "lucide-react";
+
+// Icon per section file for a more scannable, less flat UI.
+const SECTION_ICONS: Record<string, LucideIcon> = {
+  "general.yaml": Settings2,
+  "synapse.yaml": Server,
+  "matrixAuthenticationService.yaml": ShieldCheck,
+  "elementWeb.yaml": Globe,
+  "elementAdmin.yaml": UserCog,
+  "matrixRTC.yaml": Video,
+  "wellKnownDelegation.yaml": Link2,
+  "postgres.yaml": Database,
+  "redis.yaml": Database,
+};
+function iconFor(file: string): LucideIcon {
+  return SECTION_ICONS[file] ?? Box;
+}
 
 export const Route = createFileRoute("/config/")({
   component: Settings,
@@ -55,15 +73,13 @@ function Settings() {
     for (const [topKey, file] of Object.entries(data?.files ?? {})) {
       (g[file] ??= []).push(topKey);
     }
-    for (const k of Object.keys(g)) g[k].sort();
+    for (const k of Object.keys(g)) g[k] = orderKeys(g[k]);
     return g;
   }, [data?.files]);
 
-  const fileList = useMemo(() => {
-    const fs = Object.keys(fileGroups);
-    fs.sort((a, b) => (a === "general.yaml" ? -1 : b === "general.yaml" ? 1 : a.localeCompare(b)));
-    return fs;
-  }, [fileGroups]);
+  const navGroups = useMemo(() => groupNav(Object.keys(fileGroups)), [fileGroups]);
+  const fileList = useMemo(() => navGroups.flatMap((g) => g.files), [navGroups]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const activeFile = fileSel ?? fileList[0] ?? null;
 
@@ -153,17 +169,30 @@ function Settings() {
               <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Alle Optionen suchen…" className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-            {fileList.map((f) => {
-              const active = activeFile === f && !query;
-              const leaves = (fileGroups[f] ?? []).reduce((n, top) => n + countLeaves(schema.properties?.[top]), 0);
+            {navGroups.map((grp) => {
+              const collapsed = collapsedGroups[grp.label] ?? !grp.defaultOpen;
               return (
-                <button key={f} onClick={() => { setFileSel(f); setQuery(""); }} className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${active ? "bg-blue-50 dark:bg-blue-950/60" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-sm truncate ${active ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300"}`}>{humanize(f.replace(/\.yaml$/, ""))}</div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{f}</div>
-                  </div>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-600 tabular-nums shrink-0">{leaves}</span>
-                </button>
+                <div key={grp.label} className="mb-1">
+                  <button onClick={() => setCollapsedGroups((p) => ({ ...p, [grp.label]: !collapsed }))} className="w-full flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+                    <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                    {grp.label}
+                  </button>
+                  {!collapsed && grp.files.map((f) => {
+                    const active = activeFile === f && !query;
+                    const Icon = iconFor(f);
+                    const leaves = (fileGroups[f] ?? []).reduce((n, top) => n + countLeaves(schema.properties?.[top]), 0);
+                    return (
+                      <button key={f} onClick={() => { setFileSel(f); setQuery(""); }} className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${active ? "bg-blue-50 dark:bg-blue-950/60" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                        <Icon className={`w-4 h-4 shrink-0 ${active ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm truncate ${active ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300"}`}>{humanize(f.replace(/\.yaml$/, ""))}</div>
+                          <div className="text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{f}</div>
+                        </div>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-600 tabular-nums shrink-0">{leaves}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
           </div>
@@ -187,13 +216,19 @@ function Settings() {
               {(fileGroups[activeFile] ?? []).map((top) => {
                 const node = schema.properties?.[top];
                 if (!node) return null;
+                const SecIcon = iconFor(activeFile);
                 return (
                   <section key={top}>
-                    <div className="mb-3">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{humanize(top)}</h2>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">{activeFile}</code>
-                        {data?.comments[top] && <span className="text-sm text-gray-500 dark:text-gray-400">· {data.comments[top]}</span>}
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500/90 to-[#0DBD8B]/90 text-white shrink-0 shadow-sm">
+                        <SecIcon className="w-[18px] h-[18px]" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight">{humanize(top)}</h2>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">{activeFile}</code>
+                          {data?.comments[top] && <span className="text-sm text-gray-500 dark:text-gray-400 truncate">· {data.comments[top]}</span>}
+                        </div>
                       </div>
                     </div>
                     {fieldKind(node) === "object"
@@ -282,14 +317,14 @@ interface GroupProps {
 function SchemaSection(props: GroupProps) {
   const { node, path, comments, depth = 0 } = props;
   if (!node.properties) return null;
-  const entries = Object.entries(node.properties);
-  const leaves = entries.filter(([, c]) => fieldKind(c) !== "object");
-  const groups = entries.filter(([, c]) => fieldKind(c) === "object");
+  const ordered = orderKeys(Object.keys(node.properties)).map((k) => [k, node.properties![k]] as const);
+  const leaves = ordered.filter(([, c]) => fieldKind(c) !== "object");
+  const groups = ordered.filter(([, c]) => fieldKind(c) === "object");
 
   return (
     <div className="space-y-3">
       {leaves.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700/60">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm divide-y divide-gray-100 dark:divide-gray-700/60">
           {leaves.map(([key, child]) => {
             const childPath = `${path}.${key}`;
             return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} />;
@@ -301,7 +336,7 @@ function SchemaSection(props: GroupProps) {
         const childLeaves = Object.values(child.properties ?? {}).filter((c) => fieldKind(c) !== "object").length;
         const childGroups = Object.values(child.properties ?? {}).filter((c) => fieldKind(c) === "object").length;
         return (
-          <CollapsibleCard key={childPath} title={humanize(key)} comment={comments[childPath]} count={`${childLeaves} Felder${childGroups ? `, ${childGroups} Gruppen` : ""}`} depth={depth}>
+          <CollapsibleCard key={childPath} title={humanize(key)} comment={comments[childPath]} count={`${childLeaves}${childGroups ? `+${childGroups}` : ""}`} depth={depth}>
             <SchemaSection {...props} node={child} path={childPath} depth={depth + 1} />
           </CollapsibleCard>
         );
@@ -313,16 +348,18 @@ function SchemaSection(props: GroupProps) {
 function CollapsibleCard({ title, comment, count, depth, children }: { title: string; comment?: string; count: string; depth: number; children: ReactNode }) {
   const [open, setOpen] = useState(depth < 1);
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+    <div className={`bg-white dark:bg-gray-800 border rounded-xl shadow-sm overflow-hidden transition-colors ${open ? "border-blue-200 dark:border-blue-900/60" : "border-gray-200 dark:border-gray-700"}`}>
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left">
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-90" : ""}`} />
+        <div className={`flex items-center justify-center w-5 h-5 rounded-md shrink-0 transition-colors ${open ? "bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500"}`}>
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{title}</div>
           {comment && <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{comment}</div>}
         </div>
-        <span className="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">{count}</span>
+        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-600 shrink-0 bg-gray-50 dark:bg-gray-900/60 px-1.5 py-0.5 rounded">{count}</span>
       </button>
-      {open && <div className="px-3 pb-3 pt-0 pl-6 space-y-3 border-t border-gray-100 dark:border-gray-700/60">{children}</div>}
+      {open && <div className="px-3 pb-3 pt-3 pl-7 space-y-3 border-t border-gray-100 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-900/20">{children}</div>}
     </div>
   );
 }
