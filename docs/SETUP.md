@@ -108,9 +108,18 @@ This is **Phase 1.5** — between the current Phase 1 (config + helm + OIDC, don
 and Phase 2 (user/room management). It's the difference between "works for bxnny"
 and "works for a colleague", so it's high-leverage but not a Phase-1 blocker.
 
-Setup-phase task list (deferred):
-1. Greenfield bootstrap-auth deploy flow (deploy ESS with local admin, OIDC off).
-2. Initial-config wizard: seed section files from the ESS chart's default values.yaml.
-3. `matrixctrl setup`: auto-register OIDC client via MAS Admin API + flip to OIDC.
-4. Runtime auth reconfiguration (bootstrap → OIDC) without manual secret edits.
-5. ESS discovery for the "manage existing" path (helm get values → seed).
+Setup-phase task list:
+1. ✅ Greenfield deploy flow — `POST /api/v1/setup/deploy-ess` (helm.Install) + /setup wizard.
+2. ✅ Initial-config seed from the chart's default values.yaml — `config.Store.SeedSections`.
+3. ✅ Auto-register OIDC client — `POST /api/v1/setup/connect-oidc` writes the client +
+   admin_clients into the matrixAuthenticationService config and helm-upgrades ESS (we
+   register via the config we manage, NOT the MAS Admin API, because admin_clients is
+   static MAS policy the API can't change).
+4. ✅ Runtime bootstrap→OIDC switch — DB-backed OIDC config + AuthHandler.ReloadOIDC
+   hot-reload; bootstrap login always-registered but 403s once OIDC is active.
+5. ⬜ ESS discovery for the "manage existing" path (scan namespaces, helm get values → seed).
+6. ⬜ End-to-end greenfield live test (needs a throwaway cluster/namespace).
+
+NOTE: items 1–4 are built + deployed but the greenfield/connect happy-path is not yet
+live-tested (the bxnny instance already has ESS + an env-configured OIDC client, so the
+guards short-circuit). Logic verified to the guard boundary; building blocks are proven.
