@@ -231,7 +231,7 @@ function SliceEditor() {
   const hasDiff = diffLines.some((l) => l.startsWith("+") || l.startsWith("-"));
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -mt-8 -mx-6 -mb-8">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <Link to="/config" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
