@@ -18,7 +18,14 @@ coordinate a disclosure timeline with you and credit you (unless you prefer othe
 
 ## Supported versions
 
-MatrixCtrl is pre-1.0; only the latest release on `master` receives security fixes.
+Only the **latest** release receives security fixes. MatrixCtrl is still pre-1.0
+(versions `0.x`), so there are no maintained older branches yet — please always run
+the newest version.
+
+| Version | Supported |
+|---------|-----------|
+| Latest release | ✅ |
+| Older releases  | ❌ |
 
 ## Scope & hardening notes
 
