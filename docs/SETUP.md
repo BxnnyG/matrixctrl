@@ -117,9 +117,12 @@ Setup-phase task list:
    static MAS policy the API can't change).
 4. ✅ Runtime bootstrap→OIDC switch — DB-backed OIDC config + AuthHandler.ReloadOIDC
    hot-reload; bootstrap login always-registered but 403s once OIDC is active.
-5. ⬜ ESS discovery for the "manage existing" path (scan namespaces, helm get values → seed).
-6. ⬜ End-to-end greenfield live test (needs a throwaway cluster/namespace).
+5. ✅ ESS discovery for the "manage existing" path — `helm.Discover()` (all-namespace
+   scan for matrix-stack) + startup auto-discovery + `POST /api/v1/setup/adopt`
+   (seed config from `helm get values`). LIVE-tested: found ess/ess 26.5.1.
+6. ⏳ End-to-end greenfield live test — discovery + adopt building blocks live-validated;
+   the full greenfield install (deploy-ess) + connect-oidc happy-path still needs a fresh
+   cluster (planned: test at a colleague's ESS).
 
-NOTE: items 1–4 are built + deployed but the greenfield/connect happy-path is not yet
-live-tested (the bxnny instance already has ESS + an env-configured OIDC client, so the
-guards short-circuit). Logic verified to the guard boundary; building blocks are proven.
+The bxnny instance can't exercise the greenfield/connect happy-path (it already has ESS +
+env-OIDC, so guards short-circuit). Discovery/adopt data-gathering IS proven live.
