@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/bxnny/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/k8s"
 )
 
 type Runner struct {

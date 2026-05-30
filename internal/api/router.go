@@ -6,8 +6,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/bxnny/matrixctrl/internal/api/handlers"
-	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
+	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 )
 
 type Deps struct {

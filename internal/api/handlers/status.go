@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/bxnny/matrixctrl/internal/helm"
-	"github.com/bxnny/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/helm"
+	"github.com/bxnnyg/matrixctrl/internal/k8s"
 )
 
 type StatusHandler struct {
