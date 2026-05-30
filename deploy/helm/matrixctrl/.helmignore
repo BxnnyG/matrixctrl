@@ -1,0 +1,8 @@
+# Patterns to exclude when packaging the chart (helm package).
+# Critically: keep instance-specific value overrides (which contain real secrets)
+# out of the published .tgz. The default values.yaml is kept.
+values.*.yaml
+*.bak
+*.tmp
+.DS_Store
+*~
