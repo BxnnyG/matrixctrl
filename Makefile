@@ -1,5 +1,5 @@
 BINARY     := matrixctrl
-MODULE     := github.com/bxnny/matrixctrl
+MODULE     := github.com/bxnnyg/matrixctrl
 VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS    := -w -s \
@@ -48,6 +48,6 @@ docker:
 	docker build \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(COMMIT) \
-		-t ghcr.io/bxnny/matrixctrl:$(VERSION) \
-		-t ghcr.io/bxnny/matrixctrl:latest \
+		-t ghcr.io/bxnnyg/matrixctrl:$(VERSION) \
+		-t ghcr.io/bxnnyg/matrixctrl:latest \
 		.
