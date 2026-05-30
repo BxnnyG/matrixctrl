@@ -62,6 +62,8 @@ function Setup() {
 
       {!data.ess_installed ? (
         <DeployWizard release={data.ess_release} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+      ) : data.config_sections === 0 ? (
+        <AdoptCard release={data.ess_release} version={data.ess_version} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
       ) : !data.oidc_configured ? (
         <ConnectCard masHost={data.mas_host} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
       ) : (
@@ -86,6 +88,37 @@ function Setup() {
           <strong className="text-gray-800 dark:text-gray-200">Phase 1.5:</strong> Greenfield-Deploy (oben) seedet die Config aus den
           Chart-Defaults und installiert ESS. Noch offen: automatische OIDC-Client-Registrierung via MAS Admin API. Siehe{" "}
           <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">docs/SETUP.md</code>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdoptCard({ release, version, onDone }: { release: string; version?: string; onDone: () => void }) {
+  const adopt = useMutation({
+    mutationFn: () => api.post("/api/v1/setup/adopt", {}),
+    onSuccess: onDone,
+  });
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-900/60 rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40">
+        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-[#0DBD8B] text-white shrink-0"><Server className="w-[18px] h-[18px]" /></div>
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Bestehendes ESS übernehmen</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Release „{release}"{version ? ` v${version}` : ""} erkannt — Config übernehmen, um es zu verwalten</div>
+        </div>
+      </div>
+      <div className="p-4 space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          MatrixCtrl liest die aktuellen Helm-Values des Release und legt daraus die versionierten Config-Sektionen an. Danach kannst du es über die UI verwalten.
+        </p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => adopt.mutate()} disabled={adopt.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+            {adopt.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />} Config übernehmen
+          </button>
+          {adopt.isError && <span className="text-xs text-red-600 dark:text-red-400">{(adopt.error as Error).message}</span>}
+          {adopt.isSuccess && <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Übernommen</span>}
         </div>
       </div>
     </div>
