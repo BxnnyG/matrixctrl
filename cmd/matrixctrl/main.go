@@ -102,6 +102,22 @@ func main() {
 		helmClient = nil
 	}
 
+	// Auto-discover the ESS release if the configured one isn't found — lets
+	// MatrixCtrl adopt an existing ESS without hard-coded namespace/release.
+	if helmClient != nil {
+		if _, err := helmClient.GetRelease(essRelease); err != nil {
+			if found, derr := helm.Discover(); derr == nil && len(found) == 1 {
+				essNS, essRelease = found[0].Namespace, found[0].Name
+				log.Printf("ESS auto-discovered: release=%s namespace=%s version=%s", essRelease, essNS, found[0].Version)
+				if c, cerr := helm.New(essNS); cerr == nil {
+					helmClient = c
+				}
+			} else if derr == nil && len(found) > 1 {
+				log.Printf("note: %d ESS releases found — set MATRIXCTRL_ESS_RELEASE/NAMESPACE to choose", len(found))
+			}
+		}
+	}
+
 	var runner *hooks.Runner
 	if k8sClient != nil {
 		runner = hooks.NewRunner(k8sClient)
