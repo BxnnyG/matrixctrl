@@ -1,7 +1,7 @@
 # MatrixCtrl — Onboarding & Setup (Design)
 
-> Status: **design recorded, not yet implemented.** This captures the "a colleague installs
-> it and it just works" goal and the `matrixctrl setup` command that gets us there.
+> Status: **mostly implemented (Phase 1.5).** This captures the "anyone installs it
+> and it just works" goal and the setup flow that gets us there.
 
 ## The goal
 
@@ -9,7 +9,7 @@ A new operator (k3s + ESS already running) should go from zero to a working
 MatrixCtrl with **one command** and **no manual secret/OIDC fiddling**:
 
 ```bash
-helm install matrixctrl oci://ghcr.io/bxnny/matrixctrl --namespace matrixctrl --create-namespace
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --namespace matrixctrl --create-namespace
 ```
 
 Everything that can be derived or generated must be — the operator should never
@@ -104,9 +104,9 @@ the existing migrator) so the user starts from the documented defaults and edits
 
 ## Phasing
 
-This is **Phase 1.5** — between the current Phase 1 (config + helm + OIDC, done)
-and Phase 2 (user/room management). It's the difference between "works for bxnny"
-and "works for a colleague", so it's high-leverage but not a Phase-1 blocker.
+This is **Phase 1.5** — between Phase 1 (config + helm + OIDC, done) and Phase 2
+(user/room management). It's the difference between "works for me" and "works for
+anyone", so it's high-leverage but not a Phase-1 blocker. See [ROADMAP.md](ROADMAP.md).
 
 Setup-phase task list:
 1. ✅ Greenfield deploy flow — `POST /api/v1/setup/deploy-ess` (helm.Install) + /setup wizard.
@@ -122,7 +122,8 @@ Setup-phase task list:
    (seed config from `helm get values`). LIVE-tested: found ess/ess 26.5.1.
 6. ⏳ End-to-end greenfield live test — discovery + adopt building blocks live-validated;
    the full greenfield install (deploy-ess) + connect-oidc happy-path still needs a fresh
-   cluster (planned: test at a colleague's ESS).
+   cluster.
 
-The bxnny instance can't exercise the greenfield/connect happy-path (it already has ESS +
-env-OIDC, so guards short-circuit). Discovery/adopt data-gathering IS proven live.
+A pre-existing instance (ESS already deployed + env-OIDC configured) can't exercise the
+greenfield/connect happy-path — the guards short-circuit. Discovery/adopt data-gathering
+IS proven live.
