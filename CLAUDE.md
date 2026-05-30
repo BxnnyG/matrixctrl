@@ -107,13 +107,10 @@ Tables:
 - Typed fetch client in `web/src/lib/api.ts`
 - WebSocket hook in `web/src/lib/ws.ts`
 
-## Current Phase: 1 COMPLETE — deployed in-cluster (as of 2026-05-30)
-Phase 0 (done): hook system, status dashboard, Helm upgrade via UI with auto post-hooks.
-Phase 1 (done): full config UI (Standard form + YAML per section), upgrade wizard, git
-versioning, admin-only OIDC via MAS, self-configuring secrets, own Helm chart.
-Now runs IN k8s (ns `matrixctrl`, release `matrixctrl`, image `ghcr.io/bxnny/matrixctrl`,
-imported into k3s containerd — no registry). Public via Traefik ingress + external CF tunnel.
-Next: **Phase 1.5 (setup/onboarding — see docs/SETUP.md)**, then Phase 2 (user/room mgmt).
+## Current Phase
+Phase 1 complete + Phase 1.5 (setup/onboarding) mostly done; deployed in-cluster
+(ns `matrixctrl`, image `ghcr.io/bxnnyg/matrixctrl`). Full phase breakdown in
+[docs/ROADMAP.md](docs/ROADMAP.md); onboarding design in [docs/SETUP.md](docs/SETUP.md).
 **Do NOT implement Phase 2+ features (user/room management, federation, bridges) yet.**
 
 ## Testing
