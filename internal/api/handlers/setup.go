@@ -5,8 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/bxnny/matrixctrl/internal/config"
-	"github.com/bxnny/matrixctrl/internal/helm"
+	"github.com/bxnnyg/matrixctrl/internal/config"
+	"github.com/bxnnyg/matrixctrl/internal/helm"
 )
 
 // SetupHandler powers the Phase 1.5 onboarding/health view: is ESS deployed, is

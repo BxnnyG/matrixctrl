@@ -1,4 +1,4 @@
-module github.com/bxnny/matrixctrl
+module github.com/bxnnyg/matrixctrl
 
 go 1.26.0
 

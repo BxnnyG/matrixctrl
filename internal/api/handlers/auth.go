@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
-	"github.com/bxnny/matrixctrl/internal/auth"
+	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/auth"
 )
 
 type TokenService interface {

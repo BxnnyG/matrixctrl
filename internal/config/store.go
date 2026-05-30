@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	gitpkg "github.com/bxnny/matrixctrl/internal/git"
+	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
 	"gopkg.in/yaml.v3"
 )
 

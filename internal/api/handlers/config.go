@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bxnny/matrixctrl/internal/config"
-	cfgschema "github.com/bxnny/matrixctrl/internal/config/schema"
-	gitpkg "github.com/bxnny/matrixctrl/internal/git"
+	"github.com/bxnnyg/matrixctrl/internal/config"
+	cfgschema "github.com/bxnnyg/matrixctrl/internal/config/schema"
+	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
 )
 
 type ConfigHandler struct {

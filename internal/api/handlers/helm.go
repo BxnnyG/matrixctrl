@@ -13,11 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	authmw "github.com/bxnny/matrixctrl/internal/api/middleware"
-	"github.com/bxnny/matrixctrl/internal/auth"
-	"github.com/bxnny/matrixctrl/internal/config"
-	"github.com/bxnny/matrixctrl/internal/helm"
-	"github.com/bxnny/matrixctrl/internal/hooks"
+	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/auth"
+	"github.com/bxnnyg/matrixctrl/internal/config"
+	"github.com/bxnnyg/matrixctrl/internal/helm"
+	"github.com/bxnnyg/matrixctrl/internal/hooks"
 )
 
 type HelmHandler struct {
