@@ -18,6 +18,7 @@ interface SetupStatus {
   oidc_configured: boolean;
   bootstrap_active: boolean;
   config_sections: number;
+  mas_host?: string;
 }
 interface ESSVersion { version: string }
 interface DeployResponse { upgrade_id: string }
@@ -52,8 +53,6 @@ function Setup() {
   }
   if (!data) return null;
 
-  const allGreen = data.ess_installed && data.config_sections > 0;
-
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -61,13 +60,15 @@ function Setup() {
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Integrationsstatus von MatrixCtrl ↔ ESS ↔ Matrix-Login.</p>
       </div>
 
-      {allGreen ? (
+      {!data.ess_installed ? (
+        <DeployWizard release={data.ess_release} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+      ) : !data.oidc_configured ? (
+        <ConnectCard masHost={data.mas_host} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+      ) : (
         <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm">
           <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
           <span className="text-green-800 dark:text-green-300">Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment.</span>
         </div>
-      ) : (
-        <DeployWizard release={data.ess_release} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
       )}
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -87,6 +88,77 @@ function Setup() {
           <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">docs/SETUP.md</code>.
         </div>
       </div>
+    </div>
+  );
+}
+
+function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void }) {
+  const [issuer, setIssuer] = useState(masHost ? `https://${masHost}` : "");
+  const [publicUrl, setPublicUrl] = useState(window.location.origin);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [done, setDone] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const connect = useMutation({
+    mutationFn: () => api.post<DeployResponse>("/api/v1/setup/connect-oidc", { issuer, public_url: publicUrl }),
+    onSuccess: (res) => { setRunId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
+  });
+
+  useUpgradeStream(runId, {
+    onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
+    onDone: (s) => { setDone(true); setStatus(s); if (s === "success") onDone(); },
+  });
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-900/60 rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40">
+        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-[#0DBD8B] text-white shrink-0"><ShieldCheck className="w-[18px] h-[18px]" /></div>
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Matrix-Login verbinden</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Registriert MatrixCtrl als OIDC-Client in MAS — automatisch, kein manuelles Patchen</div>
+        </div>
+      </div>
+
+      {!runId ? (
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">MAS URL (Issuer)</label>
+              <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://mas.example.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">MatrixCtrl URL</label>
+              <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => connect.mutate()} disabled={!issuer || !publicUrl || connect.isPending}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+              {connect.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} Verbinden
+            </button>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Schreibt den Client in die MAS-Config + helm upgrade ess + schaltet auf OIDC um</span>
+            {connect.isError && <span className="text-xs text-red-600 dark:text-red-400">{(connect.error as Error).message}</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-medium text-gray-700 dark:text-gray-300">Verbinde…</span>
+            {done && status === "success" && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Verbunden</span>}
+            {done && status === "hooks-failed" && <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400"><AlertTriangle className="w-3.5 h-3.5" /> Teilweise</span>}
+            {done && status === "failed" && <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><XCircle className="w-3.5 h-3.5" /> Fehlgeschlagen</span>}
+          </div>
+          <div ref={logRef} className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-green-400 max-h-72 overflow-y-auto">
+            {logs.map((line, i) => <div key={i} className={`leading-relaxed ${line.startsWith("ERROR") ? "text-red-400" : line.startsWith("WARNING") ? "text-yellow-400" : ""}`}>{line}</div>)}
+            {!done && <div className="animate-pulse mt-1">▋</div>}
+          </div>
+          {done && status === "success" && <p className="text-xs text-green-600 dark:text-green-400">Abmelden und über Matrix neu anmelden.</p>}
+        </div>
+      )}
     </div>
   );
 }
