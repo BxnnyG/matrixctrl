@@ -13,3 +13,7 @@ matrixctrl-*
 # Local dev artifacts
 *.log
 /tmp/
+
+# Instance-specific Helm values (contain real secrets) — never commit
+deploy/helm/*/values.*.yaml
+!deploy/helm/*/values.yaml

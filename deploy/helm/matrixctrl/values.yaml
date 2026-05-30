@@ -2,7 +2,7 @@
 # Minimal required fields: image.tag, secrets.*
 
 image:
-  repository: ghcr.io/bxnny/matrixctrl
+  repository: ghcr.io/bxnnyg/matrixctrl
   tag: "latest"
   pullPolicy: IfNotPresent
 
@@ -40,7 +40,7 @@ storage:
 # Ingress / hostname
 ingress:
   enabled: true
-  host: matrixctrl.bxnny.de
+  host: matrixctrl.example.com
   # Traefik entrypoint — "websecure" for HTTPS, "web" for HTTP
   entrypoint: websecure
   tls: true
@@ -60,14 +60,15 @@ secrets:
   # Initial bootstrap admin password (logged on first run if unset).
   adminPassword: ""
 
-# OIDC via MAS — optional; leave clientId empty to disable
+# OIDC via MAS — optional. Leave clientId empty to start in bootstrap mode and
+# wire OIDC later via the in-app Setup → "Connect Matrix Login" flow.
 oidc:
   enabled: false
-  issuer: "https://mas-matrix.bxnny.de"
-  clientId: "01KSPV9ZMR7NB4B2BBWMPYSD1P"
-  clientSecret: "REDACTED-rotated"
+  issuer: "https://mas.example.com"
+  clientId: ""
+  clientSecret: ""
   # Full public URL that MAS will redirect back to after login
-  redirectUri: "https://matrixctrl.bxnny.de/api/v1/auth/oidc/callback"
+  redirectUri: "https://matrixctrl.example.com/api/v1/auth/oidc/callback"
   # Comma-separated list of allowed MAS user IDs (ULIDs). Takes priority over
   # requireAdmin. Leave empty to use the admin check below.
   allowedUsers: ""

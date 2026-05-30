@@ -68,7 +68,7 @@ deploy/dev/                — docker-compose for local dev (Postgres only)
    alert in UI, allow re-trigger. Never roll back a good deployment over a patch failure.
 
 ## ESS Deployment Context
-- K3s single node: `infra-core-prod-matrix-01` (10.0.25.180), namespace `ess`, release `ess`
+- K3s single node: `<k3s-node>` (<node-ip>), namespace `ess`, release `ess`
 - Current ESS version: `matrix-stack-26.5.1`
 - Config repo at `/data/config-repo/` (PVC): one YAML per ESS section (synapse.yaml,
   matrixAuthenticationService.yaml, elementWeb.yaml, matrixRTC.yaml, postgres.yaml, … +
