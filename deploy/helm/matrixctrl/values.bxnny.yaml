@@ -2,7 +2,7 @@
 # Secrets (db-password, jwt-secret) auto-generate on first install.
 
 image:
-  tag: "0.1.6"
+  tag: "0.1.7"
   pullPolicy: IfNotPresent   # use the image imported into k3s containerd
 
 ess:

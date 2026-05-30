@@ -91,6 +91,7 @@ func NewRouter(deps Deps) http.Handler {
 		r.Route("/api/v1/setup", func(r chi.Router) {
 			r.Get("/status", deps.Setup.Status)
 			r.Get("/chart-defaults", deps.Setup.ChartDefaults)
+			r.Post("/deploy-ess", deps.Helm.DeployESS)
 		})
 
 		r.Route("/api/v1/helm", func(r chi.Router) {
