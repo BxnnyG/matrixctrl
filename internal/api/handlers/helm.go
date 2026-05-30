@@ -311,6 +311,102 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeployESS performs a greenfield ESS install (Phase 1.5): seed the config from
+// the chart's commented defaults, apply server name + derived hostnames, then
+// helm install. Refuses if a release already exists. Streams progress like Upgrade.
+func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromContext(r.Context())
+	var req struct {
+		Version    string `json:"version"`
+		ServerName string `json:"server_name"`
+	}
+	if err := Decode(r, &req); err != nil || req.Version == "" || req.ServerName == "" {
+		Error(w, http.StatusBadRequest, "version and server_name are required")
+		return
+	}
+
+	// Guard: never clobber an existing release.
+	if rel, err := h.helm.GetRelease(h.essRelease); err == nil && rel != nil {
+		Error(w, http.StatusConflict, "release '"+h.essRelease+"' already exists — use Upgrade, not Deploy")
+		return
+	}
+
+	upgradeID := uuid.New().String()
+	stream := &upgradeStream{status: "pending"}
+	h.mu.Lock()
+	h.streams[upgradeID] = stream
+	h.mu.Unlock()
+
+	sn := req.ServerName
+	version := req.Version
+
+	go func() {
+		ctx := context.Background()
+
+		stream.emit("Pulling ESS chart " + version + " for default config…")
+		values, err := h.helm.DefaultChartValues(version)
+		if err != nil {
+			stream.emit("ERROR: " + err.Error())
+			stream.finish("failed")
+			return
+		}
+
+		stream.emit("Seeding per-section config from chart defaults…")
+		if err := h.configStore.SeedSections(ctx, values, false); err != nil {
+			stream.emit("ERROR: seed config: " + err.Error())
+			stream.finish("failed")
+			return
+		}
+
+		// Server name + conventional component hostnames derived from it.
+		changes := map[string]interface{}{
+			"serverName":                               sn,
+			"synapse.ingress.host":                     "matrix." + sn,
+			"matrixAuthenticationService.ingress.host": "mas." + sn,
+			"elementWeb.ingress.host":                  "element." + sn,
+			"elementAdmin.ingress.host":                "admin." + sn,
+			"matrixRTC.ingress.host":                   "mrtc." + sn,
+			"wellKnownDelegation.ingress.host":         sn,
+		}
+		if err := h.configStore.SetSectionValues(ctx, changes, nil); err != nil {
+			stream.emit("WARNING: could not apply hostnames: " + err.Error())
+		}
+		if _, err := h.configStore.Commit(ctx, "config: greenfield seed for "+sn, userID); err != nil {
+			stream.emit("WARNING: git commit: " + err.Error())
+		}
+		stream.emit("Server name set to " + sn + " with derived hostnames.")
+
+		contents, _ := h.configStore.MergedContent(ctx)
+		merged, err := config.MergeToMap(contents)
+		if err != nil {
+			stream.emit("ERROR: merge config: " + err.Error())
+			stream.finish("failed")
+			return
+		}
+
+		stream.emit("Installing ESS " + version + " — this can take several minutes…")
+		result, err := h.helm.Install(ctx, h.essRelease, version, merged)
+		if err != nil {
+			stream.emit("ERROR: " + err.Error())
+			stream.finish("failed")
+			return
+		}
+
+		stream.emit(fmt.Sprintf("ESS installed (revision %s). Running post-install hooks…", intToStr(result.Revision)))
+		_, hookErr := h.engine.RunTrigger(ctx, hooks.TriggerPostUpgrade, "deploy:"+h.essRelease, userID)
+		finalStatus := "success"
+		if hookErr != nil {
+			finalStatus = "hooks-failed"
+			stream.emit("WARNING: post-install hooks failed: " + hookErr.Error())
+		} else {
+			stream.emit("ESS deployed successfully. Configure Matrix login under Setup once MAS is up.")
+		}
+		stream.finish(finalStatus)
+	}()
+
+	JSON(w, http.StatusAccepted, map[string]string{"upgrade_id": upgradeID})
+}
+
 func (h *HelmHandler) Rollback(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var req struct {
