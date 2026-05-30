@@ -50,23 +50,32 @@ deploy/dev/                — docker-compose for local dev (Postgres only)
 ## Key Architectural Decisions
 1. **NO exec("kubectl") or exec("helm") anywhere.** Use client-go dynamic client and helm SDK.
 2. **go-git not git2go** — pure Go, no CGO, no git binary needed in runtime image.
-3. **Config slices stay as separate files** in a git repo at `/data/config-repo/` (PVC mount).
-   Merge order defined in `config-slices.json` in that directory.
+3. **Config is ONE YAML file per ESS section** (synapse.yaml, matrixRTC.yaml, … + general.yaml)
+   in a git repo at `/data/config-repo/` (PVC), listed in `config-slices.json`. They merge into
+   the helm values (disjoint top-level keys → order-independent). The legacy monolith
+   (values/hostnames/rtc/tls) + easy.yaml overlay were migrated away by `Store.MigrateToSections`.
+   Form edits are comment-preserving (yaml.v3 Node surgery in `internal/config/yamledit.go`).
 4. **Helm release storage driver: "secret"** (default, secrets named `sh.helm.release.v1.ess.vN`).
-5. **Phase 0 auth: bootstrap mode** (single admin, bcrypt+JWT). Phase 1: OIDC via MAS.
-6. **PostgreSQL runs as sidecar** in same pod for Phase 0 (single replica — acceptable for homelab).
-7. **Frontend embedded in Go binary** via `//go:embed all:web/dist`.
+5. **Auth: admin-only OIDC via MAS.** OIDC `sub` is a ULID; admin status is verified through
+   the MAS Admin API (`/api/admin/v1/users/{sub}`) using a client_credentials token
+   (`urn:mas:admin`) from MatrixCtrl's own client. Bootstrap mode (bcrypt+JWT) still exists and
+   auto-activates when OIDC is unset (needed for greenfield — see docs/SETUP.md). JWT key is
+   auto-generated and persisted in the DB (`instance_settings`, migration 006).
+6. **PostgreSQL runs as sidecar** in same pod (single replica — acceptable for homelab).
+7. **Frontend embedded in Go binary** via `//go:embed all:dist` reading `cmd/matrixctrl/dist/`
+   (NOT web/dist) — the Makefile/Dockerfile copy web/dist → cmd/matrixctrl/dist before `go build`.
 8. **Hook failure ≠ Helm rollback.** If Helm succeeds but hooks fail → status `hooks-failed`,
    alert in UI, allow re-trigger. Never roll back a good deployment over a patch failure.
 
 ## ESS Deployment Context
 - K3s single node: `infra-core-prod-matrix-01` (10.0.25.180), namespace `ess`, release `ess`
 - Current ESS version: `matrix-stack-26.5.1`
-- Config slices at `/data/config-repo/` (copied from `/root/ess-config-values/` on first init):
-  - `values.yaml` — main ESS config (~5252 lines, heavily commented)
-  - `hostnames.yaml` — ingress hosts per component
-  - `rtc.yaml` — LiveKit SFU + TURN overrides
-  - `tls.yaml` — cert-manager clusterIssuer
+- Config repo at `/data/config-repo/` (PVC): one YAML per ESS section (synapse.yaml,
+  matrixAuthenticationService.yaml, elementWeb.yaml, matrixRTC.yaml, postgres.yaml, … +
+  general.yaml for serverName/certManager/labels/ingress/matrixTools). `_backup-pre-sections/`
+  holds the pre-migration monolith. Host backup: `/root/matrixctrl-config-backup-*`.
+- MatrixCtrl's OWN MAS client: id `01KSPV9ZMR7NB4B2BBWMPYSD1P` (in ESS values
+  `matrixAuthenticationService.additional` + `policy.data.admin_clients`).
 - MAS (Matrix Auth Service): `http://ess-matrix-authentication-service.ess.svc.cluster.local.:8080`
 - Synapse Admin API: `http://ess-synapse-main.ess.svc.cluster.local.:8008`
 - Element Admin: `https://admin-matrix.bxnny.de` (existing, separate from MatrixCtrl)
@@ -98,9 +107,13 @@ Tables:
 - Typed fetch client in `web/src/lib/api.ts`
 - WebSocket hook in `web/src/lib/ws.ts`
 
-## Current Phase: 0 (PoC)
-Phase 0 delivers: hook system, status dashboard, Helm upgrade via UI with auto post-hooks.
-Phase 1 delivers: full config UI (Monaco + Easy Mode), upgrade wizard, git versioning, OIDC.
+## Current Phase: 1 COMPLETE — deployed in-cluster (as of 2026-05-30)
+Phase 0 (done): hook system, status dashboard, Helm upgrade via UI with auto post-hooks.
+Phase 1 (done): full config UI (Standard form + YAML per section), upgrade wizard, git
+versioning, admin-only OIDC via MAS, self-configuring secrets, own Helm chart.
+Now runs IN k8s (ns `matrixctrl`, release `matrixctrl`, image `ghcr.io/bxnny/matrixctrl`,
+imported into k3s containerd — no registry). Public via Traefik ingress + external CF tunnel.
+Next: **Phase 1.5 (setup/onboarding — see docs/SETUP.md)**, then Phase 2 (user/room mgmt).
 **Do NOT implement Phase 2+ features (user/room management, federation, bridges) yet.**
 
 ## Testing
