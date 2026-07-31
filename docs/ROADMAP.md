@@ -30,22 +30,22 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 
 | # | Etappe | Status |
 |---|--------|--------|
-| 1 | Project skeleton — Go module, chi router, React app, Docker/Helm scaffolding | ✅ 2026-05-27 · `e589ec1` |
-| 2 | Phase 0 feature-complete — hooks + upgrade pages, SPA routing fix | ✅ 2026-05-27 · `a56b048` |
-| 3 | Dashboard basics — dark mode, node metrics, evicted pods, ESS version | ✅ 2026-05-27 · `8a08b02` |
-| 4 | Config management — git-backed YAML slice editor (Phase 1 core) | ✅ 2026-05-27 · `840e3bf` |
-| 5 | Config history & rollback, Config→Helm wiring, pod actions, system tab | ✅ 2026-05-28 · `f9ce246` |
-| 6 | Auth — OIDC via MAS, admin-only via MAS Admin API, production chart | ✅ 2026-05-29 · `5f9dcb3`, `ad6da98` |
-| 7 | Self-configuring install — auto-generated secrets, login redesign, in-cluster cutover | ✅ 2026-05-29 · `617f463`, `94fdb36` |
-| 8 | Per-section config — Standard/YAML modes, comment-preserving migrator, full-bleed settings | ✅ 2026-05-30 · `b77c9e7` |
-| 9 | Phase 1.5 setup — greenfield deploy, connect-OIDC, ESS discovery + adopt | ✅ 2026-05-30 · `23ee787`, `443d497`, `13eeb4d` |
-| 10 | Public-repo hardening — sanitised chart, AGPL, community health files, module rename | ✅ 2026-05-30 · `803dacc`…`a4869ec` |
+| 1 | Project skeleton — Go module, chi router, React app, Docker/Helm scaffolding | ✅ 2026-05-27 · `8a0addc` |
+| 2 | Phase 0 feature-complete — hooks + upgrade pages, SPA routing fix | ✅ 2026-05-27 · `9dacf8c` |
+| 3 | Dashboard basics — dark mode, node metrics, evicted pods, ESS version | ✅ 2026-05-27 · `e03f7a0` |
+| 4 | Config management — git-backed YAML slice editor (Phase 1 core) | ✅ 2026-05-27 · `6a899ec` |
+| 5 | Config history & rollback, Config→Helm wiring, pod actions, system tab | ✅ 2026-05-28 · `17f2e97` |
+| 6 | Auth — OIDC via MAS, admin-only via MAS Admin API, production chart | ✅ 2026-05-29 · `fc8c750`, `dc7b0c7` |
+| 7 | Self-configuring install — auto-generated secrets, login redesign, in-cluster cutover | ✅ 2026-05-29 · `ef4bdb1`, `baf8d2f` |
+| 8 | Per-section config — Standard/YAML modes, comment-preserving migrator, full-bleed settings | ✅ 2026-05-30 · `6cc23d1` |
+| 9 | Phase 1.5 setup — greenfield deploy, connect-OIDC, ESS discovery + adopt | ✅ 2026-05-30 · `a46dd74`, `c81ead8`, `eb4e69f` |
+| 10 | Public-repo hardening — sanitised chart, AGPL, community health files, module rename | ✅ 2026-05-30 · `284cb03`…`0566513` |
 | 11 | Design system — dark-only tokens, 3 directions, `mc.tsx` primitives, all screens restyled | ✅ 2026-06-04 · image 0.1.10 |
 | 12 | Observability & correctness — pod drill-down with restart cause, event feed, hook editor, version-list + diff fixes | ✅ 2026-07-31 · image 0.1.12 |
 | 13 | CI & verification chain — GitHub Actions, 22 frontend tests, headless-browser route check | ✅ 2026-07-31 · [plan](plans/etappe-13-ci-and-verification.md) |
 
 > Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
-> reviewable slices (`1df5690`…`75dc5e4`).
+> reviewable slices (`9b226c5`…`c8fbd4d`).
 
 ## Up next (order is a proposal, movable)
 
@@ -116,4 +116,5 @@ The things you need at 3 a.m. **No passwords here — only where they live.**
 
 | Date | What changed |
 |------|--------------|
+| 2026-08-01 | Commit hashes in the etappe table below were rewritten by the history sanitisation ([DESIGN.md §4.14](DESIGN.md)); the old hashes no longer resolve. |
 | 2026-07-31 | Vision, non-goals and architecture moved to [VISION.md](VISION.md); etappe chronicle reconstructed from `git log`; operations notes added. |

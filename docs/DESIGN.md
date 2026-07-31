@@ -242,7 +242,7 @@ By impact, not by effort:
 **Rationale:** no CGO, no git binary in the image.
 **Consequences:** we implement diff ourselves — which is exactly where §4.11 later bit us. Affects S1.
 
-### §4.3 — One YAML file per ESS section (2026-05-30, operator; commit `b77c9e7`)
+### §4.3 — One YAML file per ESS section (2026-05-30, operator; commit `6cc23d1`)
 **Question:** keep the ESS monolith (`values.yaml` + overrides) or split it?
 **Decision:** one file per top-level section, listed in `config-slices.json`; merged into Helm values. Legacy monolith migrated by `Store.MigrateToSections`.
 **Rationale:** top-level keys are disjoint, so the merge is order-independent, and the UI gets a natural navigation unit.
@@ -253,7 +253,7 @@ By impact, not by effort:
 **Rationale:** the chart's `##` comments *are* the field help text; rewriting would delete the documentation the UI depends on.
 **Consequences:** invariant #2 of S11. Affects S1.
 
-### §4.5 — Admin-only OIDC via the MAS Admin API (2026-05-29, operator; commit `ad6da98`)
+### §4.5 — Admin-only OIDC via the MAS Admin API (2026-05-29, operator; commit `dc7b0c7`)
 **Decision:** OIDC `sub` (a ULID) is checked against `/api/admin/v1/users/{sub}` using a client-credentials token.
 **Rationale:** no second user database; Matrix admin status is the single source of truth.
 **Consequences:** bootstrap auth must remain for greenfield — the bootstrap paradox in [SETUP.md](SETUP.md). Affects S5, S6.
@@ -263,14 +263,14 @@ By impact, not by effort:
 **Rationale:** the deployment is good; rolling back a good release over a patch failure is worse than the patch failure.
 **Consequences:** operators must notice `hooks-failed` — currently only visible in the UI (gap in S3).
 
-### §4.7 — AGPL-3.0 (2026-05-30, operator; commit `cdd444b`)
+### §4.7 — AGPL-3.0 (2026-05-30, operator; commit `6476a8b`)
 **Decision:** AGPL-3.0, deliberately.
 **Rationale:** the counterweight to ESS Pro — a modified network service must offer its source.
 **Consequences:** rules out a proprietary hosted fork. Affects [VISION.md](VISION.md).
 
-### §4.8 — Public repository, sanitised (2026-05-30, operator; commits `803dacc`, `5dd6551`)
+### §4.8 — Public repository, sanitised (2026-05-30, operator; commits `284cb03`, `d8dcabf`)
 **Decision:** repo is public; instance values are gitignored and excluded from chart and image; no personal names anywhere.
-**Consequences:** every doc and default must assume a stranger reads it. Cluster hostnames/IPs are masked in docs — but see [BACKLOG.md](BACKLOG.md) P0-1, the git history still carries one.
+**Consequences:** every doc and default must assume a stranger reads it. Cluster hostnames/IPs are masked in docs, and since 2026-08-01 in the git history too (§4.14).
 
 ### §4.9 — Dark-only design system with three switchable directions (2026-06-04, operator)
 **Decision:** token-driven, dark-only; Aura/Carbon/Graphite × accent × density via `data-*` attributes; primitives in `mc.tsx`.
@@ -298,3 +298,22 @@ By impact, not by effort:
 **Question:** the enriched dashboard now covers most of what `/system` showed — remove the page?
 **Decision:** kept, pending the operator's call. Only node conditions, the metric sparklines, the PVC list and per-namespace pod counts remain unique to it.
 **Status:** **open (raised 2026-07-31)** — reversible either way; removal is a route deletion.
+
+### §4.14 — The git history was rewritten to remove the cluster hostname (2026-08-01, operator)
+**Question:** 39 commits carried `root@<k3s-node>` as their author, and 30 of them
+carried `<k3s-node>` plus the node's private IP inside `CLAUDE.md`. The docs had
+been sanitised (§4.8); the history had not.
+**Decision:** rewrite all 51 commits with `git filter-repo` (`--mailmap` for the
+identity, `--replace-text` for the two literals) and force-push.
+**Rationale:** sanitising the working tree while the same value sits one `git show`
+away is not sanitising. The disclosure is infrastructure, not a credential — the IP
+is RFC1918 and unreachable from outside — but §4.8 says a stranger reads this repo.
+**Verification:** the rewrite is content-neutral by construction — the HEAD tree
+hash is **unchanged** (`490e2573`), all 51 subjects and author dates are identical,
+and only the author identity and the two literals differ. Old tip `2ff2370` →
+new tip `2ff2370`. CI is green on the rewritten tip.
+**Consequences:** every commit hash changed, so existing clones must re-clone —
+there were no forks and no open PRs, so nobody else was affected. **The old objects
+remain reachable by SHA on GitHub** until GitHub garbage-collects them; only GitHub
+Support can force that. Tracked as [BACKLOG.md](BACKLOG.md) P0-1b. Backup of the
+pre-rewrite history is a verified `git bundle` held outside the repo.
