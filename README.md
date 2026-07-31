@@ -131,9 +131,17 @@ make test           # unit tests
 make dev            # run against a local Postgres (docker compose)
 ```
 
-Go 1.26, Node 20. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for status and phases,
-[`docs/SETUP.md`](docs/SETUP.md) for the onboarding design, and [`CLAUDE.md`](CLAUDE.md)
-for full developer context.
+Go 1.26, Node 20.
+
+| Document | What it answers |
+|---|---|
+| [`docs/VISION.md`](docs/VISION.md) | Where this is going, and what it deliberately won't do |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | What already exists — systems, gaps, dated decisions |
+| [`docs/PROZESS.md`](docs/PROZESS.md) | How changes are planned, verified and shipped |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, the etappe log, and operations notes |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | What's worth doing next, and an honest state of the project |
+| [`docs/SETUP.md`](docs/SETUP.md) | The onboarding/bootstrap design |
+| [`CLAUDE.md`](CLAUDE.md) | Rules for AI agents working in this repo |
 
 ## License
 

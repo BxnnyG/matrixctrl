@@ -1,126 +1,119 @@
-# MatrixCtrl Roadmap
+# MatrixCtrl — Roadmap
 
-The single source of truth for where MatrixCtrl is and where it's going.
-For the onboarding/setup design see [SETUP.md](SETUP.md); for developer context see
-[../CLAUDE.md](../CLAUDE.md).
+> Where the project has been and what comes next.
+> Goal: [VISION.md](VISION.md) · Process: [PROZESS.md](PROZESS.md) ·
+> Systems: [DESIGN.md](DESIGN.md) · Onboarding design: [SETUP.md](SETUP.md)
 
-## Vision
+An **etappe** is one release-worthy feature package that can be deployed (§4.12).
+Phases below are the coarse grid; etappes are the unit of work.
 
-An open-source Day-2 admin layer for self-hosted Matrix / Element Server Suite (ESS)
-Community — the config, upgrade, and operations UI that ESS Pro keeps proprietary,
-as free software for homelabs, small orgs, schools, and non-profits.
-*What UniFi is for networks, MatrixCtrl wants to be for Matrix.*
-
-## Status at a glance
+## Phases at a glance
 
 | Phase | Scope | State |
 |-------|-------|-------|
 | **0 — Discovery & PoC** | Architecture, Helm SDK + hooks PoC, OIDC PoC, schema extraction | ✅ done |
 | **1 — MVP (the differentiators)** | Config management, Helm upgrades + hooks, dashboard, OIDC, own chart | ✅ done |
-| **1.5 — Setup & Onboarding** | Greenfield deploy, adopt existing, auto-register OIDC, runtime auth switch | ✅ mostly done* |
+| **1.5 — Setup & Onboarding** | Greenfield deploy, adopt existing, auto-register OIDC, runtime auth switch | ⏳ mostly done* |
 | **2 — Element-Admin parity** | Users, rooms, reports/moderation | ⬜ next |
 | **3 — Day-2 operations** | RTC monitoring, TLS/DNS, backup/restore, full dashboard | ⬜ |
 | **4 — Federation & bridges** | Federation management, mautrix bridges | ⬜ |
 | **5 — Compliance & observability** | Cross-component audit, worker insights | ⬜ |
 | **6 — Multi-instance & polish** | Multiple instances, i18n (incl. English UI) | ⬜ |
 
-\* Phase 1.5 building blocks are live; the full greenfield install happy-path still
-needs an end-to-end test on a fresh cluster.
+\* The building blocks are live; the greenfield happy path still has no
+end-to-end test on a fresh cluster (S6 — the largest open gap).
 
----
+## Etappes
 
-## Phase 0 — Discovery & PoC ✅
+Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
+2026-05-30) and grouped after the fact; they were not planned under this process.
 
-- Analysed the ESS Helm chart structure per version; extracted the values JSON Schema.
-- Proved out the Helm SDK (upgrade + post-hooks) and OIDC-via-MAS in Go.
-- Decided the architecture: Go + Helm SDK + client-go + go-git, React frontend,
-  single container, own Helm chart. **Deliverable:** ADR + PoC.
+| # | Etappe | Status |
+|---|--------|--------|
+| 1 | Project skeleton — Go module, chi router, React app, Docker/Helm scaffolding | ✅ 2026-05-27 · `e589ec1` |
+| 2 | Phase 0 feature-complete — hooks + upgrade pages, SPA routing fix | ✅ 2026-05-27 · `a56b048` |
+| 3 | Dashboard basics — dark mode, node metrics, evicted pods, ESS version | ✅ 2026-05-27 · `8a08b02` |
+| 4 | Config management — git-backed YAML slice editor (Phase 1 core) | ✅ 2026-05-27 · `840e3bf` |
+| 5 | Config history & rollback, Config→Helm wiring, pod actions, system tab | ✅ 2026-05-28 · `f9ce246` |
+| 6 | Auth — OIDC via MAS, admin-only via MAS Admin API, production chart | ✅ 2026-05-29 · `5f9dcb3`, `ad6da98` |
+| 7 | Self-configuring install — auto-generated secrets, login redesign, in-cluster cutover | ✅ 2026-05-29 · `617f463`, `94fdb36` |
+| 8 | Per-section config — Standard/YAML modes, comment-preserving migrator, full-bleed settings | ✅ 2026-05-30 · `b77c9e7` |
+| 9 | Phase 1.5 setup — greenfield deploy, connect-OIDC, ESS discovery + adopt | ✅ 2026-05-30 · `23ee787`, `443d497`, `13eeb4d` |
+| 10 | Public-repo hardening — sanitised chart, AGPL, community health files, module rename | ✅ 2026-05-30 · `803dacc`…`a4869ec` |
+| 11 | Design system — dark-only tokens, 3 directions, `mc.tsx` primitives, all screens restyled | ✅ 2026-06-04 · image 0.1.10 · **uncommitted** |
+| 12 | Observability & correctness — pod drill-down with restart cause, event feed, hook editor, version-list + diff fixes | ✅ 2026-07-31 · image 0.1.12 · **uncommitted** |
+| 13 | CI & verification chain | ⏳ planned — [plan](plans/etappe-13-ci-and-verification.md) |
 
-## Phase 1 — MVP, the differentiators ✅
+> **Etappes 11 and 12 are deployed but not committed.** The working tree holds
+> 107 changed files against `a4869ec`. Committing them is the first task of
+> etappe 13 — see [BACKLOG.md](BACKLOG.md) P0-2.
 
-The part nobody else builds.
+## Up next (order is a proposal, movable)
 
-- **Dashboard (minimal)** — component health (Synapse, MAS, RTC, Element, Postgres),
-  pod status, restarts, node CPU/memory, evicted-pod cleanup, live pod logs.
-- **Configuration management** — one versioned YAML file per ESS section, edited as a
-  schema-driven **Standard** form *or* raw **YAML** (Monaco), comment-preserving so the
-  in-file documentation survives edits. Git-backed: diff, history, rollback.
-  JSON-Schema validation before apply.
-- **Helm / update management** — version picker from the OCI registry, live upgrade
-  logs, and **post-upgrade hooks** that re-apply the SFU patches (hostNetwork,
-  `externalTrafficPolicy`) automatically — the core "patches survive upgrades" promise.
-  Config → Deploy applies config changes to the cluster in one click.
-- **Auth** — admin-only OIDC via MAS, verified through the MAS Admin API, with a local
-  bootstrap fallback. DB password + JWT key are self-generated.
-- **Deployment** — single container + Postgres sidecar, shipped as its own Helm chart.
+| # | Undertaking | Why now | Status |
+|---|-------------|---------|--------|
+| 13 | **CI & verification chain** (S9) | Nothing enforces the definition of done except memory. Everything else is riskier until this exists. | ⏳ |
+| 14 | **Greenfield end-to-end test** (S6) | "Works for anyone" is the product claim and it is unproven. Needs a throwaway cluster. | ⏳ |
+| 15 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.12 — the README currently mis-installs the project. | ⏳ |
+| 16 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
+| — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
 
-**Deliverable reached:** configs are no longer edited by hand in `vim`; Helm upgrades
-no longer break WebRTC calling.
+## Phase detail
 
-## Phase 1.5 — Setup & Onboarding ✅ (mostly)
-
-Turns "works for me" into "works for anyone". Design in [SETUP.md](SETUP.md).
-
-- ✅ **Greenfield deploy** — `/setup` wizard: pick a version + server name, seed config
-  from the chart's commented defaults, `helm install`.
-- ✅ **Adopt existing ESS** — auto-discovered across namespaces; seed config from
-  `helm get values` of the running release.
-- ✅ **Auto-register OIDC client** — written into the MAS config MatrixCtrl manages,
-  then helm-upgrade (no manual policy patching, because `admin_clients` is static MAS
-  policy the Admin API can't change).
-- ✅ **Runtime bootstrap→OIDC switch** — DB-backed OIDC config + hot-reload; no restart.
-- ⬜ End-to-end greenfield live test on a fresh cluster.
-
-## Phase 2 — Element-Admin parity ⬜ (next)
-
-Standard admin features so MatrixCtrl can stand alone and replace element-admin.
-
-- **User management** (Synapse Admin API + MAS Admin API) — list/search/filter, create,
-  deactivate/reactivate, reset password, set admin, external IdP links, devices/sessions.
+### Phase 2 — Element-Admin parity ⬜ (next)
+- **User management** (Synapse + MAS Admin APIs) — list/search/filter, create,
+  deactivate/reactivate, reset password, set admin, external IdP links, devices.
 - **Room management** — list/search, members, state, delete/quarantine, block.
-- **Reports & moderation** — event report queue, media quarantine, basic actions.
-- **Deliverable:** existing ESS admins can drop element-admin and switch to MatrixCtrl.
+- **Reports & moderation** — event report queue, media quarantine.
+- **Deliverable:** existing ESS admins can drop element-admin.
 
-## Phase 3 — Day-2 operations ⬜
+### Phase 3 — Day-2 operations ⬜
+- Element Call / RTC monitoring — active calls, SFU/TURN health, RTC patch state.
+- TLS / DNS — certificate expiry, well-known/federation checks, public-IP drift.
+- Backup / restore — scheduled Postgres + media + config backups, one-click restore.
+- Dashboard (full) — activity feed, resource trends, cert-expiry countdown.
 
-- **Element Call / RTC monitoring** — active calls, SFU/TURN health, the RTC patch state.
-- **TLS / DNS** — certificate overview + expiry, well-known/federation checks,
-  DynDNS / public-IP drift detection.
-- **Backup / restore** — scheduled backups of Postgres + media + config, one-click restore.
-- **Dashboard (full)** — activity feed (joins, federation errors, admin actions),
-  resource trends, cert-expiry countdown.
+### Phase 4 — Federation & bridges ⬜
+- Federation allowlist/denylist, per-server health checks.
+- Bridges — mautrix-* and Hookshot behind a common UI via a plugin architecture,
+  rather than hardcoding each one.
 
-## Phase 4 — Federation & bridges ⬜
+### Phase 5 — Compliance & observability ⬜
+- Unified, queryable audit log across Synapse + MAS + bridges + admin actions.
+- Per-worker load and scaling recommendations.
 
-- **Federation** — allowlist/denylist management, per-server health checks.
-- **Bridges** — mautrix-* and Hookshot via a plugin architecture (each bridge's admin
-  API wrapped behind a common UI), rather than hardcoding each one.
-
-## Phase 5 — Compliance & observability ⬜
-
-- **Audit / activity log** — a unified, queryable log across Synapse + MAS + bridges +
-  admin actions, cross-referenced with the user module.
-- **Worker / scaling insights** — per-worker load, scaling recommendations.
-- **Deliverable:** Pro-grade audit/compliance parity.
-
-## Phase 6 — Multi-instance & polish ⬜
-
+### Phase 6 — Multi-instance & polish ⬜
 - Manage multiple ESS instances from one MatrixCtrl.
-- **i18n**, including an English UI (the current UI ships in German).
-- Community-feedback-driven polish.
-
----
-
-## Non-goals (for now)
-
-- Reimplementing Synapse/MAS — MatrixCtrl wraps their APIs, it doesn't replace them.
-- Bare-metal / non-Kubernetes installs.
-- A hosted SaaS — MatrixCtrl is self-hosted first.
+- i18n, including an English UI (the current UI ships German only).
 
 ## Success criteria
 
-- **Phase 1:** you administer your production ESS entirely through MatrixCtrl;
-  Helm upgrades never break the SFU/hostNetwork config again.
+- **Phase 1:** the operator administers their production ESS entirely through
+  MatrixCtrl; Helm upgrades never break the SFU/hostNetwork config again.
 - **Phase 2:** MatrixCtrl fully replaces element-admin for user/room management.
-- **Phase 5:** an organisation with real compliance needs (a club, a school) runs it
-  in production.
+- **Phase 5:** an organisation with real compliance needs (a club, a school) runs
+  it in production.
+
+## Operations notes
+
+The things you need at 3 a.m. **No passwords here — only where they live.**
+
+| What | Where |
+|---|---|
+| MatrixCtrl namespace / release | `matrixctrl` / `matrixctrl` (Helm) |
+| Managed ESS | namespace `ess`, release `ess`, chart `matrix-stack` |
+| Public URL | `https://matrixctrl.example.com` (Traefik ingress, cert-manager) |
+| Image | `ghcr.io/bxnnyg/matrixctrl` — deployed via local `k3s ctr images import`, `pullPolicy: IfNotPresent` |
+| Instance Helm values | `deploy/helm/matrixctrl/values.bxnny.yaml` — **gitignored**, excluded from the packaged chart |
+| Config repo | `/data/config-repo` on a PVC inside the pod; one YAML per ESS section + `config-slices.json`. Pre-migration monolith in `_backup-pre-sections/` |
+| Database | PostgreSQL 16 sidecar in the same pod, own PVC |
+| Secrets | Kubernetes secrets in ns `matrixctrl`, auto-generated on first install (`resource-policy: keep`). JWT key persisted in DB table `instance_settings` |
+| MatrixCtrl's MAS client | defined in the ESS values under `matrixAuthenticationService.additional` + `policy.data.admin_clients` |
+| Go toolchain | `/usr/local/go/bin/go` (not on default PATH) |
+| Frontend embed | Go embeds `cmd/matrixctrl/dist` — the Makefile copies `web/dist` there before building |
+
+## Changes to this file
+
+| Date | What changed |
+|------|--------------|
+| 2026-07-31 | Vision, non-goals and architecture moved to [VISION.md](VISION.md); etappe chronicle reconstructed from `git log`; operations notes added. |
