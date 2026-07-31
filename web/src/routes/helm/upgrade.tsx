@@ -1,26 +1,19 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
-import { AlertTriangle, ArrowLeft, CheckCircle, XCircle, Zap } from "lucide-react";
+import { Card, Icon, Badge, Button, SectionTitle, Spinner } from "@/components/mc";
 
 export const Route = createFileRoute("/helm/upgrade")({
   component: UpgradeWizard,
 });
 
-interface HelmRelease {
-  chart_version: string;
-  revision: number;
-}
+interface HelmRelease { chart_version: string; revision: number }
+interface ESSVersion { version: string }
+interface UpgradeResponse { upgrade_id: string }
 
-interface ESSVersion {
-  version: string;
-}
-
-interface UpgradeResponse {
-  upgrade_id: string;
-}
+const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
 
 function UpgradeWizard() {
   const navigate = useNavigate();
@@ -54,155 +47,99 @@ function UpgradeWizard() {
   useUpgradeStream(upgradeId, {
     onLog: (line) => {
       setLogs((prev) => [...prev, line]);
-      // Auto-scroll
-      setTimeout(() => {
-        logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
-      }, 30);
+      setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30);
     },
     onDone: (status) => {
       setDone(true);
       setFinalStatus(status);
-      if (status === "success") {
-        setTimeout(() => navigate({ to: "/helm" }), 3000);
-      }
+      if (status === "success") setTimeout(() => navigate({ to: "/helm" }), 3000);
     },
   });
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center gap-3">
-        <Link to="/helm" className="text-gray-400 hover:text-gray-600">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="text-2xl font-semibold">ESS Upgrade</h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Button variant="ghost" size="sm" icon="chevLeft" onClick={() => navigate({ to: "/helm" })}>Release</Button>
       </div>
 
       {current && (
-        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-sm text-gray-800 dark:text-gray-200">
-          Aktuelle Version:{" "}
-          <code className="font-mono font-medium">{current.chart_version}</code>
-          {" · "}Revision #{current.revision}
-        </div>
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+          <Icon name="helm" size={18} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Aktuell:</span>
+          <code style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{essVersion(current.chart_version)}</code>
+          <Badge tone="neutral" size="sm">Revision #{current.revision}</Badge>
+        </Card>
       )}
 
-      <div className="bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 flex gap-3 text-sm">
-        <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-        <div>
-          <strong className="text-yellow-800 dark:text-yellow-300">Post-Upgrade Hooks werden automatisch ausgeführt.</strong>
-          <br />
-          <span className="text-yellow-700 dark:text-yellow-400">SFU hostNetwork und Service externalTrafficPolicy werden nach dem Upgrade gepatcht.</span>
+      <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-warn) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
+        <Icon name="alert" size={18} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
+        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+          <strong style={{ color: "var(--text)" }}>Post-Upgrade-Hooks laufen automatisch.</strong>
+          <div style={{ color: "var(--text-dim)", marginTop: 2 }}>SFU <code style={{ fontFamily: "var(--mono)" }}>hostNetwork</code> und Service <code style={{ fontFamily: "var(--mono)" }}>externalTrafficPolicy</code> werden nach dem Upgrade gepatcht.</div>
         </div>
-      </div>
+      </Card>
 
       {!upgradeId ? (
-        <div className="space-y-4">
+        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <SectionTitle sub="Zielversion für das ESS-Helm-Release wählen">Upgrade konfigurieren</SectionTitle>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Zielversion
-            </label>
-            <select
-              value={selectedVersion}
-              onChange={(e) => setSelectedVersion(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Version wählen...</option>
-              {versions && versions.length > 0 && (
-                <option value={versions[0].version}>
-                  Latest — {versions[0].version}
-                </option>
-              )}
-              {versions?.map((v) => (
-                <option key={v.version} value={v.version}>
-                  {v.version}
-                  {v.version === current?.chart_version ? " (aktuell)" : ""}
-                </option>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 8 }}>Zielversion</label>
+            <select value={selectedVersion} onChange={(e) => setSelectedVersion(e.target.value)}
+              className="mc-input" style={{ width: "100%", padding: "9px 12px", borderRadius: "var(--radius-sm)", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 13.5, fontFamily: "var(--font)" }}>
+              <option value="">Version wählen…</option>
+              {versions?.map((v, i) => (
+                <option key={v.version} value={v.version}>{essVersion(v.version)}{i === 0 ? " — latest" : ""}{v.version === current?.chart_version ? " (aktuell)" : ""}</option>
               ))}
             </select>
           </div>
-
-          <button
-            onClick={() => upgrade.mutate(selectedVersion)}
-            disabled={!selectedVersion || upgrade.isPending}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            {upgrade.isPending ? "Starte..." : "Upgrade starten"}
-          </button>
-
-          {upgrade.isError && (
-            <p className="text-sm text-red-600">{(upgrade.error as Error).message}</p>
-          )}
-        </div>
+          <div>
+            <Button variant="primary" icon="upload" disabled={!selectedVersion || upgrade.isPending} onClick={() => upgrade.mutate(selectedVersion)}>
+              {upgrade.isPending ? <><Spinner size={14} /> Starte…</> : "Upgrade starten"}
+            </Button>
+          </div>
+          {upgrade.isError && <div style={{ fontSize: 13, color: "var(--status-err)" }}>{(upgrade.error as Error).message}</div>}
+        </Card>
       ) : (
-        <div className="space-y-4">
-          {/* Log terminal */}
-          <div
-            ref={logRef}
-            className="bg-gray-950 rounded-xl p-4 font-mono text-xs text-green-400 min-h-48 max-h-96 overflow-y-auto"
-          >
-            {logs.map((line, i) => (
-              <div key={i} className="leading-relaxed">{line}</div>
-            ))}
-            {!done && <div className="animate-pulse mt-1">▋</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", minHeight: 200, maxHeight: 400, overflowY: "auto", lineHeight: 1.6 }}>
+            {logs.map((line, i) => <div key={i}>{line}</div>)}
+            {!done && <div style={{ animation: "mc-ping 1.2s ease infinite", marginTop: 2 }}>▋</div>}
           </div>
 
-          {/* Final status banner */}
           {done && finalStatus === "success" && (
-            <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">
-              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
-              <div>
-                <strong className="text-green-800 dark:text-green-300">Upgrade erfolgreich.</strong>
-                <span className="text-green-600 dark:text-green-400 ml-2">Weiterleitung...</span>
-              </div>
-            </div>
+            <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
+              <Icon name="check" size={20} style={{ color: "var(--status-ok)" }} />
+              <div style={{ fontSize: 13 }}><strong style={{ color: "var(--text)" }}>Upgrade erfolgreich.</strong> <span style={{ color: "var(--text-faint)" }}>Weiterleitung…</span></div>
+            </Card>
           )}
 
           {done && finalStatus === "hooks-failed" && (
-            <div className="flex items-start gap-3 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-sm">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-              <div className="space-y-2">
-                <div>
-                  <strong className="text-yellow-800 dark:text-yellow-300">Helm-Upgrade erfolgreich, aber Hooks fehlgeschlagen.</strong>
-                  <p className="text-yellow-700 dark:text-yellow-400 mt-0.5">
-                    Der ESS-Release ist auf dem neuen Stand. Die Post-Upgrade-Patches (SFU hostNetwork etc.) wurden jedoch nicht vollständig angewendet — WebRTC-Calling könnte beeinträchtigt sein.
-                  </p>
+            <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-warn) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
+              <Icon name="alert" size={20} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+                  <strong style={{ color: "var(--text)" }}>Helm-Upgrade erfolgreich, aber Hooks fehlgeschlagen.</strong>
+                  <div style={{ color: "var(--text-dim)", marginTop: 3 }}>Der ESS-Release ist auf dem neuen Stand. Die Post-Upgrade-Patches (SFU hostNetwork etc.) wurden jedoch nicht vollständig angewendet — WebRTC-Calling könnte beeinträchtigt sein.</div>
                 </div>
-                <div className="flex gap-2">
-                  <Link
-                    to="/hooks"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-medium"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    Hooks manuell ausführen
-                  </Link>
-                  <Link
-                    to="/helm"
-                    className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-gray-700 rounded-lg text-xs"
-                  >
-                    Zur Helm-Übersicht
-                  </Link>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button variant="soft" size="sm" icon="hook" onClick={() => navigate({ to: "/hooks" })}>Hooks manuell ausführen</Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate({ to: "/helm" })}>Zur Übersicht</Button>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {done && finalStatus === "failed" && (
-            <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm">
-              <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-              <div className="space-y-2">
-                <div>
-                  <strong className="text-red-800 dark:text-red-300">Upgrade fehlgeschlagen.</strong>
-                  <p className="text-red-700 dark:text-red-400 mt-0.5">
-                    Helm hat die vorherige Revision automatisch wiederhergestellt. Sieh die Logs oben für Details.
-                  </p>
+            <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-err) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-err) 30%, var(--border))" }}>
+              <Icon name="x" size={20} style={{ color: "var(--status-err)", flexShrink: 0, marginTop: 1 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+                  <strong style={{ color: "var(--text)" }}>Upgrade fehlgeschlagen.</strong>
+                  <div style={{ color: "var(--text-dim)", marginTop: 3 }}>Helm hat die vorherige Revision automatisch wiederhergestellt. Sieh die Logs oben für Details.</div>
                 </div>
-                <Link
-                  to="/helm"
-                  className="inline-block px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-700 rounded-lg text-xs"
-                >
-                  Zur Helm-Übersicht
-                </Link>
+                <div><Button variant="outline" size="sm" onClick={() => navigate({ to: "/helm" })}>Zur Übersicht</Button></div>
               </div>
-            </div>
+            </Card>
           )}
         </div>
       )}
