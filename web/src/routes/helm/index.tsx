@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner } from "@/components/mc";
+import { cmpVersion, essVersion } from "@/lib/version";
 
 export const Route = createFileRoute("/helm/")({
   component: HelmPage,
@@ -22,22 +23,6 @@ interface ESSVersion {
   prerelease?: boolean;
 }
 
-const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
-
-// Mirrors the backend ordering so "newer than deployed" means the same thing in
-// both places.
-function cmpVersion(a: string, b: string): number {
-  const pa = a.replace(/^v/, "").split(/[.-]/);
-  const pb = b.replace(/^v/, "").split(/[.-]/);
-  for (let i = 0; i < 3; i++) {
-    const na = parseInt(pa[i] ?? "0", 10) || 0;
-    const nb = parseInt(pb[i] ?? "0", 10) || 0;
-    if (na !== nb) return na - nb;
-  }
-  const sa = a.includes("-"), sb = b.includes("-");
-  if (sa !== sb) return sa ? -1 : 1;
-  return 0;
-}
 
 const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: string }> = {
   deployed: { tone: "ok", icon: "check" },

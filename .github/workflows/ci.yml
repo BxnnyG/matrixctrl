@@ -1,0 +1,62 @@
+# The verification chain from docs/PROZESS.md §4, enforced somewhere the agent
+# does not control. Deliberately limited to three checks — anything flaky gets
+# removed rather than retried, because a red badge nobody trusts is worse than
+# no badge.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go — vet & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # //go:embed all:dist requires the directory to exist. It is committed, but
+      # a guard here turns a confusing embed error into a clear one.
+      - name: Check embedded frontend assets exist
+        run: test -d cmd/matrixctrl/dist || { echo "cmd/matrixctrl/dist missing — run 'make copy-dist'"; exit 1; }
+
+      - run: go vet ./...
+
+      # TestDiscoverLive self-skips unless RUN_LIVE=1, so no cluster is needed.
+      - run: go test ./... -count=1
+
+  web:
+    name: Frontend — typecheck, test & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm run test -- --run
+
+      - name: Build
+        run: npm run build
