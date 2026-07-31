@@ -1,32 +1,27 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Play, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
+import { Card, Icon, Badge, Button, StatusDot, Toggle, Spinner, EmptyState } from "@/components/mc";
+import { HookEditor, type Hook } from "@/components/hooks/HookEditor";
 
 export const Route = createFileRoute("/hooks/")({
   component: HooksList,
 });
 
-interface HookAction {
-  type: string;
-}
-
-interface Hook {
-  id: string;
-  name: string;
-  description?: string;
-  trigger: string;
-  enabled: boolean;
-  priority: number;
-  builtin: boolean;
-  actions: HookAction[];
-  lastRunStatus?: string;
-}
+const RUN_TONE: Record<string, "ok" | "err" | "warn" | "info"> = {
+  success: "ok", failed: "err", partial: "warn", running: "info",
+};
+const TRIGGER_LABEL: Record<string, string> = {
+  "post-upgrade": "Nach Upgrade", "post-rollback": "Nach Rollback", manual: "Nur manuell",
+};
 
 function HooksList() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Hook | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data: hooks, isLoading } = useQuery({
     queryKey: ["hooks"],
@@ -34,137 +29,91 @@ function HooksList() {
   });
 
   const trigger = useMutation({
-    mutationFn: (id: string) => {
-      setTriggeringId(id);
-      return api.post(`/api/v1/hooks/${id}/trigger`, {});
-    },
-    onSettled: () => {
-      setTriggeringId(null);
-      qc.invalidateQueries({ queryKey: ["hooks"] });
-    },
+    mutationFn: (id: string) => { setTriggeringId(id); return api.post(`/api/v1/hooks/${id}/trigger`, {}); },
+    onSettled: () => { setTriggeringId(null); qc.invalidateQueries({ queryKey: ["hooks"] }); },
   });
 
-  const toggle = useMutation({
-    mutationFn: (hook: Hook) =>
-      api.put(`/api/v1/hooks/${hook.id}`, {
-        name: hook.name,
-        description: hook.description ?? "",
-        enabled: !hook.enabled,
-        priority: hook.priority,
-        actions: hook.actions,
-      }),
+  // Works for built-ins too — deciding what runs on the next deployment is an
+  // operator call even for hooks whose actions are locked.
+  const setEnabled = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.post(`/api/v1/hooks/${id}/enabled`, { enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["hooks"] }),
   });
 
+  const autoHooks = (hooks ?? []).filter((h) => h.trigger !== "manual");
+  const activeCount = autoHooks.filter((h) => h.enabled).length;
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Post-Upgrade Hooks</h1>
-
-      {isLoading && <div className="text-sm text-gray-500 dark:text-gray-400">Lade Hooks...</div>}
-
-      <div className="space-y-3">
-        {hooks?.map((hook) => (
-          <div
-            key={hook.id}
-            className={`bg-white dark:bg-gray-800 border rounded-xl p-4 ${
-              hook.enabled
-                ? "border-gray-200 dark:border-gray-700"
-                : "border-gray-100 dark:border-gray-800 opacity-60"
-            }`}
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{hook.name}</span>
-                  {hook.builtin && (
-                    <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
-                      Built-in
-                    </span>
-                  )}
-                  {!hook.enabled && (
-                    <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
-                      Deaktiviert
-                    </span>
-                  )}
-                  {hook.lastRunStatus && (
-                    <LastRunBadge status={hook.lastRunStatus} />
-                  )}
-                </div>
-                {hook.description && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                    {hook.description}
-                  </p>
-                )}
-                <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1 rounded">{hook.trigger}</code>
-                  {" · "}Priorität {hook.priority}
-                  {" · "}{hook.actions.length} {hook.actions.length === 1 ? "Aktion" : "Aktionen"}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => trigger.mutate(hook.id)}
-                  disabled={!hook.enabled || triggeringId !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-40 rounded-lg transition-colors"
-                  title="Jetzt ausführen"
-                >
-                  {triggeringId === hook.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Play className="w-3 h-3" />
-                  )}
-                  Ausführen
-                </button>
-
-                {!hook.builtin && (
-                  <button
-                    onClick={() => toggle.mutate(hook)}
-                    disabled={toggle.isPending}
-                    className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 rounded-lg transition-colors"
-                  >
-                    {hook.enabled ? "Deaktivieren" : "Aktivieren"}
-                  </button>
-                )}
-
-                <Link
-                  to="/hooks/$id"
-                  params={{ id: hook.id }}
-                  className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 rounded-lg transition-colors"
-                >
-                  Details
-                </Link>
-              </div>
-            </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* Deployment summary — answers "what runs next time I deploy?" */}
+      <Card style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", padding: "16px 18px" }}>
+        <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name="rocket" size={19} /></div>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
+            {activeCount} von {autoHooks.length} Hooks laufen beim nächsten Deployment
           </div>
-        ))}
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>
+            Built-in-Hooks patchen die SFU-Services, damit WebRTC-Calling nach dem Upgrade funktioniert.
+          </div>
+        </div>
+        <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>Hook erstellen</Button>
+      </Card>
+
+      {isLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-faint)", padding: "8px 2px" }}><Spinner size={14} /> Lade Hooks…</div>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {hooks?.map((hook) => {
+          const runTone = hook.lastRunStatus ? RUN_TONE[hook.lastRunStatus] : undefined;
+          return (
+            <Card key={hook.id} style={{ opacity: hook.enabled ? 1 : 0.66 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "var(--radius-sm)", background: hook.enabled ? "var(--accent-soft)" : "var(--surface-2)", color: hook.enabled ? "var(--accent)" : "var(--text-faint)", flexShrink: 0 }}><Icon name="hook" size={18} /></div>
+
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{hook.name}</span>
+                    {hook.builtin && <Badge tone="accent" size="sm">Built-in</Badge>}
+                    {!hook.enabled && <Badge tone="neutral" size="sm">Deaktiviert</Badge>}
+                    {runTone && hook.lastRunStatus && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <StatusDot status={runTone === "ok" ? "ok" : runTone === "info" ? "info" : runTone === "warn" ? "warn" : "err"} pulse={hook.lastRunStatus === "running"} size={7} />
+                        <span style={{ fontSize: 11.5, color: `var(--status-${runTone})`, fontWeight: 500 }}>{hook.lastRunStatus === "success" ? "OK" : hook.lastRunStatus}</span>
+                      </span>
+                    )}
+                  </div>
+                  {hook.description && <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>{hook.description}</p>}
+                  <div style={{ display: "flex", gap: 12, marginTop: 7, fontSize: 11.5, color: "var(--text-faint)", flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="clock" size={11} />{TRIGGER_LABEL[hook.trigger] ?? hook.trigger}</span>
+                    <span>Priorität {hook.priority}</span>
+                    <span>{hook.actions.length} {hook.actions.length === 1 ? "Aktion" : "Aktionen"}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <Toggle checked={hook.enabled} onChange={(v) => setEnabled.mutate({ id: hook.id, enabled: v })} />
+                    <span style={{ fontSize: 9.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>Deployment</span>
+                  </div>
+                  <Button variant="soft" size="sm" icon={triggeringId === hook.id ? undefined : "play"} disabled={!hook.enabled || triggeringId !== null} onClick={() => trigger.mutate(hook.id)} title="Jetzt ausführen">
+                    {triggeringId === hook.id ? <Spinner size={12} /> : "Ausführen"}
+                  </Button>
+                  <Button variant="outline" size="sm" icon="edit" onClick={() => setEditing(hook)}>{hook.builtin ? "Ansehen" : "Bearbeiten"}</Button>
+                  <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/hooks/$id", params: { id: hook.id } })}>Verlauf</Button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
 
         {hooks?.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Keine Hooks konfiguriert.</p>
+          <Card pad={false}>
+            <EmptyState icon="hook" title="Keine Hooks konfiguriert" sub="Lege einen eigenen Hook an, um nach jedem Deployment automatisch zu patchen."
+              action={<Button variant="primary" icon="plus" onClick={() => setCreating(true)}>Hook erstellen</Button>} />
+          </Card>
         )}
       </div>
+
+      {(editing || creating) && <HookEditor hook={editing} onClose={() => { setEditing(null); setCreating(false); }} />}
     </div>
   );
-}
-
-function LastRunBadge({ status }: { status: string }) {
-  if (status === "success")
-    return (
-      <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950 px-1.5 py-0.5 rounded">
-        <CheckCircle className="w-3 h-3" /> OK
-      </span>
-    );
-  if (status === "failed" || status === "partial")
-    return (
-      <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950 px-1.5 py-0.5 rounded">
-        <XCircle className="w-3 h-3" /> {status}
-      </span>
-    );
-  if (status === "running")
-    return (
-      <span className="flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded">
-        <Clock className="w-3 h-3 animate-spin" /> läuft
-      </span>
-    );
-  return null;
 }

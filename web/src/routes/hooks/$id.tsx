@@ -1,10 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import {
-  CheckCircle, XCircle, Clock, ArrowLeft, Play, Loader2, ChevronDown, ChevronRight,
-} from "lucide-react";
+import { Card, Icon, Badge, Button, SectionTitle, StatusDot, Spinner, EmptyState } from "@/components/mc";
 
 export const Route = createFileRoute("/hooks/$id")({
   component: HookDetail,
@@ -20,8 +18,7 @@ interface HookAction {
   patch?: string;
   timeout_secs?: number;
 }
-
-interface HookDetail {
+interface HookDetailT {
   id: string;
   name: string;
   description?: string;
@@ -31,15 +28,7 @@ interface HookDetail {
   builtin: boolean;
   actions: HookAction[];
 }
-
-interface ActionResult {
-  action_index: number;
-  type: string;
-  status: string;
-  error?: string;
-  duration_ms: number;
-}
-
+interface ActionResult { action_index: number; type: string; status: string; error?: string; duration_ms: number }
 interface HookRun {
   id: string;
   status: string;
@@ -50,17 +39,21 @@ interface HookRun {
   triggered_by: string;
 }
 
+const RUN_DOT: Record<string, "ok" | "err" | "warn" | "info" | "idle"> = {
+  success: "ok", failed: "err", partial: "warn", running: "info",
+};
+
 function HookDetail() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [triggering, setTriggering] = useState(false);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
   const { data: hook } = useQuery({
     queryKey: ["hooks", id],
-    queryFn: () => api.get<HookDetail>(`/api/v1/hooks/${id}`),
+    queryFn: () => api.get<HookDetailT>(`/api/v1/hooks/${id}`),
   });
-
   const { data: runs } = useQuery({
     queryKey: ["hooks", id, "runs"],
     queryFn: () => api.get<HookRun[]>(`/api/v1/hooks/${id}/runs`),
@@ -68,183 +61,107 @@ function HookDetail() {
   });
 
   const trigger = useMutation({
-    mutationFn: () => {
-      setTriggering(true);
-      return api.post(`/api/v1/hooks/${id}/trigger`, {});
-    },
-    onSettled: () => {
-      setTriggering(false);
-      qc.invalidateQueries({ queryKey: ["hooks", id, "runs"] });
-    },
+    mutationFn: () => { setTriggering(true); return api.post(`/api/v1/hooks/${id}/trigger`, {}); },
+    onSettled: () => { setTriggering(false); qc.invalidateQueries({ queryKey: ["hooks", id, "runs"] }); },
   });
 
-  if (!hook) return <div className="text-sm text-gray-500 dark:text-gray-400">Lade...</div>;
+  if (!hook) return <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>;
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center gap-3">
-        <Link to="/hooks" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{hook.name}</h1>
-        {hook.builtin && (
-          <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
-            Built-in
-          </span>
-        )}
-        {!hook.enabled && (
-          <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
-            Deaktiviert
-          </span>
-        )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <Button variant="ghost" size="sm" icon="chevLeft" onClick={() => navigate({ to: "/hooks" })}>Hooks</Button>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 650, letterSpacing: "-0.02em", color: "var(--text)" }}>{hook.name}</h1>
+        {hook.builtin && <Badge tone="accent" size="sm">Built-in</Badge>}
+        {!hook.enabled && <Badge tone="neutral" size="sm">Deaktiviert</Badge>}
       </div>
 
       {/* Meta */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 grid grid-cols-3 gap-4 text-sm">
-        <div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Trigger</span>
-          <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded text-xs">{hook.trigger}</code>
-        </div>
-        <div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Priorität</span>
-          <span className="font-medium text-gray-900 dark:text-gray-100">{hook.priority}</span>
-        </div>
-        <div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Status</span>
-          <span className={`font-medium ${hook.enabled ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}>
-            {hook.enabled ? "Aktiv" : "Deaktiviert"}
-          </span>
+      <Card>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+          {[["Trigger", <code key="t" style={{ fontFamily: "var(--mono)", fontSize: 12, background: "var(--surface-2)", padding: "2px 7px", borderRadius: 5, color: "var(--text-dim)" }}>{hook.trigger}</code>],
+            ["Priorität", <span key="p" style={{ fontWeight: 600, color: "var(--text)" }}>{hook.priority}</span>],
+            ["Status", <span key="s" style={{ fontWeight: 600, color: hook.enabled ? "var(--status-ok)" : "var(--text-faint)" }}>{hook.enabled ? "Aktiv" : "Deaktiviert"}</span>]].map(([label, node]) => (
+            <div key={label as string}>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: 13 }}>{node}</div>
+            </div>
+          ))}
         </div>
         {hook.description && (
-          <div className="col-span-3">
-            <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Beschreibung</span>
-            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{hook.description}</p>
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border-soft)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginBottom: 4 }}>Beschreibung</div>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>{hook.description}</p>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Actions */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3">
-        <h2 className="font-medium text-sm text-gray-900 dark:text-gray-100">Aktionen</h2>
-        {hook.actions.map((action, i) => (
-          <div key={i} className="flex items-start gap-3 text-sm border-t border-gray-100 dark:border-gray-700 pt-3 first:border-0 first:pt-0">
-            <span className="text-gray-400 text-xs mt-1 w-4 shrink-0">{i + 1}.</span>
-            <div className="space-y-1 min-w-0">
-              <code className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded text-xs">{action.type}</code>
-              {action.description && (
-                <p className="text-gray-600 dark:text-gray-400 text-xs">{action.description}</p>
-              )}
-              {action.resource && (
-                <p className="text-gray-400 dark:text-gray-500 text-xs font-mono">
-                  {action.resource}/{action.namespace}/{action.name}
-                  {action.patch_type && ` (${action.patch_type})`}
-                </p>
-              )}
-              {action.timeout_secs && (
-                <p className="text-gray-400 dark:text-gray-500 text-xs">Timeout: {action.timeout_secs}s</p>
-              )}
+      <Card>
+        <SectionTitle sub={`${hook.actions.length} ${hook.actions.length === 1 ? "Aktion" : "Aktionen"} in Reihenfolge`}>Aktionen</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {hook.actions.map((action, i) => (
+            <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderTop: i > 0 ? "1px solid var(--border-soft)" : "none" }}>
+              <span style={{ display: "grid", placeItems: "center", width: 22, height: 22, borderRadius: 6, background: "var(--surface-2)", color: "var(--text-faint)", fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)", flexShrink: 0 }}>{i + 1}</span>
+              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                <code style={{ fontFamily: "var(--mono)", fontSize: 12, background: "var(--surface-2)", padding: "2px 7px", borderRadius: 5, color: "var(--accent)", width: "fit-content" }}>{action.type}</code>
+                {action.description && <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)" }}>{action.description}</p>}
+                {action.resource && <p style={{ margin: 0, fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{action.resource}/{action.namespace}/{action.name}{action.patch_type && ` (${action.patch_type})`}</p>}
+                {action.timeout_secs && <p style={{ margin: 0, fontSize: 11.5, color: "var(--text-faint)" }}>Timeout: {action.timeout_secs}s</p>}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </Card>
 
-      {/* Trigger button */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => trigger.mutate()}
-          disabled={!hook.enabled || triggering}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {triggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          Jetzt ausführen
-        </button>
-        {trigger.isError && (
-          <p className="text-sm text-red-600 dark:text-red-400">{(trigger.error as Error).message}</p>
-        )}
-        {trigger.isSuccess && !triggering && (
-          <p className="text-sm text-green-600 dark:text-green-400">Gestartet — sieh Ausführungen unten.</p>
-        )}
+      {/* Trigger */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Button variant="primary" icon={triggering ? undefined : "play"} disabled={!hook.enabled || triggering} onClick={() => trigger.mutate()}>
+          {triggering ? <><Spinner size={14} /> Läuft…</> : "Jetzt ausführen"}
+        </Button>
+        {trigger.isError && <span style={{ fontSize: 13, color: "var(--status-err)" }}>{(trigger.error as Error).message}</span>}
+        {trigger.isSuccess && !triggering && <span style={{ fontSize: 13, color: "var(--status-ok)" }}>Gestartet — siehe Ausführungen unten.</span>}
       </div>
 
       {/* Run history */}
-      <div className="space-y-2">
-        <h2 className="font-medium text-sm text-gray-900 dark:text-gray-100">Letzte Ausführungen</h2>
-
-        {runs?.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Noch keine Ausführungen.</p>
-        )}
-
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <h2 style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 600, letterSpacing: "var(--head-tracking)", color: "var(--text)" }}>Letzte Ausführungen</h2>
+        {runs?.length === 0 && <Card pad={false}><EmptyState icon="clock" title="Noch keine Ausführungen" sub="Triggere den Hook oben, um die erste Ausführung zu sehen." /></Card>}
         {runs?.map((run) => {
           const expanded = expandedRun === run.id;
-          const durationSec = run.ts_end
-            ? ((new Date(run.ts_end).getTime() - new Date(run.ts_start).getTime()) / 1000).toFixed(1)
-            : null;
-
+          const durationSec = run.ts_end ? ((new Date(run.ts_end).getTime() - new Date(run.ts_start).getTime()) / 1000).toFixed(1) : null;
           return (
-            <div key={run.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                onClick={() => setExpandedRun(expanded ? null : run.id)}
-              >
-                <RunStatusIcon status={run.status} />
-                <div className="flex-1 text-sm">
-                  <span className="font-medium capitalize text-gray-900 dark:text-gray-100">{run.status}</span>
-                  <span className="text-gray-500 dark:text-gray-400 ml-2 text-xs">
-                    {new Date(run.ts_start).toLocaleString("de-DE")}
-                  </span>
-                  {durationSec && (
-                    <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{durationSec}s</span>
-                  )}
+            <Card key={run.id} pad={false} style={{ overflow: "hidden" }}>
+              <button onClick={() => setExpandedRun(expanded ? null : run.id)} className="mc-row"
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <StatusDot status={RUN_DOT[run.status] ?? "idle"} pulse={run.status === "running"} />
+                <div style={{ flex: 1, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600, textTransform: "capitalize", color: "var(--text)" }}>{run.status}</span>
+                  <span style={{ color: "var(--text-faint)", marginLeft: 8, fontSize: 12 }}>{new Date(run.ts_start).toLocaleString("de-DE")}</span>
+                  {durationSec && <span style={{ color: "var(--text-faint)", marginLeft: 8, fontSize: 12, fontFamily: "var(--mono)" }}>{durationSec}s</span>}
                 </div>
-                <span className="text-xs text-gray-400 dark:text-gray-500">{run.trigger_type}</span>
-                {expanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                )}
+                <Badge tone="neutral" size="sm">{run.trigger_type}</Badge>
+                <Icon name={expanded ? "chevDown" : "chevRight"} size={16} style={{ color: "var(--text-faint)" }} />
               </button>
-
-              {expanded && run.action_results.length > 0 && (
-                <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 space-y-1.5 bg-gray-50 dark:bg-gray-900/40">
-                  {run.action_results.map((r) => (
-                    <div key={r.action_index} className="flex items-start gap-2 text-xs">
-                      {r.status === "success" ? (
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-                      )}
-                      <div className="min-w-0">
-                        <span className="text-gray-700 dark:text-gray-300">
-                          Aktion {r.action_index + 1}
-                        </span>
-                        <code className="ml-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1 rounded">{r.type}</code>
-                        <span className="text-gray-400 dark:text-gray-500 ml-1.5">{r.duration_ms}ms</span>
-                        {r.error && (
-                          <p className="text-red-600 dark:text-red-400 mt-0.5 leading-relaxed">{r.error}</p>
-                        )}
+              {expanded && (
+                <div style={{ borderTop: "1px solid var(--border-soft)", padding: "10px 16px", display: "flex", flexDirection: "column", gap: 8, background: "var(--panel)" }}>
+                  {run.action_results.length > 0 ? run.action_results.map((r) => (
+                    <div key={r.action_index} style={{ display: "flex", gap: 9, fontSize: 12 }}>
+                      <Icon name={r.status === "success" ? "check" : "x"} size={14} stroke={2.2} style={{ color: r.status === "success" ? "var(--status-ok)" : "var(--status-err)", flexShrink: 0, marginTop: 1 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--text-dim)" }}>Aktion {r.action_index + 1}</span>
+                        <code style={{ marginLeft: 6, fontFamily: "var(--mono)", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, color: "var(--text-dim)" }}>{r.type}</code>
+                        <span style={{ color: "var(--text-faint)", marginLeft: 6, fontFamily: "var(--mono)" }}>{r.duration_ms}ms</span>
+                        {r.error && <p style={{ margin: "3px 0 0", color: "var(--status-err)", lineHeight: 1.5 }}>{r.error}</p>}
                       </div>
                     </div>
-                  ))}
+                  )) : <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Keine Aktions-Details verfügbar.</div>}
                 </div>
               )}
-
-              {expanded && run.action_results.length === 0 && (
-                <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/40">
-                  Keine Aktions-Details verfügbar.
-                </div>
-              )}
-            </div>
+            </Card>
           );
         })}
       </div>
     </div>
   );
-}
-
-function RunStatusIcon({ status }: { status: string }) {
-  if (status === "success") return <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />;
-  if (status === "failed") return <XCircle className="w-4 h-4 text-red-500 shrink-0" />;
-  if (status === "partial") return <XCircle className="w-4 h-4 text-yellow-500 shrink-0" />;
-  if (status === "running") return <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />;
-  return <Clock className="w-4 h-4 text-gray-400 shrink-0" />;
 }

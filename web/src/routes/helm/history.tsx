@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { CheckCircle, XCircle, AlertTriangle, Clock, ArrowLeft } from "lucide-react";
+import { Card, Icon, Badge, Button, StatusDot, EmptyState } from "@/components/mc";
 
 export const Route = createFileRoute("/helm/history")({
   component: HelmHistory,
@@ -16,61 +16,58 @@ interface UpgradeEntry {
   helm_revision?: number;
 }
 
-function essVersion(v: string) {
-  return v.replace(/^matrix-stack-/, "");
-}
+const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
+
+const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; dot: "ok" | "err" | "warn" | "info" }> = {
+  success: { tone: "ok", dot: "ok" },
+  failed: { tone: "err", dot: "err" },
+  "hooks-failed": { tone: "warn", dot: "warn" },
+  pending: { tone: "info", dot: "info" },
+  running: { tone: "info", dot: "info" },
+};
 
 function HelmHistory() {
+  const navigate = useNavigate();
   const { data: history } = useQuery({
     queryKey: ["helm", "history"],
     queryFn: () => api.get<UpgradeEntry[]>("/api/v1/helm/releases/ess/history"),
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/helm" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Upgrade-History</h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Button variant="ghost" size="sm" icon="chevLeft" onClick={() => navigate({ to: "/helm" })}>Release</Button>
       </div>
 
-      <div className="space-y-3">
-        {history?.map((entry) => (
-          <div key={entry.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 flex items-center gap-4">
-            <StatusIcon status={entry.status} />
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 font-mono">
-                {essVersion(entry.from_version)} → {essVersion(entry.to_version)}
+      <Card pad={false}>
+        <div style={{ padding: "14px 18px 4px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-faint)" }}>
+          {history?.length ? `${history.length} Upgrade${history.length > 1 ? "s" : ""}` : "Verlauf"}
+        </div>
+        <div style={{ padding: "0 8px 8px" }}>
+          {history && history.length > 0 ? history.map((e, i) => {
+            const st = STATUS_MAP[e.status] ?? STATUS_MAP.pending;
+            return (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", borderRadius: "var(--radius-sm)", borderBottom: i < history.length - 1 ? "1px solid var(--border-soft)" : "none" }}>
+                <div style={{ display: "grid", placeItems: "center", width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color: "var(--text-dim)" }}><Icon name="rotate" size={16} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>{essVersion(e.from_version)}</span>
+                    <Icon name="chevRight" size={13} style={{ color: "var(--text-faint)" }} />
+                    <span style={{ color: "var(--accent)" }}>{essVersion(e.to_version)}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 2 }}>
+                    {new Date(e.ts_initiated).toLocaleString("de-DE")}{e.helm_revision != null && ` · Revision #${e.helm_revision}`}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StatusDot status={st.dot} pulse={e.status === "running"} />
+                  <Badge tone={st.tone} size="sm">{e.status}</Badge>
+                </div>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {new Date(entry.ts_initiated).toLocaleString("de-DE")}
-                {entry.helm_revision && ` · Revision #${entry.helm_revision}`}
-              </div>
-            </div>
-            <StatusBadge status={entry.status} />
-          </div>
-        ))}
-        {history?.length === 0 && (
-          <p className="text-sm text-gray-500">Noch keine Upgrades über MatrixCtrl.</p>
-        )}
-      </div>
+            );
+          }) : <EmptyState icon="rotate" title="Noch keine Upgrades" sub="Upgrades, die du über MatrixCtrl ausführst, erscheinen hier mit Status und Hook-Ergebnis." />}
+        </div>
+      </Card>
     </div>
   );
-}
-
-function StatusIcon({ status }: { status: string }) {
-  if (status === "success") return <CheckCircle className="w-4 h-4 text-green-500" />;
-  if (status === "failed") return <XCircle className="w-4 h-4 text-red-500" />;
-  if (status === "hooks-failed") return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-  return <Clock className="w-4 h-4 text-blue-500" />;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const cls =
-    status === "success" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
-    status === "failed" ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" :
-    status === "hooks-failed" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
-    "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300";
-  return <span className={`text-xs px-2 py-1 rounded-full font-medium ${cls}`}>{status}</span>;
 }

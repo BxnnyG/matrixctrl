@@ -1,7 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Package, Clock, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner } from "@/components/mc";
 
 export const Route = createFileRoute("/helm/")({
   component: HelmPage,
@@ -15,119 +16,156 @@ interface HelmRelease {
   status: string;
   deployed_at?: string;
 }
-
 interface ESSVersion {
   version: string;
   published_at?: string;
+  prerelease?: boolean;
 }
 
-function essVersion(v: string) {
-  return v.replace(/^matrix-stack-/, "");
+const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
+
+// Mirrors the backend ordering so "newer than deployed" means the same thing in
+// both places.
+function cmpVersion(a: string, b: string): number {
+  const pa = a.replace(/^v/, "").split(/[.-]/);
+  const pb = b.replace(/^v/, "").split(/[.-]/);
+  for (let i = 0; i < 3; i++) {
+    const na = parseInt(pa[i] ?? "0", 10) || 0;
+    const nb = parseInt(pb[i] ?? "0", 10) || 0;
+    if (na !== nb) return na - nb;
+  }
+  const sa = a.includes("-"), sb = b.includes("-");
+  if (sa !== sb) return sa ? -1 : 1;
+  return 0;
 }
+
+const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: string }> = {
+  deployed: { tone: "ok", icon: "check" },
+  failed: { tone: "err", icon: "x" },
+  "hooks-failed": { tone: "warn", icon: "alert" },
+  pending: { tone: "info", icon: "clock" },
+};
 
 function HelmPage() {
+  const navigate = useNavigate();
+  const [showPre, setShowPre] = useState(false);
+
   const { data: release } = useQuery({
     queryKey: ["helm", "release"],
     queryFn: () => api.get<HelmRelease>("/api/v1/helm/releases/ess"),
     refetchInterval: 15_000,
   });
-  const { data: versions } = useQuery({
+  const { data: versions, isLoading: versionsLoading } = useQuery({
     queryKey: ["helm", "versions"],
     queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions"),
+    staleTime: 5 * 60_000,
   });
 
+  const st = release ? STATUS_MAP[release.status] ?? STATUS_MAP.pending : STATUS_MAP.pending;
+  const current = release ? essVersion(release.chart_version) : "";
+
+  const visible = (versions ?? []).filter((v) => showPre || !v.prerelease);
+  const latest = visible.find((v) => !v.prerelease) ?? visible[0];
+  const behind = current && latest ? visible.filter((v) => !v.prerelease && cmpVersion(v.version, current) > 0) : [];
+  const upToDate = !!current && !!latest && cmpVersion(latest.version, current) <= 0;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Helm Release</h1>
-        <Link to="/helm/upgrade" className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-          Upgrade
-        </Link>
-      </div>
-
-      {release && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Package className="w-5 h-5 text-blue-500" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {/* Release hero */}
+      <Card style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 55%)", pointerEvents: "none" }} />
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, padding: "22px 24px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 52, height: 52, borderRadius: "var(--radius)", background: "var(--accent-soft)", color: "var(--accent)" }}><Icon name="helm" size={26} /></div>
             <div>
-              <h2 className="font-medium text-gray-900 dark:text-gray-100">{release.name}</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Namespace: {release.namespace}</p>
-            </div>
-            <div className="ml-auto">
-              <ReleaseStatusBadge status={release.status} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 19, fontWeight: 650, letterSpacing: "-0.02em" }}>{release?.name || "ess"}</span>
+                {release && <Badge tone={st.tone} icon={st.icon}>{release.status}</Badge>}
+                {upToDate && <Badge tone="ok" icon="check">Aktuell</Badge>}
+                {behind.length > 0 && <Badge tone="warn" icon="upload">{behind.length} Update{behind.length > 1 ? "s" : ""} verfügbar</Badge>}
+              </div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-faint)" }}>
+                <span style={{ fontFamily: "var(--mono)" }}>matrix-stack {current || "—"}</span>
+                <span>·</span><span>Revision #{release?.revision ?? "—"}</span>
+                <span>·</span><span>ns {release?.namespace || "ess"}</span>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500 dark:text-gray-400 text-xs">ESS Version</span>
-              <p className="font-mono font-medium text-gray-900 dark:text-gray-100">
-                {essVersion(release.chart_version)}
-              </p>
-            </div>
-            <div>
-              <span className="text-gray-500 dark:text-gray-400 text-xs">Revision</span>
-              <p className="font-mono font-medium text-gray-900 dark:text-gray-100">#{release.revision}</p>
-            </div>
-            <div>
-              <span className="text-gray-500 dark:text-gray-400 text-xs">Chart</span>
-              <p className="font-mono text-xs text-gray-600 dark:text-gray-400">{release.chart_version}</p>
-            </div>
-            <div>
-              <span className="text-gray-500 dark:text-gray-400 text-xs">Zuletzt deployed</span>
-              <p className="text-sm text-gray-900 dark:text-gray-100">
-                {release.deployed_at ? new Date(release.deployed_at).toLocaleString("de-DE") : "—"}
-              </p>
-            </div>
-          </div>
+          <Button variant="primary" icon="upload" onClick={() => navigate({ to: "/helm/upgrade" })}>Upgrade</Button>
         </div>
-      )}
 
-      {versions && versions.length > 0 && (
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Verfügbare Versionen</h2>
-          <div className="space-y-2">
-            {versions.slice(0, 8).map((v, i) => (
-              <div key={v.version} className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-gray-900 dark:text-gray-100">{essVersion(v.version)}</span>
-                  {i === 0 && (
-                    <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">latest</span>
-                  )}
-                  {v.version === release?.chart_version && (
-                    <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">aktuell</span>
-                  )}
+        {/* Upgrade path: current → latest */}
+        {behind.length > 0 && latest && (
+          <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 14, padding: "14px 24px", borderTop: "1px solid var(--border-soft)", background: "color-mix(in oklch, var(--status-warn) 7%, transparent)", flexWrap: "wrap" }}>
+            <Icon name="upload" size={17} style={{ color: "var(--status-warn)" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "var(--mono)", fontSize: 14, fontWeight: 600 }}>
+              <span style={{ color: "var(--text-dim)" }}>{current}</span>
+              <Icon name="chevRight" size={14} style={{ color: "var(--text-faint)" }} />
+              <span style={{ color: "var(--accent)" }}>{latest.version}</span>
+            </div>
+            <span style={{ fontSize: 12, color: "var(--text-faint)" }}>
+              {behind.length} Release{behind.length > 1 ? "s" : ""} dazwischen
+            </span>
+            <div style={{ flex: 1 }} />
+            <Button variant="soft" size="sm" icon="rocket" onClick={() => navigate({ to: "/helm/upgrade" })}>Auf {latest.version} upgraden</Button>
+          </div>
+        )}
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(280px, 1fr)", gap: 22, alignItems: "start" }} className="mc-dash-grid">
+        <Card pad={false}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px 12px", flexWrap: "wrap" }}>
+            <SectionTitle sub={versions ? `${visible.length} Versionen aus der OCI-Registry` : "Lade aus der OCI-Registry…"} icon="git">ESS-Versionen</SectionTitle>
+            <Button variant="ghost" size="sm" icon="eye" onClick={() => setShowPre((v) => !v)}>
+              {showPre ? "Nur Releases" : "Pre-Releases zeigen"}
+            </Button>
+          </div>
+          <div style={{ padding: "0 8px 8px" }}>
+            {versionsLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px", fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade Versionen…</div>}
+            {!versionsLoading && visible.length > 0 && visible.slice(0, 25).map((v, i) => {
+              const isCurrent = v.version === current;
+              const isNewer = current ? cmpVersion(v.version, current) > 0 : false;
+              return (
+                <div key={v.version} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "11px 14px", borderRadius: "var(--radius-sm)", background: isCurrent ? "var(--accent-soft)" : "transparent", borderBottom: i < Math.min(visible.length, 25) - 1 ? "1px solid var(--border-soft)" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <StatusDot status={isCurrent ? "accent" : isNewer ? "warn" : "idle"} />
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 600, color: isCurrent ? "var(--accent)" : "var(--text)" }}>{v.version}</span>
+                    {i === 0 && !v.prerelease && <Badge tone="accent" size="sm">latest</Badge>}
+                    {isCurrent && <Badge tone="ok" size="sm">installiert</Badge>}
+                    {v.prerelease && <Badge tone="neutral" size="sm">pre-release</Badge>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    {v.published_at && <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{new Date(v.published_at).toLocaleDateString("de-DE")}</span>}
+                    {isNewer && <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/helm/upgrade" })}>Upgrade</Button>}
+                  </div>
                 </div>
-                {v.published_at && (
-                  <span className="text-gray-500 dark:text-gray-400 text-xs">
-                    {new Date(v.published_at).toLocaleDateString("de-DE")}
-                  </span>
-                )}
+              );
+            })}
+            {!versionsLoading && visible.length === 0 && <EmptyState icon="git" title="Keine Versionen entdeckt" sub="MatrixCtrl konnte die OCI-Registry nicht erreichen." />}
+          </div>
+        </Card>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          <Card>
+            <SectionTitle sub="Aktueller Release-State">Details</SectionTitle>
+            {[["Chart", release?.chart_version || "—"], ["Revision", release ? `#${release.revision}` : "—"], ["Status", release?.status || "—"], ["Deployed", release?.deployed_at ? new Date(release.deployed_at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" }) : "—"]].map(([k, v], i) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "9px 0", borderBottom: i < 3 ? "1px solid var(--border-soft)" : "none" }}>
+                <span style={{ fontSize: 13, color: "var(--text-faint)" }}>{k}</span>
+                <span style={{ fontSize: 12.5, color: "var(--text)", fontFamily: "var(--mono)", textAlign: "right" }}>{v}</span>
               </div>
             ))}
-          </div>
-        </div>
-      )}
+            <Button variant="ghost" size="sm" full iconRight="chevRight" onClick={() => navigate({ to: "/helm/history" })} style={{ marginTop: 10 }}>Upgrade-History</Button>
+          </Card>
 
-      <div className="flex justify-end">
-        <Link to="/helm/history" className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700">
-          Upgrade-History →
-        </Link>
+          <Card>
+            <SectionTitle sub="Läuft nach jedem Upgrade" icon="hook">Hooks</SectionTitle>
+            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>
+              Post-Upgrade-Hooks stellen die SFU-Patches wieder her, die ein Helm-Upgrade sonst überschreibt.
+            </p>
+            <Button variant="outline" size="sm" full iconRight="chevRight" onClick={() => navigate({ to: "/hooks" })}>Hooks verwalten</Button>
+          </Card>
+        </div>
       </div>
     </div>
-  );
-}
-
-function ReleaseStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { icon: React.ReactNode; cls: string }> = {
-    deployed: { icon: <CheckCircle className="w-3.5 h-3.5" />, cls: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" },
-    failed: { icon: <XCircle className="w-3.5 h-3.5" />, cls: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" },
-    "hooks-failed": { icon: <AlertTriangle className="w-3.5 h-3.5" />, cls: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" },
-    pending: { icon: <Clock className="w-3.5 h-3.5" />, cls: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" },
-  };
-  const s = map[status] ?? map["pending"];
-  return (
-    <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${s.cls}`}>
-      {s.icon} {status}
-    </span>
   );
 }

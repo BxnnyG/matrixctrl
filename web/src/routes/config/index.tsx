@@ -1,33 +1,27 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef, type ReactNode } from "react";
-import Editor from "@monaco-editor/react";
+import { YamlEditor } from "@/components/config/YamlEditor";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
-import { useTheme } from "@/lib/theme";
 import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves } from "@/lib/schema";
 import { groupNav, orderKeys } from "@/lib/sections";
-import {
-  Save, Rocket, CheckCircle2, AlertTriangle, XCircle, Loader2,
-  Search, ChevronRight, ChevronDown, Settings2, FileCode, SlidersHorizontal, History,
-  Server, ShieldCheck, Globe, Video, UserCog, Database, Link2, Box, type LucideIcon,
-} from "lucide-react";
+import { Icon, Badge, Button, Toggle, Spinner, EmptyState } from "@/components/mc";
+import { DiffView } from "@/components/config/DiffView";
 
-// Icon per section file for a more scannable, less flat UI.
-const SECTION_ICONS: Record<string, LucideIcon> = {
-  "general.yaml": Settings2,
-  "synapse.yaml": Server,
-  "matrixAuthenticationService.yaml": ShieldCheck,
-  "elementWeb.yaml": Globe,
-  "elementAdmin.yaml": UserCog,
-  "matrixRTC.yaml": Video,
-  "wellKnownDelegation.yaml": Link2,
-  "postgres.yaml": Database,
-  "redis.yaml": Database,
+// Icon (mc set) per section file for a scannable, less flat UI.
+const SECTION_ICONS: Record<string, string> = {
+  "general.yaml": "settings",
+  "synapse.yaml": "server",
+  "matrixAuthenticationService.yaml": "key",
+  "elementWeb.yaml": "globe",
+  "elementAdmin.yaml": "users",
+  "matrixRTC.yaml": "phone",
+  "wellKnownDelegation.yaml": "ext",
+  "postgres.yaml": "database",
+  "redis.yaml": "database",
 };
-function iconFor(file: string): LucideIcon {
-  return SECTION_ICONS[file] ?? Box;
-}
+const iconFor = (file: string): string => SECTION_ICONS[file] ?? "file";
 
 export const Route = createFileRoute("/config/")({
   component: Settings,
@@ -39,15 +33,14 @@ interface SettingsResponse {
   comments: Record<string, string>;
   files: Record<string, string>; // top-level key → "section.yaml"
 }
-
 interface Slice { name: string; file: string; content: string }
 interface DeployResponse { upgrade_id: string }
 
-type Mode = "standard" | "yaml";
+type Mode = "standard" | "yaml" | "diff";
 
 function Settings() {
   const qc = useQueryClient();
-  const { theme } = useTheme();
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["config", "settings"],
     queryFn: () => api.get<SettingsResponse>("/api/v1/config/settings"),
@@ -70,9 +63,7 @@ function Settings() {
 
   const fileGroups = useMemo(() => {
     const g: Record<string, string[]> = {};
-    for (const [topKey, file] of Object.entries(data?.files ?? {})) {
-      (g[file] ??= []).push(topKey);
-    }
+    for (const [topKey, file] of Object.entries(data?.files ?? {})) (g[file] ??= []).push(topKey);
     for (const k of Object.keys(g)) g[k] = orderKeys(g[k]);
     return g;
   }, [data?.files]);
@@ -97,6 +88,15 @@ function Settings() {
     onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
   });
 
+  // Uncommitted working-tree changes — what "Deployen" would actually ship.
+  const { data: diffData, isFetching: diffLoading } = useQuery({
+    queryKey: ["config", "diff"],
+    queryFn: () => api.get<{ diff: string }>("/api/v1/config/diff"),
+    enabled: mode === "diff",
+    refetchOnWindowFocus: false,
+  });
+  const hasDiff = !!diffData?.diff && !diffData.diff.startsWith("(") && /^[+-]/m.test(diffData.diff);
+
   useUpgradeStream(deployId, {
     onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
     onDone: (s) => { setDone(true); setStatus(s); if (s === "success") qc.invalidateQueries({ queryKey: ["helm"] }); },
@@ -113,13 +113,9 @@ function Settings() {
     deploy.mutate("config: Einstellungen angewendet");
   }
 
-  if (isLoading) {
-    return <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Lade…</div>;
-  }
+  if (isLoading) return <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 24, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>;
   const schema = data?.schema;
-  if (!schema) {
-    return <div className="text-sm text-gray-500 dark:text-gray-400">Kein Schema verfügbar.</div>;
-  }
+  if (!schema) return <div style={{ padding: 24, fontSize: 13, color: "var(--text-faint)" }}>Kein Schema verfügbar.</div>;
 
   const searchHits = query.trim()
     ? Object.values(fileGroups).flat().flatMap((top) => collectLeaves(schema.properties?.[top], top))
@@ -127,68 +123,71 @@ function Settings() {
         .slice(0, 120)
     : null;
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <Settings2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Einstellungen</h1>
+  const segBtn = (on: boolean): React.CSSProperties => ({
+    display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", fontSize: 12.5, fontWeight: 550, fontFamily: "var(--font)",
+    border: "none", cursor: "pointer", borderRadius: "calc(var(--radius-sm) - 2px)",
+    background: on ? "var(--surface)" : "transparent", color: on ? "var(--text)" : "var(--text-faint)", boxShadow: on ? "0 1px 2px rgba(0,0,0,.25)" : "none",
+  });
 
-        <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 ml-2">
-          <button onClick={() => setMode("standard")} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${mode === "standard" ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-            <SlidersHorizontal className="w-3.5 h-3.5" /> Standard
-          </button>
-          <button onClick={() => setMode("yaml")} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${mode === "yaml" ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-            <FileCode className="w-3.5 h-3.5" /> YAML
-          </button>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 22px", background: "var(--panel)", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <Icon name="sliders" size={16} style={{ color: "var(--accent)" }} />
+        <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Einstellungen</h1>
+
+        <div style={{ display: "flex", gap: 2, padding: 3, marginLeft: 6, background: "var(--surface-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-soft)" }}>
+          <button onClick={() => setMode("standard")} style={segBtn(mode === "standard")}><Icon name="sliders" size={13} /> Standard</button>
+          <button onClick={() => setMode("yaml")} style={segBtn(mode === "yaml")}><Icon name="file" size={13} /> YAML</button>
+          <button onClick={() => setMode("diff")} style={segBtn(mode === "diff")}><Icon name="diff" size={13} /> Änderungen</button>
         </div>
 
-        <div className="flex-1" />
-        <Link to="/config/history" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-          <History className="w-3.5 h-3.5" /> Verlauf
-        </Link>
-        {mode === "standard" && dirty && <span className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40 px-2 py-0.5 rounded">{Object.keys(changes).length} ungespeichert</span>}
-        {saved && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Gespeichert</span>}
+        <div style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" icon="clock" onClick={() => navigate({ to: "/config/history" })}>Verlauf</Button>
+        {mode === "standard" && dirty && <Badge tone="warn" size="sm">{Object.keys(changes).length} ungespeichert</Badge>}
+        {saved && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-ok)" }}><Icon name="check" size={14} stroke={2.2} /> Gespeichert</span>}
         {mode === "standard" && (
-          <>
-            <button onClick={() => saveStd.mutate()} disabled={!dirty || saveStd.isPending} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg">
-              {saveStd.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Speichern
-            </button>
-            <button onClick={saveAndDeploy} disabled={deploy.isPending || !!deployId} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg">
-              <Rocket className="w-3.5 h-3.5" /> Speichern & Deployen
-            </button>
-          </>
+          <Button variant="outline" size="sm" icon={saveStd.isPending ? undefined : "download"} disabled={!dirty || saveStd.isPending} onClick={() => saveStd.mutate()}>
+            {saveStd.isPending ? <Spinner size={13} /> : "Speichern"}
+          </Button>
+        )}
+        {mode !== "yaml" && (
+          <Button variant="primary" size="sm" icon="rocket" disabled={deploy.isPending || !!deployId} onClick={saveAndDeploy}>
+            {dirty ? "Speichern & Deployen" : "Deployen"}
+          </Button>
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Category nav (second sidebar) */}
-        <aside className="w-56 shrink-0 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 overflow-y-auto">
-          <div className="p-3">
-            <div className="relative mb-2">
-              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Alle Optionen suchen…" className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* Category nav */}
+        <aside className="mc-scroll" style={{ width: 232, flexShrink: 0, borderRight: "1px solid var(--border)", background: "var(--panel)", overflowY: "auto" }}>
+          <div style={{ padding: 12 }}>
+            <div style={{ position: "relative", marginBottom: 10 }}>
+              <Icon name="search" size={14} style={{ position: "absolute", left: 10, top: 9, color: "var(--text-faint)" }} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Optionen suchen…"
+                style={{ width: "100%", padding: "8px 10px 8px 30px", fontSize: 13, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontFamily: "var(--font)" }} />
             </div>
             {navGroups.map((grp) => {
               const collapsed = collapsedGroups[grp.label] ?? !grp.defaultOpen;
               return (
-                <div key={grp.label} className="mb-1">
-                  <button onClick={() => setCollapsedGroups((p) => ({ ...p, [grp.label]: !collapsed }))} className="w-full flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
-                    <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                <div key={grp.label} style={{ marginBottom: 4 }}>
+                  <button onClick={() => setCollapsedGroups((p) => ({ ...p, [grp.label]: !collapsed }))}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 4, padding: "6px 8px", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-faint)", background: "transparent", border: "none", cursor: "pointer" }}>
+                    <Icon name="chevDown" size={12} style={{ transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform .15s" }} />
                     {grp.label}
                   </button>
                   {!collapsed && grp.files.map((f) => {
                     const active = activeFile === f && !query;
-                    const Icon = iconFor(f);
                     const leaves = (fileGroups[f] ?? []).reduce((n, top) => n + countLeaves(schema.properties?.[top]), 0);
                     return (
-                      <button key={f} onClick={() => { setFileSel(f); setQuery(""); }} className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${active ? "bg-blue-50 dark:bg-blue-950/60" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
-                        <Icon className={`w-4 h-4 shrink-0 ${active ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm truncate ${active ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300"}`}>{humanize(f.replace(/\.yaml$/, ""))}</div>
-                          <div className="text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{f}</div>
+                      <button key={f} onClick={() => { setFileSel(f); setQuery(""); }}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: "var(--radius-sm)", textAlign: "left", cursor: "pointer", border: "none", background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--text-dim)" }}>
+                        <Icon name={iconFor(f)} size={16} style={{ flexShrink: 0, color: active ? "var(--accent)" : "var(--text-faint)" }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: active ? "var(--accent)" : "var(--text)" }}>{humanize(f.replace(/\.yaml$/, ""))}</div>
+                          <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f}</div>
                         </div>
-                        <span className="text-[10px] text-gray-400 dark:text-gray-600 tabular-nums shrink-0">{leaves}</span>
+                        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--text-faint)", flexShrink: 0 }}>{leaves}</span>
                       </button>
                     );
                   })}
@@ -198,57 +197,71 @@ function Settings() {
           </div>
         </aside>
 
-        {/* Full-width panel */}
-        <main className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-gray-950/30">
+        {/* Main panel */}
+        <main className="mc-scroll" style={{ flex: 1, overflowY: "auto", background: "var(--bg)" }}>
           {searchHits ? (
-            <div className="px-8 py-6 space-y-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{searchHits.length} Treffer für „{query}"</p>
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700/60">
-                {searchHits.map((l) => (
-                  <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} />
-                ))}
+            <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--text-faint)" }}>{searchHits.length} Treffer für „{query}"</p>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+                {searchHits.map((l, i) => <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} divider={i > 0} />)}
+              </div>
+            </div>
+          ) : mode === "diff" ? (
+            <div style={{ padding: "24px 32px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <div style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name="diff" size={18} /></div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>Ausstehende Änderungen</h2>
+                  <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--text-faint)" }}>Was ein Deploy jetzt auf den Cluster bringen würde (Working-Tree gegen letzten Commit).</p>
+                </div>
+              </div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+                {diffLoading && !diffData ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 18, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade Diff…</div>
+                ) : hasDiff ? (
+                  <DiffView raw={diffData!.diff} />
+                ) : (
+                  <EmptyState icon="check" title="Keine ausstehenden Änderungen" sub="Working-Tree und letzter Commit sind identisch — es gibt nichts zu deployen." />
+                )}
               </div>
             </div>
           ) : mode === "yaml" && activeFile ? (
-            <YamlPane sliceName={activeFile.replace(/\.yaml$/, "")} theme={theme} qc={qc} />
+            <YamlPane sliceName={activeFile.replace(/\.yaml$/, "")} qc={qc} />
           ) : activeFile ? (
-            <div className="px-8 py-6 space-y-8">
+            <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 30 }}>
               {(fileGroups[activeFile] ?? []).map((top) => {
                 const node = schema.properties?.[top];
                 if (!node) return null;
-                const SecIcon = iconFor(activeFile);
                 return (
                   <section key={top}>
-                    <div className="flex items-start gap-3 mb-4">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500/90 to-[#0DBD8B]/90 text-white shrink-0 shadow-sm">
-                        <SecIcon className="w-[18px] h-[18px]" />
-                      </div>
-                      <div className="min-w-0">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight">{humanize(top)}</h2>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">{activeFile}</code>
-                          {data?.comments[top] && <span className="text-sm text-gray-500 dark:text-gray-400 truncate">· {data.comments[top]}</span>}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                      <div style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name={iconFor(activeFile)} size={18} /></div>
+                      <div style={{ minWidth: 0 }}>
+                        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>{humanize(top)}</h2>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                          <code style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{activeFile}</code>
+                          {data?.comments[top] && <span style={{ fontSize: 12.5, color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>· {data.comments[top]}</span>}
                         </div>
                       </div>
                     </div>
                     {fieldKind(node) === "object"
                       ? <SchemaSection node={node} path={top} comments={data?.comments ?? {}} effectiveValue={effectiveValue} setValue={setValue} />
-                      : <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl"><Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} /></div>}
+                      : <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}><Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} /></div>}
                   </section>
                 );
               })}
 
               {deployId && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Deploy</span>
-                    {done && status === "success" && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Erfolgreich</span>}
-                    {done && status === "hooks-failed" && <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400"><AlertTriangle className="w-3.5 h-3.5" /> Hooks fehlgeschlagen</span>}
-                    {done && status === "failed" && <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><XCircle className="w-3.5 h-3.5" /> Fehlgeschlagen</span>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Deploy</span>
+                    {done && status === "success" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-ok)" }}><Icon name="check" size={14} stroke={2.2} /> Erfolgreich</span>}
+                    {done && status === "hooks-failed" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-warn)" }}><Icon name="alert" size={14} /> Hooks fehlgeschlagen</span>}
+                    {done && status === "failed" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-err)" }}><Icon name="x" size={14} stroke={2.2} /> Fehlgeschlagen</span>}
                   </div>
-                  <div ref={logRef} className="bg-gray-950 rounded-xl p-4 font-mono text-xs text-green-400 max-h-64 overflow-y-auto">
-                    {logs.map((line, i) => <div key={i} className={`leading-relaxed ${line.startsWith("ERROR") ? "text-red-400" : line.startsWith("WARNING") ? "text-yellow-400" : ""}`}>{line}</div>)}
-                    {!done && <div className="animate-pulse mt-1">▋</div>}
+                  <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", maxHeight: 256, overflowY: "auto", lineHeight: 1.6 }}>
+                    {logs.map((line, i) => <div key={i} style={{ color: line.startsWith("ERROR") ? "var(--status-err)" : line.startsWith("WARNING") ? "var(--status-warn)" : undefined }}>{line}</div>)}
+                    {!done && <div style={{ animation: "mc-ping 1.2s ease infinite", marginTop: 2 }}>▋</div>}
                   </div>
                 </div>
               )}
@@ -260,7 +273,7 @@ function Settings() {
   );
 }
 
-function YamlPane({ sliceName, theme, qc }: { sliceName: string; theme: string; qc: ReturnType<typeof useQueryClient> }) {
+function YamlPane({ sliceName, qc }: { sliceName: string; qc: ReturnType<typeof useQueryClient> }) {
   const [content, setContent] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const { data: slice, isLoading } = useQuery({
@@ -274,21 +287,21 @@ function YamlPane({ sliceName, theme, qc }: { sliceName: string; theme: string; 
   const value = content ?? slice?.content ?? "";
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <FileCode className="w-3.5 h-3.5 text-gray-400" />
-        <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{slice?.file ?? `${sliceName}.yaml`}</span>
-        {dirty && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">ungespeichert</span>}
-        <div className="flex-1" />
-        <button onClick={() => save.mutate(value)} disabled={!dirty || save.isPending} className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg">
-          {save.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Speichern
-        </button>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--panel)" }}>
+        <Icon name="file" size={14} style={{ color: "var(--text-faint)" }} />
+        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)" }}>{slice?.file ?? `${sliceName}.yaml`}</span>
+        {dirty && <span style={{ fontSize: 10.5, color: "var(--status-warn)" }}>ungespeichert</span>}
+        <div style={{ flex: 1 }} />
+        <Button variant="primary" size="sm" icon={save.isPending ? undefined : "download"} disabled={!dirty || save.isPending} onClick={() => save.mutate(value)}>
+          {save.isPending ? <Spinner size={12} /> : "Speichern"}
+        </Button>
       </div>
-      <div className="flex-1">
+      <div style={{ flex: 1 }}>
         {isLoading ? (
-          <div className="flex items-center gap-2 p-4 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Lade…</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 16, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>
         ) : (
-          <Editor height="100%" defaultLanguage="yaml" value={value} theme={theme === "dark" ? "vs-dark" : "vs"}
+          <YamlEditor height="100%" defaultLanguage="yaml" value={value} theme="vs-dark"
             onChange={(v) => { setContent(v ?? ""); setDirty(true); }}
             options={{ fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: "on", tabSize: 2, automaticLayout: true }} />
         )}
@@ -311,9 +324,6 @@ interface GroupProps {
   effectiveValue: (p: string) => unknown; setValue: (p: string, v: unknown) => void; depth?: number;
 }
 
-// Uniform renderer: at every level the direct scalar/enum/bool fields go into ONE
-// card, and each nested object becomes its own collapsible card below. This makes
-// the hierarchy consistent and obvious — never a mix of loose rows and boxes.
 function SchemaSection(props: GroupProps) {
   const { node, path, comments, depth = 0 } = props;
   if (!node.properties) return null;
@@ -322,12 +332,12 @@ function SchemaSection(props: GroupProps) {
   const groups = ordered.filter(([, c]) => fieldKind(c) === "object");
 
   return (
-    <div className="space-y-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {leaves.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm divide-y divide-gray-100 dark:divide-gray-700/60">
-          {leaves.map(([key, child]) => {
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
+          {leaves.map(([key, child], i) => {
             const childPath = `${path}.${key}`;
-            return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} />;
+            return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} divider={i > 0} />;
           })}
         </div>
       )}
@@ -348,51 +358,49 @@ function SchemaSection(props: GroupProps) {
 function CollapsibleCard({ title, comment, count, depth, children }: { title: string; comment?: string; count: string; depth: number; children: ReactNode }) {
   const [open, setOpen] = useState(depth < 1);
   return (
-    <div className={`bg-white dark:bg-gray-800 border rounded-xl shadow-sm overflow-hidden transition-colors ${open ? "border-blue-200 dark:border-blue-900/60" : "border-gray-200 dark:border-gray-700"}`}>
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left">
-        <div className={`flex items-center justify-center w-5 h-5 rounded-md shrink-0 transition-colors ${open ? "bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500"}`}>
-          <ChevronRight className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+    <div style={{ background: "var(--surface)", border: `1px solid ${open ? "color-mix(in oklch, var(--accent) 30%, var(--border))" : "var(--border)"}`, borderRadius: "var(--radius)", boxShadow: "var(--shadow)", overflow: "hidden" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+        <div style={{ display: "grid", placeItems: "center", width: 20, height: 20, borderRadius: 6, flexShrink: 0, background: open ? "var(--accent-soft)" : "var(--surface-2)", color: open ? "var(--accent)" : "var(--text-faint)" }}>
+          <Icon name="chevRight" size={13} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{title}</div>
-          {comment && <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{comment}</div>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{title}</div>
+          {comment && <div style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{comment}</div>}
         </div>
-        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-600 shrink-0 bg-gray-50 dark:bg-gray-900/60 px-1.5 py-0.5 rounded">{count}</span>
+        <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--text-faint)", flexShrink: 0, background: "var(--surface-2)", padding: "2px 6px", borderRadius: 5 }}>{count}</span>
       </button>
-      {open && <div className="px-3 pb-3 pt-3 pl-7 space-y-3 border-t border-gray-100 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-900/20">{children}</div>}
+      {open && <div style={{ padding: "14px 14px 14px 28px", display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border-soft)", background: "var(--panel)" }}>{children}</div>}
     </div>
   );
 }
 
-interface FieldProps { node: JSONSchema; path: string; comment?: string; value: unknown; onChange: (v: unknown) => void }
-function Field({ node, path, comment, value, onChange }: FieldProps) {
+interface FieldProps { node: JSONSchema; path: string; comment?: string; value: unknown; onChange: (v: unknown) => void; divider?: boolean }
+function Field({ node, path, comment, value, onChange, divider }: FieldProps) {
   const kind = fieldKind(node);
   const key = path.split(".").pop() ?? path;
-  const inputCls = "px-2.5 py-1.5 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const inputStyle: React.CSSProperties = { padding: "7px 10px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 13, fontFamily: "var(--font)" };
 
   return (
-    <div className="flex items-start gap-4 px-3 py-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{humanize(key)}</span>
-        {comment && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{comment}</p>}
-        <code className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">{path}</code>
+    <div className="mc-row" style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "11px 14px", borderTop: divider ? "1px solid var(--border-soft)" : "none" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{humanize(key)}</span>
+        {comment && <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)", lineHeight: 1.5 }}>{comment}</p>}
+        <code style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--text-faint)", opacity: 0.7 }}>{path}</code>
       </div>
-      <div className="shrink-0 pt-0.5">
+      <div style={{ flexShrink: 0, paddingTop: 2 }}>
         {kind === "boolean" ? (
-          <button onClick={() => onChange(!value)} role="switch" aria-checked={!!value} className={`relative w-10 h-6 rounded-full transition-colors ${value ? "bg-[#0DBD8B]" : "bg-gray-300 dark:bg-gray-600"}`}>
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value ? "translate-x-4" : ""}`} />
-          </button>
+          <Toggle checked={!!value} onChange={(v) => onChange(v)} />
         ) : kind === "enum" ? (
-          <select value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} className={inputCls}>
+          <select value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} style={inputStyle}>
             <option value="">— nicht gesetzt —</option>
             {node.enum?.map((o) => <option key={String(o)} value={String(o)}>{String(o)}</option>)}
           </select>
         ) : kind === "number" || kind === "integer" ? (
-          <input type="number" value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} className={`${inputCls} w-40`} />
+          <input type="number" value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} style={{ ...inputStyle, width: 160 }} />
         ) : kind === "string" ? (
-          <input type="text" value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} className={`${inputCls} w-72`} />
+          <input type="text" value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} style={{ ...inputStyle, width: 280 }} />
         ) : (
-          <span className="text-[10px] text-gray-400 dark:text-gray-600 italic">nur via YAML</span>
+          <span style={{ fontSize: 10, color: "var(--text-faint)", fontStyle: "italic" }}>nur via YAML</span>
         )}
       </div>
     </div>

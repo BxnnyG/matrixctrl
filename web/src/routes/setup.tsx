@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode, type RefObject } from "react";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
-import { CheckCircle2, XCircle, AlertTriangle, Loader2, Rocket, ShieldCheck, Server, SlidersHorizontal, Info } from "lucide-react";
+import { Card, Icon, Button, Spinner } from "@/components/mc";
 
 export const Route = createFileRoute("/setup")({
   component: Setup,
@@ -23,19 +23,48 @@ interface SetupStatus {
 interface ESSVersion { version: string }
 interface DeployResponse { upgrade_id: string }
 
-function Row({ ok, warn, icon: Icon, title, detail }: { ok: boolean; warn?: boolean; icon: React.ElementType; title: string; detail: string }) {
-  const Badge = ok ? CheckCircle2 : warn ? AlertTriangle : XCircle;
-  const color = ok ? "text-green-500" : warn ? "text-yellow-500" : "text-red-500";
+const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 13.5, fontFamily: "var(--font)" };
+const labelStyle: React.CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 };
+
+function WizardHeader({ icon, title, sub }: { icon: string; title: string; sub: string }) {
   return (
-    <div className="flex items-start gap-3 px-4 py-3.5">
-      <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700/60 text-gray-500 dark:text-gray-400 shrink-0">
-        <Icon className="w-[18px] h-[18px]" />
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "var(--accent-soft)", borderBottom: "1px solid var(--border-soft)" }}>
+      <div style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "var(--radius-sm)", background: "var(--accent)", color: "var(--accent-fg)", flexShrink: 0 }}><Icon name={icon} size={18} /></div>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>{title}</div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>{sub}</div>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{title}</div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{detail}</p>
+    </div>
+  );
+}
+
+function LogTerm({ logs, done, logRef }: { logs: string[]; done: boolean; logRef: RefObject<HTMLDivElement | null> }) {
+  return (
+    <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius-sm)", padding: 12, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", maxHeight: 288, overflowY: "auto", lineHeight: 1.6 }}>
+      {logs.map((line, i) => <div key={i} style={{ color: line.startsWith("ERROR") ? "var(--status-err)" : line.startsWith("WARNING") ? "var(--status-warn)" : undefined }}>{line}</div>)}
+      {!done && <div style={{ animation: "mc-ping 1.2s ease infinite", marginTop: 2 }}>▋</div>}
+    </div>
+  );
+}
+
+function StatusInline({ done, status, map }: { done: boolean; status: string | null; map: Record<string, [string, "ok" | "warn" | "err"]> }) {
+  if (!done || !status || !map[status]) return null;
+  const [label, tone] = map[status];
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: `var(--status-${tone})` }}><Icon name={tone === "ok" ? "check" : tone === "warn" ? "alert" : "x"} size={14} stroke={2.2} /> {label}</span>;
+}
+
+const DEPLOY_MAP: Record<string, [string, "ok" | "warn" | "err"]> = { success: ["Erfolgreich", "ok"], "hooks-failed": ["Hooks fehlgeschlagen", "warn"], failed: ["Fehlgeschlagen", "err"] };
+
+function Row({ ok, warn, icon, title, detail }: { ok: boolean; warn?: boolean; icon: string; title: string; detail: string; }) {
+  const tone = ok ? "ok" : warn ? "warn" : "err";
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px" }}>
+      <div style={{ display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color: "var(--text-dim)", flexShrink: 0 }}><Icon name={icon} size={17} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{title}</div>
+        <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)" }}>{detail}</p>
       </div>
-      <Badge className={`w-5 h-5 shrink-0 ${color}`} />
+      <Icon name={ok ? "check" : warn ? "alert" : "x"} size={18} stroke={2.2} style={{ color: `var(--status-${tone})`, flexShrink: 0 }} />
     </div>
   );
 }
@@ -48,80 +77,63 @@ function Setup() {
     refetchInterval: 30_000,
   });
 
-  if (isLoading) {
-    return <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Lade…</div>;
-  }
+  if (isLoading) return <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>;
   if (!data) return null;
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["setup", "status"] });
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Setup & Onboarding</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Integrationsstatus von MatrixCtrl ↔ ESS ↔ Matrix-Login.</p>
-      </div>
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
       {!data.ess_installed ? (
-        <DeployWizard release={data.ess_release} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+        <DeployWizard release={data.ess_release} onDone={invalidate} />
       ) : data.config_sections === 0 ? (
-        <AdoptCard release={data.ess_release} version={data.ess_version} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+        <AdoptCard release={data.ess_release} version={data.ess_version} onDone={invalidate} />
       ) : !data.oidc_configured ? (
-        <ConnectCard masHost={data.mas_host} onDone={() => qc.invalidateQueries({ queryKey: ["setup", "status"] })} />
+        <ConnectCard masHost={data.mas_host} onDone={invalidate} />
       ) : (
-        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm">
-          <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
-          <span className="text-green-800 dark:text-green-300">Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment.</span>
-        </div>
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
+          <Icon name="check" size={20} style={{ color: "var(--status-ok)" }} />
+          <span style={{ fontSize: 13, color: "var(--text)" }}>Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment.</span>
+        </Card>
       )}
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm divide-y divide-gray-100 dark:divide-gray-700/60">
-        <Row ok={data.ess_installed} icon={Server} title="ESS deployed"
+      <Card pad={false}>
+        <Row ok={data.ess_installed} icon="server" title="ESS deployed"
           detail={data.ess_installed ? `Release „${data.ess_release}" v${data.ess_version ?? "?"} (${data.ess_status ?? "?"}) in ${data.ess_namespace}` : `Kein Release „${data.ess_release}" in ${data.ess_namespace}`} />
-        <Row ok={data.config_sections > 0} icon={SlidersHorizontal} title="Config-Sektionen"
-          detail={`${data.config_sections} Sektions-Dateien im versionierten Config-Repo`} />
-        <Row ok={data.oidc_configured} warn={!data.oidc_configured} icon={ShieldCheck} title="Matrix-Login (OIDC)"
+        <div style={{ borderTop: "1px solid var(--border-soft)" }} />
+        <Row ok={data.config_sections > 0} icon="sliders" title="Config-Sektionen" detail={`${data.config_sections} Sektions-Dateien im versionierten Config-Repo`} />
+        <div style={{ borderTop: "1px solid var(--border-soft)" }} />
+        <Row ok={data.oidc_configured} warn={!data.oidc_configured} icon="key" title="Matrix-Login (OIDC)"
           detail={data.oidc_configured ? "Admin-only Login via MAS ist aktiv" : "Bootstrap-Modus (lokaler Admin) — nach ESS-Deploy auf OIDC umschalten"} />
-      </div>
+      </Card>
 
-      <div className="flex items-start gap-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 text-sm">
-        <Info className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-        <div className="text-gray-600 dark:text-gray-400">
-          <strong className="text-gray-800 dark:text-gray-200">Phase 1.5:</strong> Greenfield-Deploy (oben) seedet die Config aus den
-          Chart-Defaults und installiert ESS. Noch offen: automatische OIDC-Client-Registrierung via MAS Admin API. Siehe{" "}
-          <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">docs/SETUP.md</code>.
+      <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "var(--panel)" }}>
+        <Icon name="info" size={16} style={{ color: "var(--text-faint)", flexShrink: 0, marginTop: 1 }} />
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>
+          <strong style={{ color: "var(--text)" }}>Phase 1.5:</strong> Greenfield-Deploy (oben) seedet die Config aus den Chart-Defaults und installiert ESS. Noch offen: automatische OIDC-Client-Registrierung via MAS Admin API. Siehe <code style={{ fontFamily: "var(--mono)", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>docs/SETUP.md</code>.
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
 
+function WizardCard({ children }: { children: ReactNode }) {
+  return <div style={{ background: "var(--surface)", border: "1px solid color-mix(in oklch, var(--accent) 30%, var(--border))", borderRadius: "var(--radius)", boxShadow: "var(--shadow)", overflow: "hidden" }}>{children}</div>;
+}
+
 function AdoptCard({ release, version, onDone }: { release: string; version?: string; onDone: () => void }) {
-  const adopt = useMutation({
-    mutationFn: () => api.post("/api/v1/setup/adopt", {}),
-    onSuccess: onDone,
-  });
+  const adopt = useMutation({ mutationFn: () => api.post("/api/v1/setup/adopt", {}), onSuccess: onDone });
   return (
-    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-900/60 rounded-xl shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-[#0DBD8B] text-white shrink-0"><Server className="w-[18px] h-[18px]" /></div>
-        <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Bestehendes ESS übernehmen</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Release „{release}"{version ? ` v${version}` : ""} erkannt — Config übernehmen, um es zu verwalten</div>
+    <WizardCard>
+      <WizardHeader icon="server" title="Bestehendes ESS übernehmen" sub={`Release „${release}"${version ? ` v${version}` : ""} erkannt — Config übernehmen, um es zu verwalten`} />
+      <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55 }}>MatrixCtrl liest die aktuellen Helm-Values des Release und legt daraus die versionierten Config-Sektionen an. Danach kannst du es über die UI verwalten.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Button variant="primary" icon={adopt.isPending ? undefined : "server"} disabled={adopt.isPending} onClick={() => adopt.mutate()}>{adopt.isPending ? <><Spinner size={14} /> Übernehme…</> : "Config übernehmen"}</Button>
+          {adopt.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(adopt.error as Error).message}</span>}
+          {adopt.isSuccess && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-ok)" }}><Icon name="check" size={14} stroke={2.2} /> Übernommen</span>}
         </div>
       </div>
-      <div className="p-4 space-y-3">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          MatrixCtrl liest die aktuellen Helm-Values des Release und legt daraus die versionierten Config-Sektionen an. Danach kannst du es über die UI verwalten.
-        </p>
-        <div className="flex items-center gap-3">
-          <button onClick={() => adopt.mutate()} disabled={adopt.isPending}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
-            {adopt.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />} Config übernehmen
-          </button>
-          {adopt.isError && <span className="text-xs text-red-600 dark:text-red-400">{(adopt.error as Error).message}</span>}
-          {adopt.isSuccess && <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Übernommen</span>}
-        </div>
-      </div>
-    </div>
+    </WizardCard>
   );
 }
 
@@ -138,61 +150,43 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
     mutationFn: () => api.post<DeployResponse>("/api/v1/setup/connect-oidc", { issuer, public_url: publicUrl }),
     onSuccess: (res) => { setRunId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
   });
-
   useUpgradeStream(runId, {
     onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
     onDone: (s) => { setDone(true); setStatus(s); if (s === "success") onDone(); },
   });
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-900/60 rounded-xl shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-[#0DBD8B] text-white shrink-0"><ShieldCheck className="w-[18px] h-[18px]" /></div>
-        <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Matrix-Login verbinden</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Registriert MatrixCtrl als OIDC-Client in MAS — automatisch, kein manuelles Patchen</div>
-        </div>
-      </div>
-
+    <WizardCard>
+      <WizardHeader icon="key" title="Matrix-Login verbinden" sub="Registriert MatrixCtrl als OIDC-Client in MAS — automatisch, kein manuelles Patchen" />
       {!runId ? (
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="mc-dash-grid">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">MAS URL (Issuer)</label>
-              <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://mas.example.com"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label style={labelStyle}>MAS URL (Issuer)</label>
+              <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://mas.example.com" style={inputStyle} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">MatrixCtrl URL</label>
-              <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label style={labelStyle}>MatrixCtrl URL</label>
+              <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} style={inputStyle} />
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => connect.mutate()} disabled={!issuer || !publicUrl || connect.isPending}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
-              {connect.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} Verbinden
-            </button>
-            <span className="text-xs text-gray-400 dark:text-gray-500">Schreibt den Client in die MAS-Config + helm upgrade ess + schaltet auf OIDC um</span>
-            {connect.isError && <span className="text-xs text-red-600 dark:text-red-400">{(connect.error as Error).message}</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Button variant="primary" icon={connect.isPending ? undefined : "key"} disabled={!issuer || !publicUrl || connect.isPending} onClick={() => connect.mutate()}>{connect.isPending ? <><Spinner size={14} /> Verbinde…</> : "Verbinden"}</Button>
+            <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Schreibt den Client in die MAS-Config + helm upgrade ess + schaltet auf OIDC um</span>
+            {connect.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(connect.error as Error).message}</span>}
           </div>
         </div>
       ) : (
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-3 text-sm">
-            <span className="font-medium text-gray-700 dark:text-gray-300">Verbinde…</span>
-            {done && status === "success" && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Verbunden</span>}
-            {done && status === "hooks-failed" && <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400"><AlertTriangle className="w-3.5 h-3.5" /> Teilweise</span>}
-            {done && status === "failed" && <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><XCircle className="w-3.5 h-3.5" /> Fehlgeschlagen</span>}
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Verbinde…</span>
+            <StatusInline done={done} status={status} map={{ success: ["Verbunden", "ok"], "hooks-failed": ["Teilweise", "warn"], failed: ["Fehlgeschlagen", "err"] }} />
           </div>
-          <div ref={logRef} className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-green-400 max-h-72 overflow-y-auto">
-            {logs.map((line, i) => <div key={i} className={`leading-relaxed ${line.startsWith("ERROR") ? "text-red-400" : line.startsWith("WARNING") ? "text-yellow-400" : ""}`}>{line}</div>)}
-            {!done && <div className="animate-pulse mt-1">▋</div>}
-          </div>
-          {done && status === "success" && <p className="text-xs text-green-600 dark:text-green-400">Abmelden und über Matrix neu anmelden.</p>}
+          <LogTerm logs={logs} done={done} logRef={logRef} />
+          {done && status === "success" && <p style={{ margin: 0, fontSize: 12, color: "var(--status-ok)" }}>Abmelden und über Matrix neu anmelden.</p>}
         </div>
       )}
-    </div>
+    </WizardCard>
   );
 }
 
@@ -205,16 +199,11 @@ function DeployWizard({ release, onDone }: { release: string; onDone: () => void
   const [status, setStatus] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
-  const { data: versions } = useQuery({
-    queryKey: ["helm", "versions"],
-    queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions"),
-  });
-
+  const { data: versions } = useQuery({ queryKey: ["helm", "versions"], queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions") });
   const deploy = useMutation({
     mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName }),
     onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
   });
-
   useUpgradeStream(deployId, {
     onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
     onDone: (s) => { setDone(true); setStatus(s); if (s === "success") onDone(); },
@@ -223,56 +212,39 @@ function DeployWizard({ release, onDone }: { release: string; onDone: () => void
   const validDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(serverName);
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-900/60 rounded-xl shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-[#0DBD8B] text-white shrink-0"><Rocket className="w-[18px] h-[18px]" /></div>
-        <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">ESS deployen</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Greenfield — Release „{release}" ist noch nicht installiert</div>
-        </div>
-      </div>
-
+    <WizardCard>
+      <WizardHeader icon="rocket" title="ESS deployen" sub={`Greenfield — Release „${release}" ist noch nicht installiert`} />
       {!deployId ? (
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="mc-dash-grid">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Server Name</label>
-              <input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="example.com"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Hostnames werden abgeleitet: matrix., mas., element., admin., mrtc.</p>
+              <label style={labelStyle}>Server Name</label>
+              <input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="example.com" style={inputStyle} />
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--text-faint)" }}>Hostnames werden abgeleitet: matrix., mas., element., admin., mrtc.</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">ESS-Version</label>
-              <select value={version} onChange={(e) => setVersion(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label style={labelStyle}>ESS-Version</label>
+              <select value={version} onChange={(e) => setVersion(e.target.value)} style={inputStyle}>
                 <option value="">Version wählen…</option>
                 {versions?.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
               </select>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => deploy.mutate()} disabled={!validDomain || !version || deploy.isPending}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
-              {deploy.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />} ESS deployen
-            </button>
-            {serverName && !validDomain && <span className="text-xs text-yellow-600 dark:text-yellow-400">Bitte eine gültige Domain eingeben</span>}
-            {deploy.isError && <span className="text-xs text-red-600 dark:text-red-400">{(deploy.error as Error).message}</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Button variant="primary" icon={deploy.isPending ? undefined : "rocket"} disabled={!validDomain || !version || deploy.isPending} onClick={() => deploy.mutate()}>{deploy.isPending ? <><Spinner size={14} /> Deploye…</> : "ESS deployen"}</Button>
+            {serverName && !validDomain && <span style={{ fontSize: 12, color: "var(--status-warn)" }}>Bitte eine gültige Domain eingeben</span>}
+            {deploy.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(deploy.error as Error).message}</span>}
           </div>
         </div>
       ) : (
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-3 text-sm">
-            <span className="font-medium text-gray-700 dark:text-gray-300">Deploy</span>
-            {done && status === "success" && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Erfolgreich</span>}
-            {done && status === "hooks-failed" && <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400"><AlertTriangle className="w-3.5 h-3.5" /> Hooks fehlgeschlagen</span>}
-            {done && status === "failed" && <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><XCircle className="w-3.5 h-3.5" /> Fehlgeschlagen</span>}
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Deploy</span>
+            <StatusInline done={done} status={status} map={DEPLOY_MAP} />
           </div>
-          <div ref={logRef} className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-green-400 max-h-72 overflow-y-auto">
-            {logs.map((line, i) => <div key={i} className={`leading-relaxed ${line.startsWith("ERROR") ? "text-red-400" : line.startsWith("WARNING") ? "text-yellow-400" : ""}`}>{line}</div>)}
-            {!done && <div className="animate-pulse mt-1">▋</div>}
-          </div>
+          <LogTerm logs={logs} done={done} logRef={logRef} />
         </div>
       )}
-    </div>
+    </WizardCard>
   );
 }
