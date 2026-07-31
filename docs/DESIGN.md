@@ -77,7 +77,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ⏳ ½ | Published chart is 0.1.0 while the running image is 0.1.12 — see §2 |
-| S9 Verification & CI | ⏳ ¼ | Go unit tests exist; **no CI, no frontend tests** |
+| S9 Verification & CI | ✅ (E13) | CI on push/PR, 22 frontend tests, headless-browser route check |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
@@ -165,13 +165,15 @@ version strings together, and no tags in git.
 
 ### S9 · Verification & CI ⏳
 **Purpose:** prove an etappe is done without a human remembering to check.
-**Today:** Go unit tests for `config`, `git`, `helm`; TypeScript typecheck; the
-build itself. Verification is currently performed by the agent, by hand, per
-session.
-**Open:** no CI runs any of it. No frontend tests exist, although
-`CLAUDE.md` claimed "Vitest + Testing Library" until 2026-07-31. No headless
-browser is installed, so the operator-requested screenshot/UI check cannot run yet.
-This is the first planned etappe — see [plans/etappe-13-ci-and-verification.md](plans/etappe-13-ci-and-verification.md).
+**Today:** GitHub Actions runs `go vet`, `go test ./...`, the TypeScript
+typecheck, 22 Vitest unit tests and the frontend build on every push and PR.
+`web/scripts/verify-ui.mjs` drives headless chromium over all nine functional
+routes after a deploy, failing on console errors or an unmounted root.
+✅ **Done (E13, 2026-07-31):** the definition of done is now enforced outside the
+agent's memory. Did *not* solve: component/snapshot tests (deliberately omitted —
+they break on every intentional design change), and the greenfield path (S6),
+which needs a throwaway cluster.
+Plan: [plans/etappe-13-ci-and-verification.md](plans/etappe-13-ci-and-verification.md).
 
 ### S10 · Audit trail ⏳
 **Purpose:** who changed what, when.

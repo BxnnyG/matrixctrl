@@ -40,19 +40,18 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 8 | Per-section config — Standard/YAML modes, comment-preserving migrator, full-bleed settings | ✅ 2026-05-30 · `b77c9e7` |
 | 9 | Phase 1.5 setup — greenfield deploy, connect-OIDC, ESS discovery + adopt | ✅ 2026-05-30 · `23ee787`, `443d497`, `13eeb4d` |
 | 10 | Public-repo hardening — sanitised chart, AGPL, community health files, module rename | ✅ 2026-05-30 · `803dacc`…`a4869ec` |
-| 11 | Design system — dark-only tokens, 3 directions, `mc.tsx` primitives, all screens restyled | ✅ 2026-06-04 · image 0.1.10 · **uncommitted** |
-| 12 | Observability & correctness — pod drill-down with restart cause, event feed, hook editor, version-list + diff fixes | ✅ 2026-07-31 · image 0.1.12 · **uncommitted** |
-| 13 | CI & verification chain | ⏳ planned — [plan](plans/etappe-13-ci-and-verification.md) |
+| 11 | Design system — dark-only tokens, 3 directions, `mc.tsx` primitives, all screens restyled | ✅ 2026-06-04 · image 0.1.10 |
+| 12 | Observability & correctness — pod drill-down with restart cause, event feed, hook editor, version-list + diff fixes | ✅ 2026-07-31 · image 0.1.12 |
+| 13 | CI & verification chain — GitHub Actions, 22 frontend tests, headless-browser route check | ✅ 2026-07-31 · [plan](plans/etappe-13-ci-and-verification.md) |
 
-> **Etappes 11 and 12 are deployed but not committed.** The working tree holds
-> 107 changed files against `a4869ec`. Committing them is the first task of
-> etappe 13 — see [BACKLOG.md](BACKLOG.md) P0-2.
+> Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
+> reviewable slices (`1df5690`…`75dc5e4`).
 
 ## Up next (order is a proposal, movable)
 
 | # | Undertaking | Why now | Status |
 |---|-------------|---------|--------|
-| 13 | **CI & verification chain** (S9) | Nothing enforces the definition of done except memory. Everything else is riskier until this exists. | ⏳ |
+| 13 | **CI & verification chain** (S9) | Nothing enforced the definition of done except memory. | ✅ 2026-07-31 |
 | 14 | **Greenfield end-to-end test** (S6) | "Works for anyone" is the product claim and it is unproven. Needs a throwaway cluster. | ⏳ |
 | 15 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.12 — the README currently mis-installs the project. | ⏳ |
 | 16 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
@@ -107,7 +106,8 @@ The things you need at 3 a.m. **No passwords here — only where they live.**
 | Instance Helm values | `deploy/helm/matrixctrl/values.bxnny.yaml` — **gitignored**, excluded from the packaged chart |
 | Config repo | `/data/config-repo` on a PVC inside the pod; one YAML per ESS section + `config-slices.json`. Pre-migration monolith in `_backup-pre-sections/` |
 | Database | PostgreSQL 16 sidecar in the same pod, own PVC |
-| Secrets | Kubernetes secrets in ns `matrixctrl`, auto-generated on first install (`resource-policy: keep`). JWT key persisted in DB table `instance_settings` |
+| Secrets | Kubernetes secrets in ns `matrixctrl`, auto-generated on first install (`resource-policy: keep`) |
+| JWT signing key | This install injects it via `MATRIXCTRL_JWT_SECRET` from `secret/matrixctrl-secret` key `jwt-secret`, so the env var wins and the `instance_settings` fallback stays empty. A fresh install without that env var generates and persists a key in `instance_settings` instead |
 | MatrixCtrl's MAS client | defined in the ESS values under `matrixAuthenticationService.additional` + `policy.data.admin_clients` |
 | Go toolchain | `/usr/local/go/bin/go` (not on default PATH) |
 | Frontend embed | Go embeds `cmd/matrixctrl/dist` — the Makefile copies `web/dist` there before building |
