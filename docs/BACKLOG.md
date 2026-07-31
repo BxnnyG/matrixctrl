@@ -72,9 +72,29 @@ strangers depends on a code path nobody has ever run.
   this repo. There were no forks and no PRs, so nothing else pins them; support is
   the only lever. Alternative (heavier, operator's call): delete and re-create the
   repo, which loses the stars and the URL's history.
-  *Severity:* low. RFC1918 address, useful only to someone already on the network;
-  no credential was ever in the history (verified by a full-history scan for keys,
-  tokens and password-shaped assignments — all clean).
+
+  *What was exposed, objectively:*
+  - **Exposure window:** 2026-05-27 → 2026-08-01, roughly **nine weeks**, in a
+    public repository. Cloning and indexing of public repos is automated and
+    continuous, so "nobody was looking" is an assumption, not a finding.
+  - **What the values reveal.** The hostname is a structured name: it encodes
+    environment, role, service and host index. That is topology — it implies the
+    existence of sibling hosts under the same convention and the naming scheme used
+    across the estate. The address discloses the internal subnet in use. Together
+    they are reconnaissance material: someone who later obtains *any* foothold
+    (VPN credential, phished session, a device on the LAN) starts with a map
+    instead of having to scan for one, and targeted phishing gets more credible
+    with real internal names in it.
+  - **What was not exposed.** No credential, key, token or password was ever in the
+    history — verified by scanning every blob in all 51 commits for private-key
+    headers, provider token formats and password-shaped assignments. The address is
+    RFC1918 and not routable from the internet, so it is not directly reachable.
+  - **Persistence.** Removal from GitHub does not recall copies. Anything cloned,
+    mirrored or indexed during the nine weeks is outside anyone's control, and no
+    action taken here can retract it.
+  - **What actually invalidates the leak** — as opposed to limiting further spread —
+    is renaming the host and changing the address. Purging GitHub only stops new
+    disclosure. This is the operator's call and depends on what that rename costs.
 - ~~**P0-2 · Etappes 11 and 12 are uncommitted.**~~ **Done 2026-07-31** —
   committed in nine reviewable slices (`9b226c5`…`c8fbd4d`). Tagging is still
   open and folded into P1-3.

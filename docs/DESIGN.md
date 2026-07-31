@@ -313,14 +313,19 @@ been sanitised (§4.8); the history had not.
 **Decision:** rewrite all 51 commits with `git filter-repo` (`--mailmap` for the
 identity, `--replace-text` for the two literals) and force-push.
 **Rationale:** sanitising the working tree while the same value sits one `git show`
-away is not sanitising. The disclosure is infrastructure, not a credential — the IP
-is RFC1918 and unreachable from outside — but §4.8 says a stranger reads this repo.
+away is not sanitising. No credential was ever in the history (verified by scanning
+every blob), but a structured hostname plus an internal address discloses topology:
+the naming convention, the implied sibling hosts, and the subnet in use. It was
+public for nine weeks, and §4.8 says a stranger reads this repo.
 **Verification:** the rewrite is content-neutral by construction — the HEAD tree
 hash is **unchanged** (`490e2573`), all 51 subjects and author dates are identical,
 and only the author identity and the two literals differ. Old tip `2ff2370` →
 new tip `2ff2370`. CI is green on the rewritten tip.
 **Consequences:** every commit hash changed, so existing clones must re-clone —
-there were no forks and no open PRs, so nobody else was affected. **The old objects
-remain reachable by SHA on GitHub** until GitHub garbage-collects them; only GitHub
-Support can force that. Tracked as [BACKLOG.md](BACKLOG.md) P0-1b. Backup of the
-pre-rewrite history is a verified `git bundle` held outside the repo.
+there were no forks and no open PRs, so no other repository was affected. **The old
+objects remain reachable by SHA on GitHub** until GitHub garbage-collects them; only
+GitHub Support can force that, and no action retracts copies made during the nine
+weeks the values were public. Only renaming the host and changing the address
+invalidates the disclosed values themselves — see [BACKLOG.md](BACKLOG.md) P0-1b for
+the full assessment. Backup of the pre-rewrite history is a verified `git bundle`
+held outside the repo.
