@@ -116,6 +116,55 @@ func (h *StatusHandler) DeploymentPods(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, pods)
 }
 
+// GET /api/v1/status/components/{name}/pods — detailed pods + their events for a
+// workload. This is the drill-down behind a dashboard row: it answers *why* a pod
+// keeps restarting (last exit reason/code) rather than just how often.
+func (h *StatusHandler) ComponentDetail(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "k8s unavailable")
+		return
+	}
+	name := chi.URLParam(r, "name")
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	pods, events, err := h.k8s.ComponentPods(ctx, h.essNS, name)
+	if err != nil {
+		Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"name":   name,
+		"pods":   pods,
+		"events": events,
+	})
+}
+
+// GET /api/v1/status/events?limit=40&warnings=1 — recent events in the ESS namespace
+func (h *StatusHandler) Events(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		JSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+	limit := 40
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	warningsOnly := r.URL.Query().Get("warnings") == "1"
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	events, err := h.k8s.ListEvents(ctx, h.essNS, limit, warningsOnly)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if events == nil {
+		events = []k8s.EventInfo{}
+	}
+	JSON(w, http.StatusOK, events)
+}
+
 // GET /api/v1/status/pods/{pod}/logs?tail=200 — get pod logs
 func (h *StatusHandler) PodLogs(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
@@ -131,7 +180,7 @@ func (h *StatusHandler) PodLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	logs, err := h.k8s.GetPodLogs(ctx, h.essNS, pod, tail)
+	logs, err := h.k8s.GetPodLogs(ctx, h.essNS, pod, r.URL.Query().Get("container"), tail)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
