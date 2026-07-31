@@ -139,6 +139,34 @@ func (h *HooksHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// POST /api/v1/hooks/{id}/enabled — flip only the enabled flag.
+// Built-ins are protected from edits and deletion, but operators still need to
+// choose which hooks run on the next deployment, so this path allows them too.
+func (h *HooksHandler) SetEnabled(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid hook id")
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := Decode(r, &req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	tag, err := h.db.Exec(r.Context(), `UPDATE hooks SET enabled=$1, updated_at=NOW() WHERE id=$2`, req.Enabled, id)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		Error(w, http.StatusNotFound, "hook not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *HooksHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
