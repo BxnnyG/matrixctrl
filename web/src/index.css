@@ -1,14 +1,177 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* ── MatrixCtrl design system ──────────────────────────────────────────────
+   Token-driven, dark-only. Three "directions" (Aura / Carbon / Graphite) plus
+   accent + density, switched live via data-attributes on <html>. Ported from the
+   Claude Design prototype. */
+
+/* Direction: Aura (default) — calm & airy, UniFi/Vercel */
+:root,
+[data-direction="aura"] {
+  --bg: oklch(0.155 0.008 256);
+  --bg-grid: oklch(0.20 0.010 256 / 0.5);
+  --rail: oklch(0.175 0.009 256);
+  --panel: oklch(0.188 0.010 256);
+  --surface: oklch(0.205 0.011 256);
+  --surface-2: oklch(0.235 0.012 256);
+  --hover: oklch(0.255 0.013 256);
+  --border: oklch(0.285 0.013 256);
+  --border-soft: oklch(0.245 0.012 256);
+  --border-strong: oklch(0.40 0.015 256);
+  --text: oklch(0.965 0.004 256);
+  --text-dim: oklch(0.74 0.010 256);
+  --text-faint: oklch(0.56 0.012 256);
+  --accent: oklch(0.64 0.155 256);
+  --accent-soft: oklch(0.64 0.155 256 / 0.14);
+  --accent-fg: oklch(0.99 0 0);
+  --radius: 13px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 8px 24px -8px oklch(0 0 0 / 0.45);
+  --font: "Geist Variable", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, monospace;
+  --rail-w: 248px;
+  --tracking: -0.011em;
+  --head-tracking: -0.022em;
+}
+
+[data-direction="carbon"] {
+  --bg: oklch(0.145 0 0);
+  --bg-grid: oklch(0.205 0 0 / 0.6);
+  --rail: oklch(0.125 0 0);
+  --panel: oklch(0.17 0 0);
+  --surface: oklch(0.183 0 0);
+  --surface-2: oklch(0.215 0 0);
+  --hover: oklch(0.235 0 0);
+  --border: oklch(0.265 0 0);
+  --border-soft: oklch(0.225 0 0);
+  --border-strong: oklch(0.36 0 0);
+  --text: oklch(0.955 0 0);
+  --text-dim: oklch(0.70 0 0);
+  --text-faint: oklch(0.52 0 0);
+  --accent: oklch(0.74 0.135 197);
+  --accent-soft: oklch(0.74 0.135 197 / 0.13);
+  --accent-fg: oklch(0.14 0 0);
+  --radius: 5px;
+  --radius-sm: 3px;
+  --radius-lg: 8px;
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.4);
+  --rail-w: 236px;
+  --tracking: -0.006em;
+  --head-tracking: -0.014em;
+}
+
+[data-direction="graphite"] {
+  --bg: oklch(0.175 0.006 64);
+  --bg-grid: oklch(0.225 0.008 64 / 0.5);
+  --rail: oklch(0.195 0.007 64);
+  --panel: oklch(0.21 0.008 64);
+  --surface: oklch(0.232 0.009 64);
+  --surface-2: oklch(0.265 0.010 64);
+  --hover: oklch(0.285 0.011 64);
+  --border: oklch(0.315 0.011 64);
+  --border-soft: oklch(0.27 0.010 64);
+  --border-strong: oklch(0.42 0.013 64);
+  --text: oklch(0.96 0.006 74);
+  --text-dim: oklch(0.76 0.010 74);
+  --text-faint: oklch(0.58 0.012 70);
+  --accent: oklch(0.64 0.145 286);
+  --accent-soft: oklch(0.64 0.145 286 / 0.15);
+  --accent-fg: oklch(0.99 0 0);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.35), 0 12px 32px -10px oklch(0 0 0 / 0.5);
+  --rail-w: 252px;
+  --tracking: -0.010em;
+  --head-tracking: -0.020em;
+}
+
+/* Accent overrides (when not "default") */
+[data-accent="blue"]   { --accent: oklch(0.64 0.155 256); --accent-soft: oklch(0.64 0.155 256 / 0.14); --accent-fg: oklch(0.99 0 0); }
+[data-accent="cyan"]   { --accent: oklch(0.74 0.135 197); --accent-soft: oklch(0.74 0.135 197 / 0.14); --accent-fg: oklch(0.14 0 0); }
+[data-accent="violet"] { --accent: oklch(0.64 0.150 286); --accent-soft: oklch(0.64 0.150 286 / 0.15); --accent-fg: oklch(0.99 0 0); }
+[data-accent="green"]  { --accent: oklch(0.70 0.155 152); --accent-soft: oklch(0.70 0.155 152 / 0.14); --accent-fg: oklch(0.14 0 0); }
+[data-accent="amber"]  { --accent: oklch(0.76 0.145 70);  --accent-soft: oklch(0.76 0.145 70 / 0.14);  --accent-fg: oklch(0.16 0 0); }
+
+/* Density (default regular) */
+:root,
+[data-density="regular"] { --pad: 17px; --gap: 14px; --row-h: 44px; --fs: 14px; }
+[data-density="compact"] { --pad: 13px; --gap: 10px; --row-h: 38px; --fs: 13px; }
+[data-density="comfy"]   { --pad: 22px; --gap: 18px; --row-h: 52px; --fs: 15px; }
+
+/* Status colors (constant across directions) */
+:root {
+  --status-ok: oklch(0.74 0.15 152);
+  --status-warn: oklch(0.80 0.15 82);
+  --status-err: oklch(0.66 0.20 24);
+  --status-info: oklch(0.70 0.13 240);
+  --status-idle: oklch(0.62 0.012 256);
+}
+
+/* Expose tokens as Tailwind v4 utilities (bg-surface, text-dim, border-bd, …) */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-rail: var(--rail);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-hover: var(--hover);
+  --color-bd: var(--border);
+  --color-bd-soft: var(--border-soft);
+  --color-bd-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-dim: var(--text-dim);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--status-ok);
+  --color-warn: var(--status-warn);
+  --color-err: var(--status-err);
+  --color-info: var(--status-info);
+  --radius-mc: var(--radius);
+  --radius-mc-sm: var(--radius-sm);
+  --radius-mc-lg: var(--radius-lg);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+}
 
 @layer base {
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs);
+    letter-spacing: var(--tracking);
     -webkit-font-smoothing: antialiased;
   }
+}
+
+/* Animations + scrollbar used by the design primitives */
+@keyframes mc-ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes mc-spin { to { transform: rotate(360deg); } }
+
+.mc-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.mc-scroll::-webkit-scrollbar-track { background: transparent; }
+.mc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.mc-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
+
+/* Interactive row hover (used by tables/lists built from buttons & divs) */
+.mc-row { transition: background-color .12s ease; }
+.mc-row:hover { background: var(--hover); }
+
+/* Inputs inherit the theme font + selection color */
+input, select, textarea { font-family: var(--font); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+::selection { background: var(--accent-soft); }
+
+/* Dashboard two-column → single column on narrow viewports */
+@media (max-width: 920px) {
+  .mc-dash-grid { grid-template-columns: 1fr !important; }
 }
