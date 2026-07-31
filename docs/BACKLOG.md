@@ -48,9 +48,9 @@ it — ESS already exists, so the guards short-circuit.
 3. **The main product claim is untested.** Greenfield has never run end to end.
    This is now the top gap.
 4. **The public install path is wrong.** README → chart 0.1.0 → two months behind.
-5. **The git history leaks the internal cluster hostname** in every historical
-   commit, in a public repo, after the docs were deliberately sanitised. New
-   commits no longer do.
+5. ~~The git history leaks the internal cluster hostname.~~ *Closed 2026-08-01
+   (§4.14) — with one residual: GitHub still serves the old objects by SHA
+   (P0-1b).*
 
 **In short:** the safety net exists now. The next thing worth doing is proving the
 greenfield path on a throwaway cluster — everything the project promises to
@@ -58,17 +58,25 @@ strangers depends on a code path nobody has ever run.
 
 ## 1. P0 — urgent
 
-- **P0-1 · Git history exposes the internal cluster hostname.**
-  Commits `e589ec1`…`a4869ec` carry `root@<internal-k3s-host>` as their author in a
-  public repo — the same hostname that was deliberately masked as `<k3s-node>` in
-  the docs (§4.8). Not a credential, but infrastructure disclosure.
-  *Fix:* rewrite the author of the historical commits (`git filter-repo --mailmap`)
-  and force-push. Coordinate first — it rewrites every hash and breaks existing
-  clones and forks.
-  *Already done (2026-07-31):* `user.name`/`user.email` are set repo-locally to the
-  GitHub noreply identity, so commits from here on no longer leak it.
+- ~~**P0-1 · Git history exposes the internal cluster hostname.**~~ **Done
+  2026-08-01** (§4.14). The scope was larger than this entry claimed: besides the
+  author of 39 commits, 30 commits carried the hostname **and the node's private
+  IP** in `CLAUDE.md`. All 51 commits were rewritten with `git filter-repo` and
+  force-pushed; the HEAD tree hash is unchanged, so no file content moved.
+- **P0-1b · GitHub still serves the pre-rewrite objects by SHA.** The force-push
+  removed the old commits from the branch, but `…/commits/<old-sha>` and the
+  contents API still return them, so the hostname and IP remain fetchable by anyone
+  who knows a hash. This is normal GitHub behaviour — unreachable objects survive
+  until their garbage collection runs.
+  *Fix:* ask GitHub Support to purge the unreachable objects and cached views for
+  this repo. There were no forks and no PRs, so nothing else pins them; support is
+  the only lever. Alternative (heavier, operator's call): delete and re-create the
+  repo, which loses the stars and the URL's history.
+  *Severity:* low. RFC1918 address, useful only to someone already on the network;
+  no credential was ever in the history (verified by a full-history scan for keys,
+  tokens and password-shaped assignments — all clean).
 - ~~**P0-2 · Etappes 11 and 12 are uncommitted.**~~ **Done 2026-07-31** —
-  committed in nine reviewable slices (`1df5690`…`75dc5e4`). Tagging is still
+  committed in nine reviewable slices (`9b226c5`…`c8fbd4d`). Tagging is still
   open and folded into P1-3.
 
 ## 2. P1 — must-have
