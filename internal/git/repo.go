@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 type CommitInfo struct {
@@ -245,34 +247,153 @@ func fileContentFromTree(tree *object.Tree, path string) (string, error) {
 	return f.Contents()
 }
 
-// unifiedDiff produces a very simple line-by-line diff (no context lines).
+const diffContextLines = 3
+
+// unifiedDiff produces a real unified diff with @@ hunk headers.
+//
+// The previous implementation compared line i of old against line i of new,
+// which meant inserting a single line near the top marked every following line
+// as changed — and it emitted no @@ headers at all, so consumers that parse
+// hunks (the UI diff viewer) saw an empty diff.
 func unifiedDiff(old, newContent string) string {
 	oldLines := splitLines(old)
 	newLines := splitLines(newContent)
-	var out string
-	maxLen := len(oldLines)
-	if len(newLines) > maxLen {
-		maxLen = len(newLines)
+	ops := diffOps(oldLines, newLines)
+
+	var out strings.Builder
+	for _, h := range buildHunks(ops, oldLines, newLines) {
+		out.WriteString(h)
 	}
-	for i := range maxLen {
-		o := ""
-		n := ""
-		if i < len(oldLines) {
-			o = oldLines[i]
-		}
-		if i < len(newLines) {
-			n = newLines[i]
-		}
-		if o != n {
-			if o != "" {
-				out += "-" + o + "\n"
+	return out.String()
+}
+
+func joinLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+type diffOp struct {
+	kind    byte // ' ' equal, '-' delete, '+' insert
+	oldIdx  int  // index into oldLines (-1 for inserts)
+	newIdx  int  // index into newLines (-1 for deletes)
+}
+
+// diffOps computes a line-level diff using go-diff's Myers implementation. Lines
+// are mapped to runes so the character-oriented algorithm operates per line.
+func diffOps(oldLines, newLines []string) []diffOp {
+	dmp := diffmatchpatch.New()
+	// Every line must be newline-terminated: DiffLinesToRunes tokenises on "\n"
+	// and would otherwise treat a final "b" and "b\n" as two different lines,
+	// reporting a spurious delete+insert when text is merely appended.
+	oldEnc, newEnc, _ := dmp.DiffLinesToRunes(joinLines(oldLines), joinLines(newLines))
+	diffs := dmp.DiffMainRunes(oldEnc, newEnc, false)
+
+	var ops []diffOp
+	oi, ni := 0, 0
+	for _, d := range diffs {
+		n := len([]rune(d.Text))
+		switch d.Type {
+		case diffmatchpatch.DiffEqual:
+			for i := 0; i < n; i++ {
+				ops = append(ops, diffOp{' ', oi, ni})
+				oi++
+				ni++
 			}
-			if n != "" {
-				out += "+" + n + "\n"
+		case diffmatchpatch.DiffDelete:
+			for i := 0; i < n; i++ {
+				ops = append(ops, diffOp{'-', oi, -1})
+				oi++
+			}
+		case diffmatchpatch.DiffInsert:
+			for i := 0; i < n; i++ {
+				ops = append(ops, diffOp{'+', -1, ni})
+				ni++
 			}
 		}
 	}
-	return out
+	return ops
+}
+
+// buildHunks groups changed ops into @@ hunks with surrounding context.
+func buildHunks(ops []diffOp, oldLines, newLines []string) []string {
+	var hunks []string
+	for i := 0; i < len(ops); {
+		if ops[i].kind == ' ' {
+			i++
+			continue
+		}
+		// Extend backwards for leading context.
+		start := i
+		for start > 0 && ops[start-1].kind == ' ' && i-start < diffContextLines {
+			start--
+		}
+		// Walk forward to the end of this change cluster, allowing up to
+		// 2*context equal lines before starting a new hunk.
+		end := i
+		gap := 0
+		for end < len(ops) {
+			if ops[end].kind == ' ' {
+				gap++
+				if gap > diffContextLines*2 {
+					break
+				}
+			} else {
+				gap = 0
+			}
+			end++
+		}
+		// The forward walk tolerates up to 2*context equal lines before ending a
+		// hunk, so trim whatever exceeds the intended trailing context.
+		trailing := 0
+		for end-trailing > i && ops[end-trailing-1].kind == ' ' {
+			trailing++
+		}
+		if trailing > diffContextLines {
+			end -= trailing - diffContextLines
+		}
+
+		hunks = append(hunks, renderHunk(ops[start:end], oldLines, newLines))
+		i = end
+	}
+	return hunks
+}
+
+func renderHunk(ops []diffOp, oldLines, newLines []string) string {
+	oldStart, newStart := 0, 0
+	var oldCount, newCount int
+	foundOld, foundNew := false, false
+	for _, o := range ops {
+		if o.oldIdx >= 0 {
+			if !foundOld {
+				oldStart = o.oldIdx
+				foundOld = true
+			}
+			oldCount++
+		}
+		if o.newIdx >= 0 {
+			if !foundNew {
+				newStart = o.newIdx
+				foundNew = true
+			}
+			newCount++
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", oldStart+1, oldCount, newStart+1, newCount)
+	for _, o := range ops {
+		switch o.kind {
+		case ' ':
+			b.WriteString(" " + oldLines[o.oldIdx] + "\n")
+		case '-':
+			b.WriteString("-" + oldLines[o.oldIdx] + "\n")
+		case '+':
+			b.WriteString("+" + newLines[o.newIdx] + "\n")
+		}
+	}
+	return b.String()
 }
 
 func splitLines(s string) []string {
