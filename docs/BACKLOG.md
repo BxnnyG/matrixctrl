@@ -100,6 +100,41 @@ strangers depends on a code path nobody has ever run.
   signal is a badge in a UI nobody is looking at. The whole point is that calling
   breaks otherwise. Needs at least a log line at error level, ideally a Matrix
   message to the admin.
+- **P1-7 · The upgrade log stream dies mid-upgrade and reports it as failure (S2).**
+  Reported by the operator 2026-08-01 during the real 26.7.2 upgrade: the log
+  stopped after `Loaded 18 config slices from config store.` and printed
+  `[Verbindung getrennt]`. **The upgrade itself succeeded** (revision 22,
+  `deployed`) — only the UI lost it. Four defects stacked:
+  1. `helm.Upgrade()` blocks between `helm.go:160` and `helm.go:174` and emits
+     nothing, so the socket is idle for minutes. Traefik's default `idleTimeout`
+     is 180 s and closes it.
+  2. No keepalive on either side. `golang.org/x/net/websocket` has no ping/pong
+     at all — a heartbeat has to be an application-level message, or the handler
+     must move to a library that supports control frames.
+  3. `web/src/lib/ws.ts` never reconnects, and the upgrade status is never
+     re-polled over HTTP, so the outcome is unrecoverable once the socket drops.
+  4. `ws.onclose` prints `[Verbindung getrennt]` unconditionally — a clean close
+     after `done` looks identical to a crash.
+  *Why it matters:* upgrading ESS safely is the product. An operator who sees this
+  cannot tell a working upgrade from a broken one, and the honest reaction is to
+  start intervening in a cluster that was fine.
+- **P1-8 · The dashboard is slow because every poll re-reads the whole Helm release (S4).**
+  Reported by the operator 2026-08-01. `/status` runs six calls **serially**, and
+  `GetRelease` uses `action.NewGet`, which fetches and decompresses the entire
+  release — manifest, hooks, every chart file — out of a 416 KB secret, purely to
+  keep the seven scalars in `ReleaseInfo`. Measured on the live cluster:
+
+  | Call | Latency |
+  |---|---|
+  | list deployments / statefulsets / nodes / pods, metrics-server | 535–965 ms each |
+  | **helm release read** | **~4 000 ms** |
+
+  `helm get metadata` and `helm list` were measured too and cost the same ~4 s —
+  they all decompress the same secret, so there is no cheaper SDK call. The fix is
+  to cache `ReleaseInfo` and invalidate it on upgrade/rollback, and to run the
+  remaining calls concurrently. The dashboard polls this every 15 s.
+  *Corroborating hint:* `Get` already carries an 8 s `context.WithTimeout` — the
+  slowness was known when it was written, and worked around rather than fixed.
 
 ## 3. P2 — worth doing
 
@@ -115,6 +150,12 @@ strangers depends on a code path nobody has ever run.
   wizard asks the operator to jump versions with no information.
 - **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
   now covers most of it. Keep, merge, or delete.
+- **P2-6 · README prerequisites assume a cluster already exists.** "Prerequisites:
+  k3s, Helm" is a checklist, not a path — a reader without either is stuck at line
+  one, which contradicts the "works for anyone" claim. Add collapsible
+  (`<details>`) install snippets for k3s and Helm on Debian/Ubuntu, so the happy
+  path stays short for people who already have a cluster.
+  *Raised by the operator 2026-08-01.*
 
 ## 4. P3 — someday / nice-to-have
 

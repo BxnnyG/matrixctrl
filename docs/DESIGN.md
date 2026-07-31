@@ -70,9 +70,9 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | System | Status | Rest / note |
 |---|---|---|
 | S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
-| S2 Helm release & versions | ✅ (E2, E12) | Version list fixed 2026-07-31 (pagination + semver) |
+| S2 Helm release & versions | ⏳ (E2, E12) | Version list fixed 2026-07-31; **the upgrade log stream drops mid-upgrade** and reports success as failure (P1-7) |
 | S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
-| S4 Cluster observability | ✅ (E3, E12) | Health, events, pod drill-down with restart cause |
+| S4 Cluster observability | ⏳ (E3, E12) | Health, events, pod drill-down with restart cause; **`/status` costs ~4 s per poll** (P1-8) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
@@ -109,6 +109,10 @@ ESS publishes a `<version>-sha<40hex>` tag per commit, so only ancient `0.2.x`
 dev builds were ever shown, sorted as strings (`26.5.1` ranked above `26.10.0`).
 Now paginated, build-tags filtered, numerically sorted. Did *not* solve: release
 notes / breaking-change warnings per version (`ess_versions.changelog` is unused).
+**Open (found in production 2026-08-01):** the live log stream is unreliable
+precisely when it matters. `helm.Upgrade()` blocks for minutes without emitting,
+the proxy closes the idle socket, and the client neither reconnects nor re-polls —
+so a *successful* upgrade ends in `[Verbindung getrennt]`. See P1-7.
 
 ### S3 · Post-upgrade hook engine
 **Purpose:** the core promise — manual patches survive `helm upgrade`.
@@ -129,6 +133,9 @@ timestamp) plus its events and logs.
 Synapse and Postgres, the two most important components, were invisible on the
 dashboard. Did *not* solve: historical metrics (the sparkline is in-memory and
 resets on reload), and no alerting.
+**Open (measured 2026-08-01):** `/status` is slow — six serial calls, dominated by
+a ~4 s full Helm release read that is thrown away except for seven scalars, polled
+every 15 s. See P1-8.
 
 ### S5 · Authentication & authorisation
 **Purpose:** only Matrix admins get in, without a second user database.
