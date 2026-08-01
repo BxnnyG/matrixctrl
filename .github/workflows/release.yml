@@ -51,6 +51,24 @@ jobs:
           [ "$CHART" = "$VERSION" ] || { echo "::error::Chart.yaml version ($CHART) != tag ($VERSION)"; exit 1; }
           [ "$APP" = "$VERSION" ]   || { echo "::error::Chart.yaml appVersion ($APP) != tag ($VERSION)"; exit 1; }
 
+      # The README pins --version in its install commands, so a forgotten bump
+      # sends every new reader to an old chart. That is precisely the failure this
+      # etappe existed to fix, so it is checked here rather than left to a step in
+      # RELEASING.md that someone has to remember.
+      - name: README install commands must match the tag
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          FOUND=$(grep -oE '\-\-version [0-9]+\.[0-9]+\.[0-9]+' README.md | awk '{print $2}' | sort -u)
+          if [ -z "$FOUND" ]; then
+            echo "::error::no pinned --version found in README.md — the install commands should pin one"
+            exit 1
+          fi
+          echo "README pins: $FOUND"
+          for v in $FOUND; do
+            [ "$v" = "$VERSION" ] || { echo "::error::README pins --version $v but the tag is $VERSION"; exit 1; }
+          done
+
       # The embedded frontend is committed, and a stale copy has shipped before
       # (see BACKLOG P2-2). Rebuild it here so the released image cannot embed an
       # older UI than the source it was built from.
