@@ -27,12 +27,19 @@ type RevisionEntry struct {
 }
 
 func (c *Client) GetRelease(name string) (*ReleaseInfo, error) {
+	if info, ok := c.cachedReleaseInfo(name); ok {
+		return info, nil
+	}
+
 	get := action.NewGet(c.cfg)
 	rel, err := get.Run(name)
 	if err != nil {
 		return nil, fmt.Errorf("get release %s: %w", name, err)
 	}
-	return toReleaseInfo(rel), nil
+
+	info := toReleaseInfo(rel)
+	c.storeReleaseInfo(name, info)
+	return info, nil
 }
 
 func (c *Client) ListHistory(name string, max int) ([]RevisionEntry, error) {

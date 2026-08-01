@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
+	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -12,6 +14,11 @@ import (
 type Client struct {
 	cfg       *action.Configuration
 	namespace string
+
+	// Cache for GetRelease — see cache.go for why it exists.
+	relMu    sync.Mutex
+	relCache map[string]cachedRelease
+	now      func() time.Time // nil means time.Now; set in tests
 }
 
 func New(namespace string) (*Client, error) {
