@@ -83,6 +83,36 @@ this project exists to protect got fragile in the first place.
 - Logic under test without a cluster
 - Four regression checks (S11) green
 
-## Outcome
+## Outcome (2026-08-01)
 
-_(filled in when the etappe closes)_
+Shipped in `0.1.19`.
+
+The design decision that mattered was refusing to build the obvious thing. "Add a
+reachability check" was the request; a check that cannot see the network it is
+testing would have produced a green tick built on nothing, which is a worse
+version of the original bug rather than a fix for it.
+
+So the deliverable is a page that is **explicit about its own blind spot**, and
+the test suite enforces it: `TestReachabilityIsAlwaysReportedAsUnknown` runs the
+healthy path, the no-ports path, the no-hostname path and the broken-DNS path, and
+fails if any of them omits the unknown. It also requires that finding to carry an
+action — an unknown with nothing to do about it is just a shrug.
+
+`TestProtocolIsCarriedThrough` exists because forwarding TCP 30002 instead of UDP
+30002 produces a router rule that looks correct and does nothing. That is the
+failure most likely to cost someone an evening, and it is a one-character mistake.
+
+### The finding, left as a finding
+
+`ess-matrix-rtc-sfu-turn-tls` runs `externalTrafficPolicy: Cluster` while the
+other three use `Local`, because the built-in hook covers three services by
+design. Whether TURN-over-TLS needs source-IP preservation is a question about
+Element's SFU that I have not verified, so the page reports the difference and
+says the hook covers three of four. Patching a fourth service on a hunch is how
+the manual patches this project exists to protect became fragile.
+
+### Still not answered
+
+Whether the operator's ports are actually open. That was never answerable from
+here — but it is now *asked*, in the product, with the exact numbers and protocols
+next to it, instead of being absent.
