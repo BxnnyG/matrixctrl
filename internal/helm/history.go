@@ -26,20 +26,23 @@ type RevisionEntry struct {
 	Notes      string    `json:"notes,omitempty"`
 }
 
+// GetRelease returns the current state of a release. See release_read.go for how
+// it avoids paying to decode ten revisions it is going to throw away.
 func (c *Client) GetRelease(name string) (*ReleaseInfo, error) {
-	if info, ok := c.cachedReleaseInfo(name); ok {
-		return info, nil
-	}
+	return c.readRelease(name)
+}
 
+// getReleaseUncached is the original implementation, kept as the fallback for
+// every way the fast path can fail. action.NewGet decodes the entire release
+// history to return one revision, which is why it costs ~4.3 s on the production
+// release — acceptable as a rare correctness backstop, not as the normal path.
+func (c *Client) getReleaseUncached(name string) (*ReleaseInfo, error) {
 	get := action.NewGet(c.cfg)
 	rel, err := get.Run(name)
 	if err != nil {
 		return nil, fmt.Errorf("get release %s: %w", name, err)
 	}
-
-	info := toReleaseInfo(rel)
-	c.storeReleaseInfo(name, info)
-	return info, nil
+	return toReleaseInfo(rel), nil
 }
 
 func (c *Client) ListHistory(name string, max int) ([]RevisionEntry, error) {

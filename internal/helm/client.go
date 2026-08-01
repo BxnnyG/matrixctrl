@@ -5,20 +5,24 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/metadata"
 )
 
 type Client struct {
 	cfg       *action.Configuration
 	namespace string
 
-	// Cache for GetRelease — see cache.go for why it exists.
+	// meta reads object metadata without object payloads — see release_read.go.
+	// Nil is a supported state: every path that uses it falls back to the plain
+	// Helm read, so a cluster that refuses the metadata API is slow, not broken.
+	meta metadata.Interface
+
+	// Memoised release info — see cache.go for what keys it.
 	relMu    sync.Mutex
-	relCache map[string]cachedRelease
-	now      func() time.Time // nil means time.Now; set in tests
+	relCache map[string]memoisedRelease
 }
 
 func New(namespace string) (*Client, error) {
@@ -35,5 +39,17 @@ func New(namespace string) (*Client, error) {
 		return nil, fmt.Errorf("helm init: %w", err)
 	}
 
-	return &Client{cfg: cfg, namespace: namespace}, nil
+	c := &Client{cfg: cfg, namespace: namespace}
+
+	// A missing metadata client costs speed, not correctness, so it must not turn
+	// an otherwise working Helm client into a startup failure.
+	if restCfg, err := flags.ToRESTConfig(); err != nil {
+		log.Printf("helm: metadata client unavailable (%v) — release reads will use the slow path", err)
+	} else if mc, err := metadata.NewForConfig(restCfg); err != nil {
+		log.Printf("helm: metadata client unavailable (%v) — release reads will use the slow path", err)
+	} else {
+		c.meta = mc
+	}
+
+	return c, nil
 }
