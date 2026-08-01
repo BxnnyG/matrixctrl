@@ -328,20 +328,19 @@ strangers depends on a code path nobody has ever run.
   title and subtitle in the top bar; this one shows the app name. Cosmetic, but it
   is the kind of gap that only becomes visible when someone looks at the product
   as a whole instead of at the feature they are building.
-- **P2-18 · The release workflow should write the GitHub Release itself.** Right now
-  the tag publishes the image and the chart, and the release *page* is created
-  separately from `CHANGELOG.md`. That is the same shape as the bug §4.17 removed:
-  a publishing step that depends on someone remembering it. The workflow already
-  knows the version and the repo already has the changelog section — it should cut
-  the release note from `## [x.y.z]` and post it as part of the tag run. Then no
-  token is needed for releases at all, only for repository settings.
-- **P2-13 · The GitHub repo surface was unconfigured.** **Partly done 2026-08-01** —
-  topics and description set by the operator; homepage deliberately left empty
-  (the only candidate was a live admin panel's URL, see P0-1c). *Still open:* the
-  GitHub Releases for `v0.1.15` and `v0.1.16` — the tags exist, the page every
-  visitor checks for "what changed" does not — and the Wiki/Projects tabs, both
-  enabled and empty, which read as an abandoned project. Both need a fine-grained
-  token (Contents write, Administration write); the build host has none.
+- ~~**P2-18 · The release workflow should write the GitHub Release itself.**~~
+  **Done 2026-08-01** — the tag run now cuts the `## [x.y.z]` section out of
+  `CHANGELOG.md` and posts it with the built-in `GITHUB_TOKEN`. The changelog check
+  runs early, next to the other guards, so a missing entry stops the release before
+  anything reaches GHCR; the page is published last, so it only appears once the
+  artefacts it describes exist. No personal token is involved in releasing.
+- ~~**P2-13 · The GitHub repo surface was unconfigured.**~~ **Done 2026-08-01** —
+  ten topics and a description (operator); homepage deliberately **empty**, because
+  the only candidate was a live admin panel's URL (P0-1c); Wiki and Projects off,
+  Discussions on; and the missing Releases for `v0.1.15` and `v0.1.16` created from
+  the changelog. Three empty tabs read as an abandoned project — Discussions is the
+  one worth keeping, since a wiki becomes a second documentation that rots next to
+  `docs/`.
 - **P2-14 · The documentation has no user-facing layer (S12).** 1242 lines in
   `docs/` and every one of them is written for a maintainer or an agent: DESIGN,
   PROZESS, ROADMAP, BACKLOG. A *user* gets exactly one file, the README. Nothing

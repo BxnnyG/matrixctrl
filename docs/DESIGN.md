@@ -76,7 +76,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ✅ (E16, E18) | `v0.1.15` published by CI and verified by pulling it; released charts pin their image (§4.17); `CHANGELOG.md` + dependabot (E18). **Open:** the tag has no GitHub Release, and repo topics/homepage are unset — owner-only settings (BACKLOG P2-13) |
+| S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
 | S9 Verification & CI | ✅ (E13, E14, E18) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
