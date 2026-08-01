@@ -70,7 +70,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | System | Status | Rest / note |
 |---|---|---|
 | S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
-| S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14) |
+| S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14); an upgrade whose process dies is reconciled to `interrupted` at startup instead of reading as running forever (P2-16) |
 | S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
 | S4 Cluster observability | ✅ (E3, E12, E14) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s (E14) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
