@@ -247,6 +247,31 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P2-8 · The dashboard sums restarts across containers, which misleads (S4).**
+  The operator read "postgres: 30 restarts" and reasonably concluded something was
+  badly wrong. It is three containers in one pod — 15 + 8 + 7 — and they are three
+  unrelated stories: `postgres-exporter` genuinely crash-loops, while `postgres`
+  and `postgres-ess-updater` last died in the *same second* as `element-admin`
+  (2026-07-12T14:04:12Z, reason `Unknown`, exit 255), which is a node or kubelet
+  restart, not a crash.
+  A single summed number turns "one node blip two weeks ago" and "a sidecar dying
+  every few days" into the same alarming figure. Show per-container counts in the
+  roll-up, and group restarts that share a termination timestamp — simultaneous
+  deaths are one incident.
+  *Raised by the operator 2026-08-01, twice, because the first answer did not stick.*
+- **P2-9 · Nothing tells the operator that calling cannot work (S14).**
+  Element Call was broken on the production instance and MatrixCtrl showed nothing:
+  all RTC pods healthy, all four SFU patches correctly applied, dashboard green.
+  The patches are necessary but not sufficient — media needs *direct* inbound
+  UDP/TCP on the SFU node ports, and an external prober showed 30001 and 31443
+  closed from the internet. MatrixCtrl verifies the half it controls and stays
+  silent about the half that actually decides whether calls connect.
+  *Fix:* a reachability check for the announced `rtc_foci` URL and the SFU node
+  ports, surfaced next to the RTC patch state. This is the concrete shape of the
+  "public-IP drift / TLS-DNS" item already sketched for Phase 3.
+  *Found 2026-08-01 while answering "why is calling broken" — the answer was not
+  visible anywhere in the product.*
+
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and
