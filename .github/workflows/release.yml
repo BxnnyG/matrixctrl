@@ -23,6 +23,11 @@ jobs:
   release:
     name: Publish image & chart to GHCR
     runs-on: ubuntu-latest
+    # The first attempt spent 25 minutes emulating an arm64 frontend build before
+    # dying. With the builder stages running natively this job takes a few minutes,
+    # so anything approaching this limit means something is wrong again — fail
+    # while that is still obvious rather than burning half an hour first.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
