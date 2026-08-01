@@ -45,8 +45,10 @@ it — ESS already exists, so the guards short-circuit.
 
 1. ~~Two months of work exists in exactly one place.~~ *Closed 2026-07-31.*
 2. ~~Nothing enforces the definition of done.~~ *Closed 2026-07-31.*
-3. **The main product claim is untested.** Greenfield has never run end to end.
-   This is now the top gap.
+3. ~~The main product claim is untested.~~ *Tested 2026-08-01 — and it was
+   **broken**. Greenfield deploy failed on its very first real run and had never
+   worked since the feature shipped. Four defects, now fixed and proven end to end
+   (E15). Only connect-OIDC remains untested; it needs public DNS.*
 4. **The public install path is wrong.** README → chart 0.1.0 → two months behind.
 5. ~~The git history leaks the internal cluster hostname.~~ *Closed 2026-08-01
    (§4.14) — with one residual: GitHub still serves the old objects by SHA
@@ -127,34 +129,17 @@ strangers depends on a code path nobody has ever run.
 
 - ~~**P1-1 · CI (S9).**~~ **Done 2026-07-31** — `.github/workflows/ci.yml` runs
   `go vet`, `go test ./...`, typecheck, unit tests and the build on push and PR.
-- **P1-2 · Greenfield end-to-end test (S6).** Deploy-ess → connect-oidc on a
-  throwaway cluster. This is the product claim; it has never run. Needs a scratch
-  k3s (kind/k3d would do) because our instance cannot reach the code path.
-
-  *Scoped 2026-08-01 — the blocker is not compute, it is DNS.* This host has room
-  (24 GB RAM, 32 CPUs, 13 GB disk after cleanup; the whole ESS image set is only
-  ~1.2 GiB), but **connect-OIDC fetches `/.well-known/openid-configuration` from
-  MAS's *public* URL** (`internal/auth/oidc.go:52`), and the deploy wizard derives
-  public hostnames (`matrix.`, `mas.`, `element.`) from the server name. So the
-  final step needs publicly-resolvable DNS and a certificate the Go HTTP client
-  will accept — neither of which a local k3d cluster has.
-  **This is itself a finding:** the greenfield path has an undocumented
-  prerequisite. A stranger with a fresh cluster and no DNS hits the same wall, and
-  nothing in `SETUP.md` or the README warns them.
-  *Three ways forward, in descending fidelity:*
-  1. A throwaway VM with a public IP and a real subdomain (e.g. `*.test.<domain>`).
-     Faithful, and the only variant that proves the whole claim. Needs a machine and
-     a DNS zone.
-  2. Local k3d plus split-horizon DNS and a CA trusted inside the MatrixCtrl pod.
-     Exercises everything except real TLS/DNS — cheap, but proves less exactly where
-     the risk is.
-  3. Stop before connect-OIDC: verify chart pull, config seeding, the ESS Helm
-     install and pods coming up on a local k3d cluster. Covers the largest untested
-     chunk with no DNS at all, and is honest about what it does not cover.
-  *Not started:* option 1 needs infrastructure that is the operator's to provide,
-  and the choice changes what gets built — so it is a decision, not a detail.
-  **Do not run this on the production host**: the throwaway cluster would share the
-  single 32 GB root filesystem with the live ESS PVs.
+- **P1-2 · Greenfield end-to-end test (S6) — deploy proven, connect-OIDC still open.**
+  **Done 2026-08-01 for everything except the last step (E15).** Run on a throwaway
+  k3d cluster, it found that **greenfield deploy had never worked at all**: four
+  defects, each hidden behind the previous one, are written up in
+  [the plan](plans/etappe-15-greenfield-first-half.md). After fixing them,
+  MatrixCtrl built a complete working ESS from an empty cluster — all eight
+  components ready, Synapse answering `/_matrix/client/versions`.
+  *Still open:* connect-OIDC, which fetches MAS's `/.well-known/openid-configuration`
+  over its **public** URL and so needs real DNS and a certificate the Go client
+  accepts. That is option (a) — a throwaway VM with a public subdomain — and is the
+  last unproven step of the product claim.
 - ~~**P1-3 · Release coherence (S8).**~~ **Done 2026-08-01 (E16).** `v0.1.15` is
   published by CI and was verified by pulling it, not by reading a green tick:
   `helm show chart` without `--version` resolves to 0.1.15, the released chart pins

@@ -21,9 +21,22 @@ func New(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
 
-	// Retry the initial connection — the Postgres sidecar may still be starting
-	// (same pod, started in parallel). Wait up to ~60s before giving up.
-	const maxWait = 60 * time.Second
+	// Retry the initial connection — the Postgres sidecar starts in parallel in
+	// the same pod.
+	//
+	// 60s used to be the limit, and it was not enough for a *first* start: an
+	// empty PVC means Postgres has to run initdb before it accepts connections,
+	// which took longer than that on a fresh cluster. So the first container of
+	// every new install exited 1 and was restarted by Kubernetes — it recovered,
+	// but a brand-new install greeted its operator with restarts=1, from a tool
+	// whose own dashboard flags restarts as a problem. Found in etappe 15; an
+	// existing install never hits it because the database is already initialised.
+	//
+	// Five minutes is generous on purpose: the cost of waiting is a slower start,
+	// the cost of giving up early is a crash loop that looks like a broken install.
+	// Kubernetes restarting the container remains the backstop if Postgres really
+	// never comes up.
+	const maxWait = 5 * time.Minute
 	deadline := time.Now().Add(maxWait)
 	for {
 		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)

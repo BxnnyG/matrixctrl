@@ -74,7 +74,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
 | S4 Cluster observability | ✅ (E3, E12, E14) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s (E14) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
-| S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
+| S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16) | `v0.1.15` published by CI and verified by pulling it; released charts pin their image (§4.17) |
 | S9 Verification & CI | ✅ (E13, E14) | CI on push/PR, 26 frontend tests, 13 new backend tests (E14), headless-browser route check |
