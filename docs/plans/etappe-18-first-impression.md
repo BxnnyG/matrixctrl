@@ -49,8 +49,8 @@ below as the etappe's own mistake.
 
 All nine existing screenshots were reviewed individually. Result: that hostname is
 the **only** sensitive string. The config repo's commit author renders as
-`MatrixCtrl`, PVC UUIDs are meaningless, and `example.com` is the operator's public
-domain and deliberately fine.
+`MatrixCtrl`, PVC UUIDs are meaningless, and the Matrix server name is public by
+definition — every federating server already knows it.
 
 Blurring is ugly and a one-off. Instead `verify-ui.mjs` — which already produces a
 screenshot per route — gets a **`--redact from=to`** flag that rewrites text nodes
@@ -145,8 +145,9 @@ No `gh`, no API token, SSH remote. All of the following are owner-only clicks on
    `helm` · `self-hosted` · `golang` · `react` · `agpl`
    *Highest-value item on this list. Six words decide whether the project is
    findable at all.*
-2. **Homepage** — same dialog: `https://matrixctrl.example.com` if it should be
-   public, otherwise leave empty rather than pointing at something private.
+2. **Homepage** — leave **empty**. The only candidate would be the operator's own
+   MatrixCtrl instance, and the URL of a live admin panel does not belong in a
+   repository's metadata. An empty homepage is not a gap here; it is the answer.
 3. **Description** — same dialog, one line:
    *Day-2 admin UI for self-hosted Matrix / Element Server Suite — config,
    Helm upgrades that keep your patches, and admin-only Matrix login.*

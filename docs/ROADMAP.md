@@ -107,7 +107,7 @@ The things you need at 3 a.m. **No passwords here — only where they live.**
 |---|---|
 | MatrixCtrl namespace / release | `matrixctrl` / `matrixctrl` (Helm) |
 | Managed ESS | namespace `ess`, release `ess`, chart `matrix-stack` |
-| Public URL | `https://matrixctrl.example.com` (Traefik ingress, cert-manager) |
+| Public URL | whatever `ingress.host` is set to in the gitignored instance values (Traefik ingress, cert-manager). **Deliberately not written down here** — this file is public, and the URL of a live admin panel is not repository metadata |
 | Image | `ghcr.io/bxnnyg/matrixctrl` — published by CI on a `v*` tag and **pulled from GHCR**; local `k3s ctr images import` is only for dev builds |
 | Instance Helm values | `deploy/helm/matrixctrl/values.bxnny.yaml` — **gitignored**, excluded from the packaged chart |
 | Config repo | `/data/config-repo` on a PVC inside the pod; one YAML per ESS section + `config-slices.json`. Pre-migration monolith in `_backup-pre-sections/` |
