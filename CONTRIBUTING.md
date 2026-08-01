@@ -38,6 +38,23 @@ The frontend dev server proxies `/api` to `localhost:8080`:
 cd web && npm install && npm run dev
 ```
 
+### Enable the pre-commit check (maintainers, once per clone)
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This runs `scripts/check-sensitive.sh` against your staged changes and refuses a
+commit that contains a string from `.sensitive-patterns` — a **gitignored** file
+you create yourself, holding the hostnames, addresses and URLs that must never be
+published from your environment. Without that file the check skips, so nothing
+here blocks an outside contributor.
+
+It exists because this repository has twice published an internal hostname: once
+in commit metadata, and once in the document explaining why that must not happen
+(see `docs/BACKLOG.md` P0-1c). CI runs the same script, but CI catches a leak
+after it is public; the hook catches it while the fix is still free.
+
 ## Conventions (please follow)
 
 - **No `exec("kubectl")` or `exec("helm")`** — use the client-go and Helm SDKs.

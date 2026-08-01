@@ -121,26 +121,43 @@ strangers depends on a code path nobody has ever run.
   an internal name plus an RFC1918 address, the risk of the migration may well
   exceed the risk of the leak — that trade is the operator's to make, but it should
   be made with these facts rather than without them.
-- **P0-1c · The etappe-18 plan re-published the hostname, in prose, on 2026-08-01.**
-  The chapter explaining why the node name must never reach a public repository
-  spelled that name out. Committed in `cc60076` and pushed; caught about 40 minutes
-  later by a `git grep` over tracked files and removed from the tip in `6f11bbf`.
-  *Objectively:* the push window is short, but the value is identical to P0-1's, and
-  the blob stays **reachable** through the commit history — browsing that commit
-  still shows it. That is a *stronger* exposure than P0-1b's unreachable objects,
-  not a weaker one.
-  *What it says about the controls:* every safeguard this etappe built pointed at
-  the screenshots — the `--redact` flag, the per-route replacement count, an
-  individual review of all nine images. None of them looked at prose. A rule
-  enforced on one channel gets routed around by the channel nobody instrumented.
-  *Fix, and why it is not done:* removing it from history needs another rewrite and
-  force-push of a public branch — the operator's decision, not the agent's. A
-  rewrite also does not delete the object from GitHub, so the P0-1b Support request
-  has to cover this commit either way.
-  *Cheap control worth adding:* a CI grep for the known-sensitive strings, so this
-  fails a build instead of depending on someone remembering to look. That check
-  cannot itself contain the strings — it would have to read them from a file that is
-  gitignored, or from a repository secret.
+- ~~**P0-1c · The etappe-18 plan re-published the hostname, in prose.**~~
+  **Rewritten out 2026-08-01** (§4.19). The chapter explaining why the node name
+  must never reach a public repository spelled that name out, and was pushed.
+  Caught about 40 minutes later by a `git grep` over tracked files.
+
+  **The scan it triggered found more than the trigger.** A sweep of every blob in
+  the whole history — not just the current tree — turned up three classes of
+  string, only one of which anyone was looking for:
+  - the node name (1 path),
+  - **the admin panel's own public URL** (5 paths, including
+    `deploy/helm/matrixctrl/values.yaml`, i.e. the packaged chart's defaults),
+  - **the five ESS hostnames derived from the server name** (13 paths, including
+    `internal/auth/oidc.go`, a database migration, and the committed frontend
+    build artefacts under `cmd/matrixctrl/dist`).
+
+  The server name itself is public by definition — every federating Matrix server
+  knows it — and stays. The admin panel's URL is not, and was never repository
+  metadata. All of it is now replaced across all 83 commits and force-pushed;
+  `v0.1.15` was retagged and the release pipeline re-published from the cleaned
+  tree, so **the image in GHCR no longer carries those hostnames in its frontend
+  bundle either** — which it did before.
+
+  *What remains, stated plainly:* GitHub keeps unreachable objects, and it keeps
+  `refs/pull/*` **permanently**. Dependabot had already opened a PR from the old
+  master before the rewrite; its branch is gone, but `refs/pull/2/head` still pins
+  pre-rewrite commits and can be fetched by anyone who knows the SHA. Only GitHub
+  Support — or deleting and re-creating the repository — removes that. This is the
+  same residue as P0-1b, now with a second source.
+
+  *The control that was missing, now built:* `scripts/check-sensitive.sh`, run as a
+  `pre-commit` hook (`git config core.hooksPath .githooks`) and as a CI step. The
+  needles come from a gitignored `.sensitive-patterns` or a repository secret,
+  because a list of strings-that-must-not-be-committed cannot live in the
+  repository it guards. It reports **file names only, never the matched value** —
+  printing it would put the string into a CI log, which is the same mistake one
+  layer down. With no pattern source it skips, so outside PRs are not failed by a
+  check they cannot satisfy.
 - ~~**P0-2 · Etappes 11 and 12 are uncommitted.**~~ **Done 2026-07-31** —
   committed in nine reviewable slices (`9b226c5`…`c8fbd4d`). Tagging is still
   open and folded into P1-3.

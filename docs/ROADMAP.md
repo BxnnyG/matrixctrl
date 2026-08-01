@@ -122,5 +122,6 @@ The things you need at 3 a.m. **No passwords here — only where they live.**
 
 | Date | What changed |
 |------|--------------|
+| 2026-08-01 | **Second rewrite** ([DESIGN.md §4.19](DESIGN.md), BACKLOG P0-1c): all 83 commits were rewritten again to remove the admin panel's URL and the derived ESS hostnames. Every hash in this file changed a second time and none of the old ones resolve. The tag `v0.1.15` was moved and its release re-published from the cleaned tree. |
 | 2026-08-01 | Commit hashes in the etappe table below were rewritten by the history sanitisation ([DESIGN.md §4.14](DESIGN.md)); the old hashes no longer resolve. |
 | 2026-07-31 | Vision, non-goals and architecture moved to [VISION.md](VISION.md); etappe chronicle reconstructed from `git log`; operations notes added. |

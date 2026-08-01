@@ -17,3 +17,7 @@ matrixctrl-*
 # Instance-specific Helm values (contain real secrets) — never commit
 deploy/helm/*/values.*.yaml
 !deploy/helm/*/values.yaml
+
+# Local list of strings that must never be committed (P0-1c).
+# Deliberately untracked: the needles cannot live in the repo they guard.
+.sensitive-patterns

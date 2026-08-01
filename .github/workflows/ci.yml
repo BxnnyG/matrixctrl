@@ -30,6 +30,15 @@ jobs:
       - name: Check embedded frontend assets exist
         run: test -d cmd/matrixctrl/dist || { echo "cmd/matrixctrl/dist missing — run 'make copy-dist'"; exit 1; }
 
+      # P0-1c: a plan document explaining why the cluster hostname must never be
+      # published contained it, and was pushed. Every control in place pointed at
+      # screenshots; none looked at prose. Skips when the secret is absent, so
+      # outside PRs are not failed by a check they cannot satisfy.
+      - name: No sensitive strings
+        env:
+          SENSITIVE_PATTERNS: ${{ secrets.SENSITIVE_PATTERNS }}
+        run: ./scripts/check-sensitive.sh
+
       # Ten files had drifted out of gofmt before this gate existed. Formatting
       # is not worth an opinion, only a check.
       - name: gofmt

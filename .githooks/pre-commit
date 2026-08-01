@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Enable with:  git config core.hooksPath .githooks
+#
+# CI catches a leak after it is public. This catches it before the commit exists,
+# which is the only point where the fix is free (P0-1c).
+exec "$(git rev-parse --show-toplevel)/scripts/check-sensitive.sh" --staged

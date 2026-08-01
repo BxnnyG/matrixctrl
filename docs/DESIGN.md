@@ -352,6 +352,29 @@ number. Released charts pin `image.tag` to their own version so
 not re-run tests. New GHCR packages default to private, which is a first-publish
 trap documented in [RELEASING.md](RELEASING.md). Affects S8.
 
+### §4.19 — The needle list cannot live in the haystack (2026-08-01, operator + agent)
+**Question:** §4.14 rewrote 39 commits to remove the cluster hostname. Ten weeks
+later the *plan document explaining that rule* contained the hostname and was
+pushed (P0-1c). Every control in place pointed at screenshots. What actually stops
+this recurring?
+**Decision:** an automated string check at two points — `pre-commit` via
+`core.hooksPath .githooks`, and CI — whose patterns come from a **gitignored file
+or a repository secret**, never from a tracked file.
+**Rationale:** the obvious implementation is a committed list of forbidden
+strings, which publishes exactly what it is meant to hide. The pre-commit hook
+matters more than the CI step: CI catches a leak that is already public, the hook
+catches it while the fix is still free. P0-1c was live for 40 minutes.
+**Decision detail:** the check prints **file names only, never the matched value**
+— echoing it would write the string into a CI log. With no pattern source it exits
+0 rather than failing, so a fork or an outside PR is not blocked by a check it
+cannot satisfy; a check people cannot pass is a check people delete.
+**Consequences:** the pattern list is per-clone and can silently drift or go
+missing — the skip-when-absent behaviour that makes forks work also means a
+mis-set local file fails open. Accepted: this is a backstop for attention, not a
+boundary. Also, this whole class of fix cannot recall what was published — the
+rewrite made the objects unreachable, but `refs/pull/*` on GitHub is permanent.
+Affects S9.
+
 ### §4.18 — Screenshots are generated with redaction, not taken by hand (2026-08-01, agent)
 **Question:** the README had no screenshots, for a product that is entirely a user
 interface. The only instance with real data is production, and its Dashboard and
