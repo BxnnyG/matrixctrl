@@ -143,12 +143,35 @@ strangers depends on a code path nobody has ever run.
   tree, so **the image in GHCR no longer carries those hostnames in its frontend
   bundle either** — which it did before.
 
-  *What remains, stated plainly:* GitHub keeps unreachable objects, and it keeps
-  `refs/pull/*` **permanently**. Dependabot had already opened a PR from the old
-  master before the rewrite; its branch is gone, but `refs/pull/2/head` still pins
-  pre-rewrite commits and can be fetched by anyone who knows the SHA. Only GitHub
-  Support — or deleting and re-creating the repository — removes that. This is the
-  same residue as P0-1b, now with a second source.
+  *What remains — measured, not assumed.* GitHub keeps `refs/pull/*` **permanently**.
+  Dependabot, enabled two hours earlier by the same etappe, had opened **six** PRs
+  from the old master; all six auto-closed with the force-push and their branches
+  are gone, but the six refs remain fetchable. All 943 blobs behind them were
+  fetched into a throwaway clone and scanned:
+
+  | Present | Absent |
+  |---|---|
+  | node name (1 file) | any private IP |
+  | admin panel URL (5 files) | any private key or provider token |
+  | the five ESS hostnames + bare domain (9 files) | **any live secret** |
+
+  The one secret-shaped value in the committed `values.bxnny.yaml` is literally
+  `REDACTED-rotated` — etappe 10's public-repo hardening sanitised **and** rotated
+  it before the repo was ever public. So the residue is hostnames, nothing more.
+
+  *Calibration, so this is not over- or under-stated.* The Matrix server name is
+  public by definition, and `matrix.` / `mas.` / `element.` / `admin.` / `mrtc.`
+  follow ESS's documented convention — anyone holding the server name derives them
+  in seconds. The node name discloses a naming scheme. The **admin panel's URL is
+  the only genuinely non-derivable item**, and it is an HTTPS endpoint behind
+  admin-only OIDC login.
+
+  *Therefore:* deleting and re-creating the repository — the only remaining lever
+  once Support is declined — would cost the stars, the PR history and the release
+  pages in exchange for removing three hostnames and one subdomain, none of them a
+  credential. Not worth it. **If the admin URL specifically matters, rename that
+  subdomain instead:** unlike the node rename (P0-1b, a storage migration), it is a
+  DNS record plus an ingress host plus the OIDC redirect URI, with no PV involved.
 
   *The control that was missing, now built:* `scripts/check-sensitive.sh`, run as a
   `pre-commit` hook (`git config core.hooksPath .githooks`) and as a CI step. The
