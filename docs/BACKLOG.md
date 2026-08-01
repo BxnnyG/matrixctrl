@@ -245,6 +245,19 @@ strangers depends on a code path nobody has ever run.
   correct and nothing looked wrong; only a plain `go build ./cmd/matrixctrl` would
   have embedded the old UI. A tracked artefact that can silently disagree with its
   source is worse than the noisy diffs this entry was originally about.
+- **P2-7 · Publish an arm64 image again (S8).** Releases are `linux/amd64` only.
+  Two attempts at multi-arch failed in the image step: the first spent 25 minutes
+  emulating the frontend build (fixed in the Dockerfile — builder stages now run
+  natively and Go cross-compiles), the second failed in under four minutes, so
+  something else in the arm64 path breaks. The runtime stage's `apk add` runs under
+  QEMU and is the prime suspect; a local reproduction died in exactly that spot.
+  *Fix:* stop emulating altogether — build each architecture on its own runner
+  (`ubuntu-24.04-arm` is free for public repos) and merge the manifests. Job logs
+  need a token to read, which is why this was dropped rather than diagnosed further
+  under a tag.
+  *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
+  README does not currently say the image is amd64-only.
+
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and

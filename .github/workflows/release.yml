@@ -91,7 +91,7 @@ jobs:
           cd web && npm ci && npm run build
           cd .. && rm -rf cmd/matrixctrl/dist && cp -r web/dist cmd/matrixctrl/dist
 
-      - uses: docker/setup-qemu-action@v3
+      # No setup-qemu: nothing is emulated any more.
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -100,12 +100,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # amd64 only, for now.
+      #
+      # Two release attempts failed in this step. The first took 25 minutes —
+      # buildx was emulating the frontend build for arm64, fixed in the Dockerfile
+      # by building the builder stages natively. The second failed in 4 minutes,
+      # so emulation is no longer the bottleneck but something else in the arm64
+      # path still breaks: the runtime stage's `apk add` runs under QEMU, and that
+      # is exactly where a local reproduction died.
+      #
+      # A release that publishes nothing is worth less than an amd64 release that
+      # publishes, so arm64 is dropped rather than debugged further under a tag.
+      # The proper fix is a native arm64 runner (ubuntu-24.04-arm, free for public
+      # repos) building each architecture on its own hardware and merging the
+      # manifests — no emulation anywhere. Tracked in BACKLOG.
+      #
+      # This attempt doubles as the experiment that tells the two candidate causes
+      # apart: if amd64 alone publishes, arm64/QEMU was the problem; if it still
+      # fails, the Actions token cannot write to these pre-existing packages.
       - name: Build & push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           build-args: |
             VERSION=${{ steps.v.outputs.version }}
           tags: |
@@ -140,12 +158,18 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
           {
-            echo "### Released \`$VERSION\`"
+            echo "### Released \`$VERSION\` (linux/amd64)"
             echo
+            echo "What a new user runs — no version pinned, Helm resolves the newest:"
             echo '```bash'
-            echo "helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version $VERSION \\"
+            echo "helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \\"
             echo "  --namespace matrixctrl --create-namespace \\"
             echo "  --set ingress.host=matrixctrl.example.com"
+            echo '```'
+            echo
+            echo "To verify this exact release:"
+            echo '```bash'
+            echo "helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl --version $VERSION"
             echo '```'
             echo
             echo "New GHCR packages default to **private** — check visibility if this is a first publish."
