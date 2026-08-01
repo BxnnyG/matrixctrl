@@ -156,6 +156,55 @@ No `gh`, no API token, SSH remote. All of the following are owner-only clicks on
    is the one worth keeping: a wiki would become a second documentation that rots
    next to `docs/`.
 
-## Outcome
+## Outcome (2026-08-01)
 
-_(filled in when the etappe closes)_
+Done, except the five owner-only settings above.
+
+### The screenshots
+
+Nine routes captured from production, two redactions fired: the node name on
+Dashboard and System, and a pod IP that appeared in a liveness-probe event on the
+Dashboard. The second one was **not** predicted — it was found by looking at the
+rendered image, which is the whole reason the flag is a backstop rather than the
+control. Every one of the nine was then read individually before committing.
+What remains visible: `example.com` (the operator's public domain, deliberately
+fine), PVC UUIDs, and generic Kubernetes object names.
+
+The redacted text renders in the same font as everything else, so the images do
+not look doctored — which matters, because a screenshot that looks edited is
+worth less than no screenshot.
+
+### The split, proven rather than asserted
+
+All 26 declarations present exactly once across the four files, and every body
+byte-identical apart from `gofmt` alignment in two of them. The alignment noise
+existed because the original file **was never gofmt-clean** — and neither were
+nine others. That is now a CI gate.
+
+### Two defects found by looking at the product
+
+Reviewing the screenshots surfaced two things no test covers, both now in the
+backlog:
+
+- **P2-16** — the 26.5.1 → 26.7.2 upgrade still reads `running-hooks` a day after
+  it finished. The release is revision #22 `deployed` and both hooks report OK, so
+  the screen that answers "did that upgrade finish?" is lying.
+- **P2-17** — `/helm/history` shows the app name where every other screen shows a
+  page title.
+
+Neither is severe. Both are the kind of thing that stays invisible for months
+while you look at the feature you are building rather than at the product, and
+both cost one glance at a picture.
+
+### Not done, and why
+
+The five GitHub settings in the handover above. No `gh`, no token, SSH remote —
+so they are written down as an ordered list and tracked as P2-13 rather than
+claimed.
+
+### Regression checks (S11)
+
+This etappe ships no image, so nothing was deployed. Checked anyway, after the
+work: ESS 200 on `/_matrix/client/versions`, MatrixCtrl 200, `hostNetwork=true`
+on the SFU deployment, `externalTrafficPolicy=Local` on the three SFU node-port
+services. Config-write and login paths were not touched by any change here.

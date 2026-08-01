@@ -279,6 +279,18 @@ strangers depends on a code path nobody has ever run.
   wizard asks the operator to jump versions with no information.
 - **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
   now covers most of it. Keep, merge, or delete.
+- **P2-16 · An upgrade that finished still reads `running-hooks` (S2).** The
+  upgrade history shows `26.5.1 → 26.7.2` from 2026-07-31 21:59 as
+  `running-hooks`, a day later, while the release itself is revision #22
+  `deployed` and every hook reports OK. The `upgrade_history` row is never moved
+  to its terminal state, so the one screen that answers "did that upgrade
+  actually finish?" says no when the answer is yes.
+  *Found 2026-08-01 while reviewing screenshots for the README — which is also
+  why it is worth taking screenshots.*
+- **P2-17 · `/helm/history` has no page title (S7).** Every other screen shows a
+  title and subtitle in the top bar; this one shows the app name. Cosmetic, but it
+  is the kind of gap that only becomes visible when someone looks at the product
+  as a whole instead of at the feature they are building.
 - **P2-13 · The GitHub repo surface is unconfigured — and only the owner can fix it.**
   No topics at all, so the repository is unfindable by anyone who does not already
   know its name. No homepage. `v0.1.15` exists as a **tag with no release**, so the

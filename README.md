@@ -12,6 +12,67 @@ fresh ESS, and manage it all behind admin-only Matrix login — without `vim`-in
 [![AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 `Go 1.26 · React 18 · Helm SDK · client-go · PostgreSQL`
 
+> ### Read this before you install it
+>
+> **This is early software with one maintainer.** First published release:
+> 2026-08-01. It runs one production homeserver — the author's.
+>
+> - **The interface is German only.** Docs, code and issues are English; an
+>   English UI is [Phase 6](docs/ROADMAP.md). The screenshots below show exactly
+>   what you would get.
+> - **Deploying a fresh ESS was broken until 2026-08-01** and nobody noticed,
+>   because the only instance running MatrixCtrl already had ESS and could never
+>   reach that code path. It is now [proven end to end on an empty
+>   cluster](docs/plans/etappe-15-greenfield-first-half.md) — but that is one
+>   verified run, not a track record.
+> - **One step is still untested:** connecting Matrix login on a brand-new
+>   install needs public DNS to verify, which has not happened yet.
+>
+> [BACKLOG.md](docs/BACKLOG.md) is an honest, unflattering state of the project.
+> Read it before you point this at a homeserver you care about.
+
+---
+
+## What it looks like
+
+![MatrixCtrl dashboard — component health, cluster metrics, and a restart loop it caught](docs/img/dashboard.png)
+
+*Dashboard: every ESS component with its health and restart count, node metrics,
+and — here — a Postgres restart loop, surfaced with a link to the cause.*
+
+<details>
+<summary><b>More screens</b> — config editor, upgrades, hooks, setup</summary>
+
+**Config** — every ESS section as its own file. The help text under each field is
+pulled from the chart's own `##` comments, so it cannot drift from the chart.
+
+![Config editor in Standard mode](docs/img/config-settings.png)
+
+**Updates** — versions discovered from the OCI registry, with the deployed one
+marked. Upgrading streams Helm's log live.
+
+![ESS version list and release details](docs/img/updates.png)
+
+**Hooks** — the reason upgrades don't break calling: patches re-applied after
+every Helm run, each one saying which manual `kubectl patch` it replaces.
+
+![Post-upgrade hook list](docs/img/hooks.png)
+
+**Setup** — onboarding state: is ESS deployed, is the config seeded, is Matrix
+login connected.
+
+![Setup status page](docs/img/setup.png)
+
+**Versions & diff** — the config repo's git history, with rollback.
+
+![Config history with rollback](docs/img/config-history.png)
+
+**System** — node conditions, CPU/RAM, pods per namespace and every PVC.
+
+![Node, storage and pod overview](docs/img/system.png)
+
+</details>
+
 ---
 
 ## Why
@@ -305,6 +366,29 @@ make dev            # run against a local Postgres (docker compose)
 
 Go 1.26, Node 20.
 
+<details>
+<summary><b>Regenerating the screenshots</b></summary>
+
+`docs/img/*.png` are produced by the same script CI uses to prove every route
+renders — never taken by hand:
+
+```bash
+cd web
+MATRIXCTRL_TOKEN=<jwt> node scripts/verify-ui.mjs \
+  --base https://matrixctrl.example.com \
+  --out ../docs/img \
+  --redact my-node-name=matrix-node-01
+```
+
+`--redact from=to` rewrites visible text in the DOM immediately before each
+screenshot, and reports how many text nodes it changed. The only instance with
+real data is a production cluster whose node name must never reach a public
+repository ([DESIGN §4.14](docs/DESIGN.md)), so the replacement is part of the
+capture rather than a cleanup step someone forgets. **Look at every image before
+committing it** — the flag protects against the string you thought of.
+
+</details>
+
 | Document | What it answers |
 |---|---|
 | [`docs/VISION.md`](docs/VISION.md) | Where this is going, and what it deliberately won't do |
@@ -312,6 +396,7 @@ Go 1.26, Node 20.
 | [`docs/PROZESS.md`](docs/PROZESS.md) | How changes are planned, verified and shipped |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, the etappe log, and operations notes |
 | [`docs/BACKLOG.md`](docs/BACKLOG.md) | What's worth doing next, and an honest state of the project |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
 | [`docs/SETUP.md`](docs/SETUP.md) | The onboarding/bootstrap design |
 | [`CLAUDE.md`](CLAUDE.md) | Rules for AI agents working in this repo |
 
