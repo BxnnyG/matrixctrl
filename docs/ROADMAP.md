@@ -43,6 +43,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 11 | Design system — dark-only tokens, 3 directions, `mc.tsx` primitives, all screens restyled | ✅ 2026-06-04 · image 0.1.10 |
 | 12 | Observability & correctness — pod drill-down with restart cause, event feed, hook editor, version-list + diff fixes | ✅ 2026-07-31 · image 0.1.12 |
 | 13 | CI & verification chain — GitHub Actions, 22 frontend tests, headless-browser route check | ✅ 2026-07-31 · [plan](plans/etappe-13-ci-and-verification.md) |
+| 14 | Reliable upgrade stream & dashboard latency — heartbeat, reconnect, release cache, client-go limits | ✅ 2026-08-01 · image 0.1.14 · [plan](plans/etappe-14-upgrade-stream-and-dashboard-latency.md) |
 
 > Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
 > reviewable slices (`9b226c5`…`c8fbd4d`).
@@ -52,9 +53,10 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | # | Undertaking | Why now | Status |
 |---|-------------|---------|--------|
 | 13 | **CI & verification chain** (S9) | Nothing enforced the definition of done except memory. | ✅ 2026-07-31 |
-| 14 | **Greenfield end-to-end test** (S6) | "Works for anyone" is the product claim and it is unproven. Needs a throwaway cluster. | ⏳ |
-| 15 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.12 — the README currently mis-installs the project. | ⏳ |
-| 16 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
+| 14 | **Upgrade stream & dashboard latency** (S2, S4) | Both reported from the real 26.7.2 upgrade; a working upgrade looked like a failed one. | ✅ 2026-08-01 |
+| 15 | **Greenfield end-to-end test** (S6) | "Works for anyone" is the product claim and it is unproven. Needs a throwaway cluster. | ⏳ |
+| 16 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.14 — the README currently mis-installs the project. | ⏳ |
+| 17 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
 | — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
 
 ## Phase detail

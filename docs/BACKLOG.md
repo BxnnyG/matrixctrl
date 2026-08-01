@@ -33,7 +33,7 @@ exist is worse than admitting there is none.
 > unchanged.
 
 The published artefact is still not the running one: the chart says `0.1.0`, the
-running image is `0.1.12`, so a stranger following the README installs something
+running image is `0.1.14`, so a stranger following the README installs something
 two months stale.
 
 And the product claim remains unproven. 3 stars, 0 issues, no external users. The
@@ -107,7 +107,7 @@ strangers depends on a code path nobody has ever run.
   throwaway cluster. This is the product claim; it has never run. Needs a scratch
   k3s (kind/k3d would do) because our instance cannot reach the code path.
 - **P1-3 · Release coherence (S8).** `Chart.yaml`, `appVersion`, README and
-  CONTRIBUTING all say `0.1.0`; the running image is `0.1.12`. Add a release
+  CONTRIBUTING all say `0.1.0`; the running image is `0.1.14`. Add a release
   checklist that moves all version strings together, tag the repo (there are no
   tags at all), and publish a chart that matches the image.
 - ~~**P1-4 · Frontend tests (S9).**~~ **Done 2026-07-31** — 22 Vitest tests over
@@ -120,7 +120,18 @@ strangers depends on a code path nobody has ever run.
   signal is a badge in a UI nobody is looking at. The whole point is that calling
   breaks otherwise. Needs at least a log line at error level, ideally a Matrix
   message to the admin.
-- **P1-7 · The upgrade log stream dies mid-upgrade and reports it as failure (S2).**
+- ~~**P1-7 · The upgrade log stream dies mid-upgrade and reports it as failure (S2).**~~
+  **Done 2026-08-01 (E14).** All four defects fixed: long Helm operations emit
+  elapsed-time progress every 30 s (at all four blocking call sites, not just the
+  upgrade one), the socket carries a 20 s application-level heartbeat, the client
+  asks the existing status endpoint what happened before reconnecting with backoff,
+  and a clean close is no longer reported as an error. Two further defects were
+  found while fixing it: dropped subscribers were never removed from `subs` (a leak
+  that reconnects would have made routine), and the terminal status was read outside
+  the mutex. Original report below.
+
+  <details><summary>Original finding</summary>
+
   Reported by the operator 2026-08-01 during the real 26.7.2 upgrade: the log
   stopped after `Loaded 18 config slices from config store.` and printed
   `[Verbindung getrennt]`. **The upgrade itself succeeded** (revision 22,
@@ -138,7 +149,16 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* upgrading ESS safely is the product. An operator who sees this
   cannot tell a working upgrade from a broken one, and the honest reaction is to
   start intervening in a cluster that was fine.
-- **P1-8 · The dashboard is slow because every poll re-reads the whole Helm release (S4).**
+  </details>
+- ~~**P1-8 · The dashboard is slow because every poll re-reads the whole Helm release (S4).**~~
+  **Done 2026-08-01 (E14).** `/status` went from ~1.9–3.2 s to **~0.14–0.25 s**,
+  measured through the public ingress. Three causes, not one: the Helm read is now
+  cached (§4.15), the reads run concurrently, and — found only after the first two
+  fixes — client-go's default QPS 5 / Burst 10 was throttling the process against
+  itself for a steady ~1.1 s per request (§4.16). Original report below.
+
+  <details><summary>Original finding</summary>
+
   Reported by the operator 2026-08-01. `/status` runs six calls **serially**, and
   `GetRelease` uses `action.NewGet`, which fetches and decompresses the entire
   release — manifest, hooks, every chart file — out of a 416 KB secret, purely to
@@ -155,14 +175,21 @@ strangers depends on a code path nobody has ever run.
   remaining calls concurrently. The dashboard polls this every 15 s.
   *Corroborating hint:* `Get` already carries an 8 s `context.WithTimeout` — the
   slowness was known when it was written, and worked around rather than fixed.
+  </details>
 
 ## 3. P2 — worth doing
 
 - **P2-1 · Audit log UI (S10).** The table and the middleware writes exist; nothing
   reads them back. Cheap, and it turns dead weight into a feature.
-- **P2-2 · Build artefacts are committed.** `cmd/matrixctrl/dist` is 38 tracked
+- **P2-2 · Build artefacts are committed.** `cmd/matrixctrl/dist` is 32 tracked
   files, so every UI change produces a diff full of hashed bundles and hides the
   real change during review. Generate it at build time and gitignore it.
+  *Sharper after E14:* the tracked copy was found **stale** — the frontend fix had
+  been built, deployed and verified while the embedded copy still held the previous
+  bundle. The container image builds its own frontend, so the running pod was
+  correct and nothing looked wrong; only a plain `go build ./cmd/matrixctrl` would
+  have embedded the old UI. A tracked artefact that can silently disagree with its
+  source is worse than the noisy diffs this entry was originally about.
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and
