@@ -328,15 +328,20 @@ strangers depends on a code path nobody has ever run.
   title and subtitle in the top bar; this one shows the app name. Cosmetic, but it
   is the kind of gap that only becomes visible when someone looks at the product
   as a whole instead of at the feature they are building.
-- **P2-13 · The GitHub repo surface is unconfigured — and only the owner can fix it.**
-  No topics at all, so the repository is unfindable by anyone who does not already
-  know its name. No homepage. `v0.1.15` exists as a **tag with no release**, so the
-  page every visitor checks for "what changed" is empty. Wiki, Projects and
-  Discussions are all enabled and all empty — three dead tabs read as an abandoned
-  project, which is worse than not having them.
-  *Blocked here:* no `gh` CLI and no API token on the build host, and the remote is
-  SSH. Etappe 18 wrote the exact click-list; the settings themselves are the
-  operator's to apply.
+- **P2-18 · The release workflow should write the GitHub Release itself.** Right now
+  the tag publishes the image and the chart, and the release *page* is created
+  separately from `CHANGELOG.md`. That is the same shape as the bug §4.17 removed:
+  a publishing step that depends on someone remembering it. The workflow already
+  knows the version and the repo already has the changelog section — it should cut
+  the release note from `## [x.y.z]` and post it as part of the tag run. Then no
+  token is needed for releases at all, only for repository settings.
+- **P2-13 · The GitHub repo surface was unconfigured.** **Partly done 2026-08-01** —
+  topics and description set by the operator; homepage deliberately left empty
+  (the only candidate was a live admin panel's URL, see P0-1c). *Still open:* the
+  GitHub Releases for `v0.1.15` and `v0.1.16` — the tags exist, the page every
+  visitor checks for "what changed" does not — and the Wiki/Projects tabs, both
+  enabled and empty, which read as an abandoned project. Both need a fine-grained
+  token (Contents write, Administration write); the build host has none.
 - **P2-14 · The documentation has no user-facing layer (S12).** 1242 lines in
   `docs/` and every one of them is written for a maintainer or an agent: DESIGN,
   PROZESS, ROADMAP, BACKLOG. A *user* gets exactly one file, the README. Nothing
