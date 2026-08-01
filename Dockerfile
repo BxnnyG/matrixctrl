@@ -37,7 +37,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /matrixctrl ./cmd/matrixctrl
 
 # Stage 3: Minimal runtime
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=backend /matrixctrl /usr/local/bin/matrixctrl
 EXPOSE 8080
