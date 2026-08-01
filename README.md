@@ -136,6 +136,88 @@ helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
 3. Click **Connect Matrix Login** → MatrixCtrl registers its own MAS OIDC client,
    upgrades ESS so MAS picks it up, and switches to admin-only Matrix login.
 
+## Operating it
+
+### DNS — the one record you need
+
+MatrixCtrl needs a single hostname, whatever you passed as `ingress.host`:
+
+| Type | Name | Value |
+|------|------|-------|
+| `A` (or `AAAA`) | `matrixctrl.example.com` | the public IP of the node running Traefik |
+
+A `CNAME` to an existing name works too. If you let MatrixCtrl deploy ESS, that
+wizard needs its own records (`matrix.`, `element.`, `mas.`, …) — it tells you
+which ones.
+
+> With `certIssuer` set, cert-manager only issues a certificate **after** the
+> record resolves publicly, because the HTTP-01 challenge has to reach the
+> cluster. If the page stays untrusted, check DNS first:
+> `kubectl describe certificate matrixctrl-tls -n matrixctrl`.
+
+### Ports
+
+You do not publish a port yourself — Traefik terminates 80/443 and routes the
+hostname to the service. Internally the container listens on **8080** and the
+service exposes **80**; Postgres runs on 5432 inside the pod and is never exposed.
+
+To reach the UI without DNS or an ingress (useful for a first look or when
+something is broken):
+
+```bash
+kubectl port-forward -n matrixctrl svc/matrixctrl 8080:80
+# → http://localhost:8080
+```
+
+### Stop, start, restart
+
+```bash
+# Stop it — the container goes away, all data stays.
+kubectl scale deploy/matrixctrl -n matrixctrl --replicas=0
+
+# Start it again.
+kubectl scale deploy/matrixctrl -n matrixctrl --replicas=1
+
+# Restart (e.g. after changing a secret by hand).
+kubectl rollout restart deploy/matrixctrl -n matrixctrl
+```
+
+**Stopping MatrixCtrl does not touch your Matrix server.** ESS is a separate Helm
+release and keeps running exactly as it is — you just lose the admin UI until you
+scale it back up.
+
+### Uninstall
+
+```bash
+helm uninstall matrixctrl -n matrixctrl
+```
+
+This deliberately **leaves three things behind**, so that reinstalling does not
+lose your data or lock you out:
+
+| Kept | Why |
+|---|---|
+| `pvc/matrixctrl-config` | the git config repo — every version and rollback point |
+| `pvc/matrixctrl-postgres` | audit log, hooks, upgrade history |
+| `secret/matrixctrl-secret` | DB password and JWT key — regenerating them invalidates every session |
+
+They carry `helm.sh/resource-policy: keep`. To remove everything for real:
+
+```bash
+kubectl delete pvc matrixctrl-config matrixctrl-postgres -n matrixctrl
+kubectl delete secret matrixctrl-secret -n matrixctrl
+kubectl delete namespace matrixctrl
+```
+
+**Again: none of this removes ESS.** Your homeserver, its database and its media
+are in the `ess` release and namespace and are untouched. What you lose is
+MatrixCtrl's own history — the config repo's past versions and the audit trail.
+The configuration your ESS is *currently running* lives in the ESS Helm release
+and survives regardless.
+
+To remove ESS as well — only if you really mean it — that is a separate,
+destructive step: `helm uninstall ess -n ess`, which takes your homeserver with it.
+
 ## Configuration (Helm values)
 
 | Key | Default | Notes |
