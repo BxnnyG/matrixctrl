@@ -64,7 +64,7 @@ function AuditLog() {
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Card pad={false}>
         <div style={{ padding: "14px 18px 4px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-faint)" }}>
-          {entries.length ? `${entries.length} Einträge` : "Verlauf"}
+          {entries.length ? `${entries.length} ${entries.length === 1 ? "Eintrag" : "Einträge"}` : "Verlauf"}
         </div>
 
         <div style={{ padding: "0 8px 8px" }}>
