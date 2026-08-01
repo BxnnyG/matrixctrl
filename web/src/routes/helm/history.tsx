@@ -18,12 +18,20 @@ interface UpgradeEntry {
 
 const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
 
-const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; dot: "ok" | "err" | "warn" | "info" }> = {
-  success: { tone: "ok", dot: "ok" },
-  failed: { tone: "err", dot: "err" },
-  "hooks-failed": { tone: "warn", dot: "warn" },
-  pending: { tone: "info", dot: "info" },
-  running: { tone: "info", dot: "info" },
+// Every status the backend can write. "running-hooks" and "interrupted" were
+// missing and fell through to the "pending" styling, so an upgrade that had been
+// dead for a day rendered as calmly in-progress (BACKLOG P2-16).
+const STATUS_MAP: Record<
+  string,
+  { tone: "ok" | "err" | "warn" | "info"; dot: "ok" | "err" | "warn" | "info"; label: string }
+> = {
+  success: { tone: "ok", dot: "ok", label: "Erfolgreich" },
+  failed: { tone: "err", dot: "err", label: "Fehlgeschlagen" },
+  "hooks-failed": { tone: "warn", dot: "warn", label: "Hooks fehlgeschlagen" },
+  interrupted: { tone: "warn", dot: "warn", label: "Abgebrochen" },
+  pending: { tone: "info", dot: "info", label: "Wartet" },
+  running: { tone: "info", dot: "info", label: "Läuft" },
+  "running-hooks": { tone: "info", dot: "info", label: "Hooks laufen" },
 };
 
 function HelmHistory() {
@@ -45,7 +53,9 @@ function HelmHistory() {
         </div>
         <div style={{ padding: "0 8px 8px" }}>
           {history && history.length > 0 ? history.map((e, i) => {
-            const st = STATUS_MAP[e.status] ?? STATUS_MAP.pending;
+            // An unknown status must not borrow "pending"'s calm blue — show it
+            // raw and flag it, rather than reassure about something unrecognised.
+            const st = STATUS_MAP[e.status] ?? { tone: "warn" as const, dot: "warn" as const, label: e.status };
             return (
               <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", borderRadius: "var(--radius-sm)", borderBottom: i < history.length - 1 ? "1px solid var(--border-soft)" : "none" }}>
                 <div style={{ display: "grid", placeItems: "center", width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color: "var(--text-dim)" }}><Icon name="rotate" size={16} /></div>
@@ -60,8 +70,8 @@ function HelmHistory() {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StatusDot status={st.dot} pulse={e.status === "running"} />
-                  <Badge tone={st.tone} size="sm">{e.status}</Badge>
+                  <StatusDot status={st.dot} pulse={e.status === "running" || e.status === "running-hooks"} />
+                  <Badge tone={st.tone} size="sm">{st.label}</Badge>
                 </div>
               </div>
             );

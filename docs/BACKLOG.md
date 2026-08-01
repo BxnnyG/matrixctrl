@@ -339,7 +339,16 @@ strangers depends on a code path nobody has ever run.
   wizard asks the operator to jump versions with no information.
 - **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
   now covers most of it. Keep, merge, or delete.
-- **P2-16 · An upgrade that finished still reads `running-hooks` (S2).** The
+- ~~**P2-16 · An upgrade that finished still reads `running-hooks` (S2).**~~
+  **Done 2026-08-01.** The cause was not the SQL — the terminal status is written
+  by the goroutine driving the upgrade, so if that process dies in between (a pod
+  restart, an OOM kill) the row keeps its in-flight status forever and nothing ever
+  revisits it. Startup now reconciles them to `interrupted`, which is the honest
+  label: the Helm revision may well have gone through, but whether the hooks ran
+  cannot be recovered afterwards. The frontend was missing `running-hooks` *and*
+  `interrupted` from its status map, so both fell through to the calm blue
+  "pending" styling — an unknown status now renders as a warning instead of
+  borrowing reassurance. Original report: The
   upgrade history shows `26.5.1 → 26.7.2` from 2026-07-31 21:59 as
   `running-hooks`, a day later, while the release itself is revision #22
   `deployed` and every hook reports OK. The `upgrade_history` row is never moved
@@ -347,7 +356,9 @@ strangers depends on a code path nobody has ever run.
   actually finish?" says no when the answer is yes.
   *Found 2026-08-01 while reviewing screenshots for the README — which is also
   why it is worth taking screenshots.*
-- **P2-17 · `/helm/history` has no page title (S7).** Every other screen shows a
+- ~~**P2-17 · `/helm/history` has no page title (S7).**~~ **Done 2026-08-01** —
+  the route was missing from the shell's title map and fell back to the app name.
+  Original report: Every other screen shows a
   title and subtitle in the top bar; this one shows the app name. Cosmetic, but it
   is the kind of gap that only becomes visible when someone looks at the product
   as a whole instead of at the feature they are building.

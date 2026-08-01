@@ -44,6 +44,13 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Startup is the one moment where "no process owns this upgrade" is certain.
+	if n, err := db.ReconcileInterruptedUpgrades(ctx, pool); err != nil {
+		log.Printf("warning: %v", err)
+	} else if n > 0 {
+		log.Printf("MatrixCtrl: closed %d upgrade(s) left in flight by an earlier restart", n)
+	}
+
 	bootstrapAuth := auth.NewBootstrap(ctx, pool)
 	if err := bootstrapAuth.EnsureAdminExists(ctx); err != nil {
 		log.Printf("warning: bootstrap admin: %v", err)

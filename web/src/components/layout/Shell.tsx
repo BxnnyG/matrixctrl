@@ -41,6 +41,7 @@ const TITLES: Record<string, [string, string]> = {
   "/config": ["Konfiguration", "Versionierte YAML pro ESS-Sektion"],
   "/config/history": ["Versionen & Diff", "Git-Historie der Config · Rollback"],
   "/helm": ["Updates", "Helm-Upgrades mit Patch-erhaltenden Hooks"],
+  "/helm/history": ["Upgrade-Verlauf", "Vergangene Upgrades · Revision & Hook-Ergebnis"],
   "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
