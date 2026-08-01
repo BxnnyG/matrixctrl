@@ -155,30 +155,20 @@ strangers depends on a code path nobody has ever run.
   and the choice changes what gets built — so it is a decision, not a detail.
   **Do not run this on the production host**: the throwaway cluster would share the
   single 32 GB root filesystem with the live ESS PVs.
-- **P1-3 · Release coherence (S8) — code done, blocked on one setting.**
-  *Status 2026-08-01:* the workflow is built, tested and correct, but **no release
-  has published yet.** Four attempts failed; the fourth localised it precisely,
-  and it is not in the code: the `Push image` step is refused because
-  `ghcr.io/bxnnyg/matrixctrl` and `ghcr.io/bxnnyg/charts/matrixctrl` were created
-  by hand with a PAT and never granted the repository's Actions token write access.
-  `permissions: packages: write` does not help — package-level access is a separate
-  setting.
-  *This also explains the original symptom:* GHCR sat at `0.1.9` for two months
-  because publishing had always been manual with a PAT. There was never an
-  automation allowed to write; building one ran straight into that wall.
-  *Needs the operator (one click per package):* Packages → package → Package
-  settings → Manage Actions access → add repo `matrixctrl` with role **Write**.
-  Then re-run the failed job — no new tag required.
-  *Everything else below is done.* The gap was
-  wider than this entry said: GHCR held image `0.1.9` while the repo told people to
-  install `latest` and the chart was `0.1.0` — so the documented install produced a
-  build five versions old.
-  Fixed by removing the manual path rather than writing a better checklist: a tag
-  triggers `.github/workflows/release.yml`, which publishes image and chart together
-  and **fails if the tag and `Chart.yaml` disagree**. Released charts pin
-  `image.tag` to their own version, so `helm install --version X` is reproducible
-  instead of tracking `latest`. Documented in [RELEASING.md](RELEASING.md); the
-  copy-paste block in CONTRIBUTING is gone, because that block *was* the bug.
+- ~~**P1-3 · Release coherence (S8).**~~ **Done 2026-08-01 (E16).** `v0.1.15` is
+  published by CI and was verified by pulling it, not by reading a green tick:
+  `helm show chart` without `--version` resolves to 0.1.15, the released chart pins
+  `image.tag: "0.1.15"`, and the cluster now runs an image **pulled from GHCR** —
+  the local copy was deleted first so the pull had to be real (6.1 s, 25.7 MB, in
+  the pod events).
+  *Four attempts failed before that, and the cause was not in the code:* the GHCR
+  packages had been created by hand with a PAT and never granted the repository's
+  Actions token write access. Which is also why GHCR sat at `0.1.9` for two months
+  — publishing had always been a human with a PAT, so there was never an automation
+  permitted to write. Documented as one-time setup in [RELEASING.md](RELEASING.md).
+  *Also fixed on the way:* the instance values file pinned `image.tag: 0.1.12`
+  while 0.1.14 ran, surviving only because every deploy passed `--set image.tag`.
+  Released charts pin their own image, so that pin is gone.
 - ~~**P1-4 · Frontend tests (S9).**~~ **Done 2026-07-31** — 22 Vitest tests over
   the three functions that had each broken in production (version comparison,
   diff parsing, restart-cause mapping). Component tests deliberately still absent.
