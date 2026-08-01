@@ -40,10 +40,12 @@ two fixes that silently cancelled each other out — lived in that file.
 
 ### 1. Screenshots without leaking the cluster
 
-The only instance with real data is production, and its screenshots show the node
-name `matrix-node-01` on the Dashboard and System pages. That is the
-exact string [§4.14](../DESIGN.md) rewrote 39 commits to remove, so it cannot go
-into a public repository through the back door of a PNG.
+The only instance with real data is production, and its screenshots render the
+cluster's node name on the Dashboard and System pages — the exact string
+[§4.14](../DESIGN.md) rewrote 39 commits to remove. It cannot go into a public
+repository through the back door of a PNG, and it does not belong in this file
+either: an earlier draft of this very plan quoted it in prose, which is recorded
+below as the etappe's own mistake.
 
 All nine existing screenshots were reviewed individually. Result: that hostname is
 the **only** sensitive string. The config repo's commit author renders as
@@ -195,6 +197,26 @@ backlog:
 Neither is severe. Both are the kind of thing that stays invisible for months
 while you look at the feature you are building rather than at the product, and
 both cost one glance at a picture.
+
+### The mistake this etappe made
+
+The plan chapter above originally **spelled the node name out in prose** — while
+explaining why that name must never reach a public repository. It was committed
+in `cc60076` and pushed before the check that found it (a `git grep` across
+tracked files, run after the screenshots were verified).
+
+Two things are worth recording rather than quietly fixing:
+
+- **The control that caught it was the last one, not the first.** Every safeguard
+  built here pointed at the images: the redaction flag, the per-route replacement
+  count, the individual review of all nine PNGs. The leak went through plain text
+  in the document describing the safeguard. A rule enforced on one channel gets
+  routed around by the channel nobody instrumented.
+- **Forward-fixing is not removal.** The tip no longer contains the string, but the
+  blob stays reachable through the commit history until the history is rewritten —
+  which is exactly the P0-1b situation, now with a second source. Whether to rewrite
+  is the operator's call; a rewrite makes the object unreachable but does not delete
+  it from GitHub, so the prepared Support purge request has to cover it either way.
 
 ### Not done, and why
 
