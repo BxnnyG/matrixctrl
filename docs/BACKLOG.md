@@ -197,11 +197,12 @@ strangers depends on a code path nobody has ever run.
   wizard asks the operator to jump versions with no information.
 - **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
   now covers most of it. Keep, merge, or delete.
-- **P2-6 · README prerequisites assume a cluster already exists.** "Prerequisites:
-  k3s, Helm" is a checklist, not a path — a reader without either is stuck at line
-  one, which contradicts the "works for anyone" claim. Add collapsible
-  (`<details>`) install snippets for k3s and Helm on Debian/Ubuntu, so the happy
-  path stays short for people who already have a cluster.
+- ~~**P2-6 · README prerequisites assume a cluster already exists.**~~ **Done
+  2026-08-01** — a collapsed `<details>` block gets a bare Debian/Ubuntu server to
+  k3s + Helm in three commands, so the happy path stays short for readers who
+  already have a cluster. It also names the unstated dependency the install command
+  carried all along: `ingress.certIssuer=letsencrypt-prod` assumes cert-manager and
+  a matching `ClusterIssuer` exist, which nothing said before.
   *Raised by the operator 2026-08-01.*
 
 ## 4. P3 — someday / nice-to-have

@@ -48,6 +48,41 @@ grows into full admin parity.
 - A Kubernetes cluster (k3s works great) with an ingress controller (Traefik).
 - An existing ESS (`matrix-stack`) release, *or* let MatrixCtrl deploy one.
 
+<details>
+<summary><b>Starting from a bare Debian/Ubuntu server?</b> — k3s + Helm in three commands</summary>
+
+Skip this if you already have a cluster and `helm` on your PATH.
+
+```bash
+# 1. k3s — a single-node Kubernetes. Ships Traefik as the ingress controller,
+#    so the prerequisite above is covered by this one command.
+curl -sfL https://get.k3s.io | sh -
+
+# 2. Point kubectl/helm at it. k3s writes its kubeconfig root-only, so either
+#    run the following as root, or copy the file and chown it to your user.
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# 3. Helm 3
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+Check it worked — the node should report `Ready`:
+
+```bash
+kubectl get nodes
+helm version
+```
+
+**One more thing if you want HTTPS.** The install command below passes
+`ingress.certIssuer=letsencrypt-prod`, which assumes [cert-manager](https://cert-manager.io/docs/installation/)
+and a `ClusterIssuer` of that name already exist. Install cert-manager first, or
+drop the `--set ingress.certIssuer=…` flag and terminate TLS however you prefer.
+
+Both installer scripts above are piped straight from the internet into a shell.
+That is what the upstream projects document, but read them first if that is not
+acceptable in your environment.
+</details>
+
 ### Install (recommended) — OCI chart
 
 The chart and image are published to GHCR, so one command is all you need:
