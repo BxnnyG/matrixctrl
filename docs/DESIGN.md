@@ -76,7 +76,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ✅ (E16) | Tag-triggered release publishes image + chart together; versions verified against each other (§4.17) |
+| S8 Packaging & release | ⏳ (E16) | Workflow built and correct; **nothing published yet** — Actions cannot write the hand-created GHCR packages (P1-3) |
 | S9 Verification & CI | ✅ (E13, E14) | CI on push/PR, 26 frontend tests, 13 new backend tests (E14), headless-browser route check |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
