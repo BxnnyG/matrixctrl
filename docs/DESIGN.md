@@ -33,7 +33,8 @@ to guess.
 | Package | What lives there |
 |---|---|
 | `cmd/matrixctrl/` | Entry point, dependency wiring, `go:embed all:dist` (reads `cmd/matrixctrl/dist`, **not** `web/dist`) |
-| `internal/api/` | chi router, handlers, auth middleware. HTTP only — no business logic. *(This line claimed "auth/audit middleware" until 2026-08-01; the audit half did not exist — see S10.)* |
+| `internal/api/` | chi router, handlers, auth + audit middleware. HTTP only — no business logic. *(This line claimed the audit half already existed for two months before E17 actually built it — see S10.)* |
+| `internal/audit/` | Writes and reads `audit_log`. Never stores request bodies (E17) |
 | `internal/config/` | Section YAML store, merge, JSON-Schema validation, `yamledit.go` (yaml.v3 node surgery for comment-preserving writes), `migrate.go` |
 | `internal/git/` | go-git wrapper: commit, log, checkout, working-tree diff, per-commit diff |
 | `internal/helm/` | Helm v3 SDK: install, upgrade, rollback, history, OCI version discovery, release discovery across namespaces |
@@ -78,7 +79,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
 | S9 Verification & CI | ✅ (E13, E14, E18) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
-| S10 Audit trail | ⏳ not started | **Corrected 2026-08-01:** this row claimed "table + middleware write". The middleware never existed — no Go file references `audit_log` and production has 0 rows after two months. Only the table is there (E17 in progress) |
+| S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ⏳ not started | Phase 2 — parked behind S6 ([VISION.md](VISION.md)) |

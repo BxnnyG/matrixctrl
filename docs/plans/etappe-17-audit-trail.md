@@ -101,6 +101,46 @@ a default someone invents while building the writer.
   P2-1 replaced by what was found
 - Four regression checks (S11) green
 
-## Outcome
+## Outcome (2026-08-01)
 
-_(filled in when the etappe closes)_
+Shipped in `0.1.18`.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| Write path | `internal/api/middleware/audit.go` — wraps the whole authenticated group |
+| Storage & queries | `internal/audit/audit.go` |
+| Read endpoint | `GET /api/v1/audit`, keyset-paginated |
+| UI | `/audit`, moved out of the Phase-5 roadmap group into **Betrieb** |
+
+Eight tests drive the middleware rather than inspect it. The one worth naming is
+`TestRecordCarriesNoPayload`: it reflects over `AuditRecord` and fails if anyone
+adds a `Body`, `Headers` or `Payload` field. The design's central safety property
+is "this table never becomes a second copy of your secrets", and that property
+should break a build, not depend on a reviewer noticing.
+
+### The finding was bigger than the fix
+
+The entry that scheduled this etappe was wrong, and **the check that disproved it
+took thirty seconds**. That is the part worth keeping: not that the audit trail
+was missing, but that a status line had asserted it existed for two months and
+nobody — including every agent that read `DESIGN.md §1b` as ground truth — had run
+`grep`.
+
+Three for three now: greenfield deploy (E15), the frontend test suite
+([BACKLOG §0](../BACKLOG.md)), and this. All three were *documented as done* and
+all three were fiction. The common shape is a status written at the moment of
+intent and never re-derived from the system.
+
+The inventory in `DESIGN.md §1` also listed "auth/audit middleware" as existing,
+so the false claim had propagated into the file whose entire purpose is
+*"read this instead of guessing"*. Both corrected, with the correction visible
+rather than silently overwritten.
+
+### Not done, deliberately
+
+Retention. The table is append-only and nothing prunes it, on a 32 GB single-node
+cluster that also holds Synapse's database and media. How long "who did what" must
+stay answerable is a policy decision, and a default invented by whoever wrote the
+`INSERT` is the wrong way to make it — **P2-19**.
