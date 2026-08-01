@@ -357,6 +357,22 @@ strangers depends on a code path nobody has ever run.
   an audit trail is a policy decision (how long must "who did what" be answerable?),
   and a default invented by whoever wrote the INSERT is the wrong way to make it.
   Needs a decision first, then a scheduled delete plus a documented number.
+- **P2-20 · The verification chain passed pages that had not loaded (S9).** Found
+  2026-08-01 while shipping E19: `verify-ui.mjs` waited only for React to mount,
+  which a sidebar and a skeleton placeholder satisfy instantly. `/status` costs
+  ~4.7 s on a cold release cache, and the dashboard screenshot from that window
+  was four grey boxes — reported as **PASS**. Now fixed by counting the page's own
+  in-flight API requests, but the lesson is the entry: for weeks the chain was
+  proving less than it claimed, and only *looking at the picture it produced*
+  revealed it. **The screenshots are not a by-product of the check; on this
+  occasion they were the check.**
+- **P2-21 · A cold `/status` still costs ~4.7 s (S4).** E14 took the warm path from
+  ~3.2 s to ~0.18 s and that holds — but the first request after the 60 s release
+  cache expires still pays the full Helm read, and the dashboard shows a skeleton
+  for all of it. So the operator's original complaint ("the dashboard loads slowly")
+  is *half* fixed: it is fast when you are already using it, and slow exactly when
+  you arrive. Worth a background refresh that keeps the cache warm, or a stale-
+  while-revalidate read so the page renders old numbers immediately.
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and

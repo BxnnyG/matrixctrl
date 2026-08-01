@@ -112,8 +112,24 @@ for (const route of ROUTES) {
     problems.push(`console: ${text}`);
   });
   page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
+
+  // Counting the page's own API calls is the only precise answer to "is it
+  // finished loading?" — every indirect signal tried before this one lied.
+  let apiPending = 0;
+  let apiSeen = 0;
+  const isAPI = (url) => url.includes("/api/v1/");
+  page.on("request", (r) => {
+    if (isAPI(r.url())) {
+      apiPending++;
+      apiSeen++;
+    }
+  });
+  page.on("requestfinished", (r) => {
+    if (isAPI(r.url())) apiPending--;
+  });
   page.on("requestfailed", (req) => {
     const url = req.url();
+    if (isAPI(url)) apiPending--;
     if (IGNORE.some((re) => re.test(url))) return;
     problems.push(`request failed: ${url} (${req.failure()?.errorText ?? "?"})`);
   });
@@ -150,33 +166,102 @@ for (const route of ROUTES) {
     });
     if (rendered < 10) problems.push("root rendered empty (React did not mount?)");
 
+    // Mounted is not loaded. The check above is satisfied by the sidebar and a
+    // skeleton placeholder, so a page whose data had not arrived passed happily —
+    // and the screenshot of that pass was an empty dashboard with four grey
+    // boxes. `/status` costs ~5 s on a cold release cache, which is exactly the
+    // window this used to photograph.
+    //
+    // Three wrong fixes were tried before this one, and each failed in a way
+    // worth naming:
+    //
+    //   1. waitForLoadState("networkidle") — resolves immediately once the page
+    //      has reached that state once, which goto() already did. It never
+    //      waited for anything.
+    //   2. "wait until the content stops changing" — a skeleton is perfectly
+    //      stable, so this exited *earliest* exactly when the page was still
+    //      loading. A heuristic that fails hardest in the case it exists for is
+    //      worse than none.
+    //   3. A fixed delay — either too short for a cold `/status` (~4.7 s) or
+    //      wasted on every fast route.
+    //
+    // What actually answers the question: are this page's API requests done?
+    // Counted directly from the request/response events above, so it is precise
+    // rather than inferred.
+    const settleDeadline = Date.now() + 25_000;
+    while (Date.now() < settleDeadline) {
+      if (apiPending === 0 && apiSeen > 0) break;
+      await page.waitForTimeout(250);
+    }
+    if (apiPending > 0) {
+      problems.push(`${apiPending} API request(s) still pending after 25 s`);
+    }
+
     // If an authenticated route bounced us back to login, the token is bad —
     // report it rather than screenshotting a login page under the wrong name.
     if (route.auth && page.url().includes("/auth/login")) {
       problems.push("redirected to /auth/login — token rejected");
     }
 
-    // Last thing before the shot, so what is redacted is exactly what is
-    // rendered — nothing can re-render the original in between.
+    // Redact, then **verify**, then screenshot.
+    //
+    // The first version of this did one pass and claimed "nothing can re-render
+    // in between". That was wrong and it leaked: on /rtc the redaction ran
+    // before the API response arrived, React then re-rendered with the real
+    // value, and the screenshot captured it. The tool built to prevent leaks had
+    // exactly the flaw it exists to prevent, and only looking at the image
+    // caught it.
+    //
+    // So the guarantee is not "we replaced it" but "it is not there any more" —
+    // checked, with retries for a late render, and a hard failure if it survives.
+    // A redaction that silently did not apply is worse than none.
     if (REDACTIONS.length) {
-      redacted = await page.evaluate((subs) => {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        let n = 0;
-        for (const node of nodes) {
-          let value = node.nodeValue;
-          for (const { from, to } of subs) value = value.split(from).join(to);
-          if (value !== node.nodeValue) {
-            node.nodeValue = value;
-            n++;
+      const subs = REDACTIONS;
+      const redactOnce = () =>
+        page.evaluate((subs) => {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          const nodes = [];
+          while (walker.nextNode()) nodes.push(walker.currentNode);
+          let n = 0;
+          for (const node of nodes) {
+            let value = node.nodeValue;
+            for (const { from, to } of subs) value = value.split(from).join(to);
+            if (value !== node.nodeValue) {
+              node.nodeValue = value;
+              n++;
+            }
           }
-        }
-        return n;
-      }, REDACTIONS);
+          return n;
+        }, subs);
+
+      const stillVisible = () =>
+        page.evaluate(
+          (needles) => {
+            const text = document.body.innerText || "";
+            return needles.filter((n) => text.includes(n));
+          },
+          REDACTIONS.map((r) => r.from),
+        );
+
+      let leaked = [];
+      for (let attempt = 0; attempt < 4; attempt++) {
+        redacted += await redactOnce();
+        leaked = await stillVisible();
+        if (leaked.length === 0) break;
+        // A late render put it back. Give the page a moment and redo it.
+        await page.waitForTimeout(600);
+      }
+
+      if (leaked.length > 0) {
+        // Fail the route rather than write the screenshot. The whole point is
+        // that the image is safe to publish; an unsafe one must not exist.
+        problems.push(`redaction failed — still visible after 4 passes: ${leaked.join(", ")}`);
+      }
     }
 
-    await page.screenshot({ path: path.join(OUT, `${route.name}.png`), fullPage: true });
+    if (!problems.some((p) => p.startsWith("redaction failed"))) {
+      await page.screenshot({ path: path.join(OUT, `${route.name}.png`), fullPage: true });
+    }
   } catch (err) {
     problems.push(`navigation: ${err.message}`);
   }
