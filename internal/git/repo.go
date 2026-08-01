@@ -275,9 +275,9 @@ func joinLines(lines []string) string {
 }
 
 type diffOp struct {
-	kind    byte // ' ' equal, '-' delete, '+' insert
-	oldIdx  int  // index into oldLines (-1 for inserts)
-	newIdx  int  // index into newLines (-1 for deletes)
+	kind   byte // ' ' equal, '-' delete, '+' insert
+	oldIdx int  // index into oldLines (-1 for inserts)
+	newIdx int  // index into newLines (-1 for deletes)
 }
 
 // diffOps computes a line-level diff using go-diff's Myers implementation. Lines

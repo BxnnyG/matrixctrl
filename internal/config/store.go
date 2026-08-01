@@ -87,7 +87,6 @@ func (s *Store) Init(ctx context.Context, srcDir string) error {
 	return err
 }
 
-
 // manifest reads config-slices.json from the repo.
 func (s *Store) manifest() (*slicesManifest, error) {
 	data, err := os.ReadFile(filepath.Join(s.path, "config-slices.json"))

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/go-chi/chi/v5"
 )
 
 type StatusHandler struct {
@@ -244,10 +244,10 @@ func (h *StatusHandler) SysInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, map[string]interface{}{
-		"nodes":      conditions,
+		"nodes":        conditions,
 		"node_metrics": nodes,
-		"pvcs":       pvcs,
-		"pod_counts": podCounts,
+		"pvcs":         pvcs,
+		"pod_counts":   podCounts,
 	})
 }
 

@@ -12,7 +12,7 @@ type ReleaseInfo struct {
 	Name         string    `json:"name"`
 	Namespace    string    `json:"namespace"`
 	ChartVersion string    `json:"chart_version"` // e.g. "matrix-stack-26.5.1"
-	Version      string    `json:"version"`        // e.g. "26.5.1" (semver only)
+	Version      string    `json:"version"`       // e.g. "26.5.1" (semver only)
 	Revision     int       `json:"revision"`
 	Status       string    `json:"status"`
 	DeployedAt   time.Time `json:"deployed_at,omitempty"`

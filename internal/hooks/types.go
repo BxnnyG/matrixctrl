@@ -17,9 +17,9 @@ const (
 type ActionType string
 
 const (
-	ActionKubectlPatch  ActionType = "kubectl_patch"
-	ActionWaitRollout   ActionType = "wait_rollout"
-	ActionHTTPRequest   ActionType = "http_request"
+	ActionKubectlPatch ActionType = "kubectl_patch"
+	ActionWaitRollout  ActionType = "wait_rollout"
+	ActionHTTPRequest  ActionType = "http_request"
 )
 
 type HookAction struct {
@@ -43,17 +43,17 @@ type HookAction struct {
 }
 
 type Hook struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	Trigger     TriggerType `json:"trigger"`
-	Enabled     bool        `json:"enabled"`
-	Priority    int         `json:"priority"`
+	ID          uuid.UUID    `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description,omitempty"`
+	Trigger     TriggerType  `json:"trigger"`
+	Enabled     bool         `json:"enabled"`
+	Priority    int          `json:"priority"`
 	Actions     []HookAction `json:"actions"`
-	Builtin     bool        `json:"builtin"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-	CreatedBy   string      `json:"created_by"`
+	Builtin     bool         `json:"builtin"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	CreatedBy   string       `json:"created_by"`
 
 	// Populated from last run (not stored in hooks table)
 	LastRunStatus string `json:"lastRunStatus,omitempty"`
