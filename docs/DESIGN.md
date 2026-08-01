@@ -70,14 +70,14 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | System | Status | Rest / note |
 |---|---|---|
 | S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
-| S2 Helm release & versions | ⏳ (E2, E12) | Version list fixed 2026-07-31; **the upgrade log stream drops mid-upgrade** and reports success as failure (P1-7) |
+| S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14) |
 | S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
-| S4 Cluster observability | ⏳ (E3, E12) | Health, events, pod drill-down with restart cause; **`/status` costs ~4 s per poll** (P1-8) |
+| S4 Cluster observability | ✅ (E3, E12, E14) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s (E14) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ⏳ ½ | Published chart is 0.1.0 while the running image is 0.1.12 — see §2 |
-| S9 Verification & CI | ✅ (E13) | CI on push/PR, 22 frontend tests, headless-browser route check |
+| S8 Packaging & release | ⏳ ½ | Published chart is 0.1.0 while the running image is 0.1.14 — see §2 |
+| S9 Verification & CI | ✅ (E13, E14) | CI on push/PR, 26 frontend tests, 13 new backend tests (E14), headless-browser route check |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
@@ -109,10 +109,12 @@ ESS publishes a `<version>-sha<40hex>` tag per commit, so only ancient `0.2.x`
 dev builds were ever shown, sorted as strings (`26.5.1` ranked above `26.10.0`).
 Now paginated, build-tags filtered, numerically sorted. Did *not* solve: release
 notes / breaking-change warnings per version (`ess_versions.changelog` is unused).
-**Open (found in production 2026-08-01):** the live log stream is unreliable
-precisely when it matters. `helm.Upgrade()` blocks for minutes without emitting,
-the proxy closes the idle socket, and the client neither reconnects nor re-polls —
-so a *successful* upgrade ends in `[Verbindung getrennt]`. See P1-7.
+✅ **Done (E14, 2026-08-01):** the live log stream used to be unreliable exactly
+when it mattered — a *successful* upgrade ended in `[Verbindung getrennt]`. Now
+long Helm operations report elapsed time every 30 s, the socket carries a 20 s
+heartbeat, and a dropped client asks `GET …/upgrade/{id}` what actually happened
+before reconnecting with backoff. Did *not* solve: release notes per version
+(`ess_versions.changelog` is still unused).
 
 ### S3 · Post-upgrade hook engine
 **Purpose:** the core promise — manual patches survive `helm upgrade`.
@@ -133,9 +135,11 @@ timestamp) plus its events and logs.
 Synapse and Postgres, the two most important components, were invisible on the
 dashboard. Did *not* solve: historical metrics (the sparkline is in-memory and
 resets on reload), and no alerting.
-**Open (measured 2026-08-01):** `/status` is slow — six serial calls, dominated by
-a ~4 s full Helm release read that is thrown away except for seven scalars, polled
-every 15 s. See P1-8.
+✅ **Done (E14, 2026-08-01):** `/status` took ~1.9–3.2 s per poll. Three causes, all
+fixed: the Helm release read is cached (§4.15), the reads run concurrently, and
+client-go's default QPS 5 / Burst 10 throttle was raised (§4.16) — that last one was
+invisible until the reads ran in parallel and was responsible for a steady ~1.1 s of
+pure client-side queueing. Measured after: **~0.14–0.25 s**.
 
 ### S5 · Authentication & authorisation
 **Purpose:** only Matrix admins get in, without a second user database.
@@ -166,14 +170,14 @@ density, Geist typography, primitives in `mc.tsx`, live Tweaks panel.
 **Today:** Dockerfile (multi-stage), own Helm chart, GHCR image + OCI chart,
 `make docker`.
 **Open:** the published chart says `0.1.0` (`Chart.yaml`, README, CONTRIBUTING)
-while the running image is `0.1.12`. Anyone following the README installs
+while the running image is `0.1.14`. Anyone following the README installs
 something two months behind. There is no release checklist tying the three
 version strings together, and no tags in git.
 
 ### S9 · Verification & CI ⏳
 **Purpose:** prove an etappe is done without a human remembering to check.
 **Today:** GitHub Actions runs `go vet`, `go test ./...`, the TypeScript
-typecheck, 22 Vitest unit tests and the frontend build on every push and PR.
+typecheck, 26 Vitest unit tests and the frontend build on every push and PR.
 `web/scripts/verify-ui.mjs` drives headless chromium over all nine functional
 routes after a deploy, failing on console errors or an unmounted root.
 ✅ **Done (E13, 2026-07-31):** the definition of done is now enforced outside the
@@ -329,3 +333,31 @@ weeks the values were public. Only renaming the host and changing the address
 invalidates the disclosed values themselves — see [BACKLOG.md](BACKLOG.md) P0-1b for
 the full assessment. Backup of the pre-rewrite history is a verified `git bundle`
 held outside the repo.
+
+### §4.15 — Release info is cached, because there is no cheap way to read it (2026-08-01, agent)
+**Question:** `/status` was dominated by `GetRelease`. Is there a lighter Helm call?
+**Decision:** no — cache it. `action.NewGet`, `NewGetMetadata` and `NewList` were all
+measured at ~3.9–5.6 s against the live cluster, because every one of them fetches
+the release secret (416 KB for ESS) and decompresses the whole release: manifest,
+hooks and every chart file. `GetRelease` keeps seven scalars out of that, every 15 s.
+**Decision detail:** the cache lives in `internal/helm`, not in the handler — nine
+call sites use `GetRelease` (§S12). 60 s TTL, plus explicit `InvalidateRelease` on
+upgrade, rollback and install, called via `defer` so a *failed* operation that still
+moved the release cannot leave a stale entry.
+**Consequences:** a release changed outside MatrixCtrl (operator running `helm`
+directly) can read stale for up to 60 s. That is the deliberate trade and it is
+written down rather than discovered later. Affects S2, S4.
+
+### §4.16 — client-go's default rate limit is wrong for a server (2026-08-01, agent)
+**Question:** after caching Helm and parallelising the reads, `/status` still cost
+~1.9 s, and the pattern was suspicious: the first few calls were fast, then every
+call settled at a steady ~1.1 s while the cluster itself was idle.
+**Decision:** raise the client-go rate limiter to QPS 50 / Burst 100 in
+`internal/k8s.New`.
+**Rationale:** client-go defaults to QPS 5 / Burst 10, which is sized for a one-shot
+CLI. MatrixCtrl polls continuously and — once the status reads ran concurrently —
+in bursts, so it spent the burst immediately and then queued on its *own* limiter.
+The latency was self-inflicted and invisible from the cluster side.
+**Consequences:** more load is possible against the API server; for one admin server
+against one cluster this is modest. The lesson generalises: any client-go default
+tuned for CLIs should be re-examined before it runs in a server. Affects S4.
