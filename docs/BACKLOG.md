@@ -121,6 +121,26 @@ strangers depends on a code path nobody has ever run.
   an internal name plus an RFC1918 address, the risk of the migration may well
   exceed the risk of the leak — that trade is the operator's to make, but it should
   be made with these facts rather than without them.
+- **P0-1c · The etappe-18 plan re-published the hostname, in prose, on 2026-08-01.**
+  The chapter explaining why the node name must never reach a public repository
+  spelled that name out. Committed in `cc60076` and pushed; caught about 40 minutes
+  later by a `git grep` over tracked files and removed from the tip in `6f11bbf`.
+  *Objectively:* the push window is short, but the value is identical to P0-1's, and
+  the blob stays **reachable** through the commit history — browsing that commit
+  still shows it. That is a *stronger* exposure than P0-1b's unreachable objects,
+  not a weaker one.
+  *What it says about the controls:* every safeguard this etappe built pointed at
+  the screenshots — the `--redact` flag, the per-route replacement count, an
+  individual review of all nine images. None of them looked at prose. A rule
+  enforced on one channel gets routed around by the channel nobody instrumented.
+  *Fix, and why it is not done:* removing it from history needs another rewrite and
+  force-push of a public branch — the operator's decision, not the agent's. A
+  rewrite also does not delete the object from GitHub, so the P0-1b Support request
+  has to cover this commit either way.
+  *Cheap control worth adding:* a CI grep for the known-sensitive strings, so this
+  fails a build instead of depending on someone remembering to look. That check
+  cannot itself contain the strings — it would have to read them from a file that is
+  gitignored, or from a repository secret.
 - ~~**P0-2 · Etappes 11 and 12 are uncommitted.**~~ **Done 2026-07-31** —
   committed in nine reviewable slices (`9b226c5`…`c8fbd4d`). Tagging is still
   open and folded into P1-3.
