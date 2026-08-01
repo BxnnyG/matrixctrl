@@ -128,8 +128,25 @@ helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
 
 ## First run
 
-1. Open `https://matrixctrl.example.com` → log in with the bootstrap admin
-   (password printed in the pod log on first start).
+1. Open `https://matrixctrl.example.com` and log in as **`admin`**. The password is
+   generated on first start and written to the pod log:
+
+   ```bash
+   kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl | grep "bootstrap admin password"
+   # MatrixCtrl: bootstrap admin password: <generated>
+   ```
+
+   > **It is logged exactly once**, on the start where the admin user is created.
+   > If the pod has restarted since, that line is gone from the current log — try
+   > `kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl --previous`, and see
+   > [Lost the admin password?](#lost-the-admin-password) if it is no longer there.
+
+   To choose the password yourself instead, set it at install time — then nothing is
+   ever logged:
+
+   ```bash
+   helm install matrixctrl … --set secrets.adminPassword='your-password'
+   ```
 2. Go to **Setup**. MatrixCtrl auto-discovers your ESS:
    - **No ESS yet?** → *Deploy ESS* (pick a version + server name).
    - **ESS already running?** → *Adopt existing ESS* (seeds config from the release).
@@ -168,6 +185,37 @@ something is broken):
 kubectl port-forward -n matrixctrl svc/matrixctrl 8080:80
 # → http://localhost:8080
 ```
+
+### Logs
+
+```bash
+# Follow the app log (the pod also runs a postgres sidecar, hence -c).
+kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl -f
+
+# The previous container, after a crash or restart.
+kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl --previous
+
+# The database sidecar.
+kubectl logs -n matrixctrl deploy/matrixctrl -c postgres
+```
+
+### Lost the admin password?
+
+`secrets.adminPassword` is only read when the admin user is **created**, so setting
+it afterwards changes nothing — the account already exists. To get a new one, delete
+the stored credential and let the next start regenerate it:
+
+```bash
+kubectl exec -n matrixctrl deploy/matrixctrl -c postgres -- \
+  psql -U matrixctrl -d matrixctrl -c "DELETE FROM bootstrap_credentials WHERE user_id='admin';"
+
+kubectl rollout restart deploy/matrixctrl -n matrixctrl
+kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl | grep "bootstrap admin password"
+```
+
+This only affects the local bootstrap login. It does not touch your Matrix account,
+and once you have switched to **Connect Matrix Login** you sign in via Matrix
+anyway — the bootstrap admin is just the way in before OIDC exists.
 
 ### Stop, start, restart
 
