@@ -283,8 +283,20 @@ strangers depends on a code path nobody has ever run.
 
 ## 3. P2 — worth doing
 
-- **P2-1 · Audit log UI (S10).** The table and the middleware writes exist; nothing
-  reads them back. Cheap, and it turns dead weight into a feature.
+- **P2-1 · There is no audit trail at all (S10).** This entry used to read "the
+  table and the middleware writes exist; nothing reads them back. Cheap." That was
+  **wrong**, and checking it took thirty seconds: `grep -rni audit --include=*.go`
+  returns nothing, and `SELECT count(*) FROM audit_log` returns 0 after two months
+  in production. Only the table was ever created — no writer, no reader.
+  *Why it matters:* MatrixCtrl can upgrade a homeserver, rewrite its config, roll
+  it back and switch its authentication, and afterwards nothing says who did what.
+  The config repo's git history covers config edits only, and attributes every
+  commit to `MatrixCtrl` rather than a person.
+  *Third documented claim found to have never been true*, after "greenfield deploy
+  works" (E15) and "Vitest + Testing Library" (§0 above). A status written from
+  intent rather than observation decays into a lie, and the lie survives because
+  nobody re-checks their own notes. Planned as
+  [etappe 17](plans/etappe-17-audit-trail.md).
 - **P2-2 · Build artefacts are committed.** `cmd/matrixctrl/dist` is 32 tracked
   files, so every UI change produces a diff full of hashed bundles and hides the
   real change during review. Generate it at build time and gitignore it.
@@ -332,6 +344,13 @@ strangers depends on a code path nobody has ever run.
   *Found 2026-08-01 while answering "why is calling broken" — the answer was not
   visible anywhere in the product.*
 
+- **P2-19 · The audit log grows without bound (S10).** E17 added the writes; nothing
+  ever removes them. On a 32 GB single-node cluster sharing its disk with Synapse's
+  database and media, an unbounded append-only table is a real operational trap.
+  *Deliberately not guessed at while building the writer:* the right retention for
+  an audit trail is a policy decision (how long must "who did what" be answerable?),
+  and a default invented by whoever wrote the INSERT is the wrong way to make it.
+  Needs a decision first, then a scheduled delete plus a documented number.
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and

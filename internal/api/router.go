@@ -18,6 +18,11 @@ type Deps struct {
 	WS     *handlers.WSHandler
 	Config *handlers.ConfigHandler
 	Setup  *handlers.SetupHandler
+	Audit  *handlers.AuditHandler
+
+	// AuditSink records every mutating request. Nil disables auditing, which is
+	// what the tests use — production always wires it.
+	AuditSink authmw.AuditSink
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -42,8 +47,17 @@ func NewRouter(deps Deps) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(deps.Auth.ValidateToken))
 
+		// After RequireAuth, so the record carries the authenticated user, and
+		// wrapping the whole group rather than each route: a new handler must
+		// not be able to be forgotten (docs/plans/etappe-17-audit-trail.md).
+		r.Use(authmw.Audit(deps.AuditSink))
+
 		r.Post("/api/v1/auth/logout", deps.Auth.Logout)
 		r.Get("/api/v1/auth/me", deps.Auth.Me)
+
+		if deps.Audit != nil {
+			r.Get("/api/v1/audit", deps.Audit.List)
+		}
 
 		r.Route("/api/v1/status", func(r chi.Router) {
 			r.Get("/", deps.Status.Get)

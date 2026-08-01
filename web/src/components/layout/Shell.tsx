@@ -20,7 +20,10 @@ const NAV: NavGroup[] = [
     { id: "hooks", label: "Hooks", icon: "hook", to: "/hooks" },
     { id: "setup", label: "Setup", icon: "rocket", to: "/setup" },
   ] },
-  { group: "Betrieb", items: [{ id: "system", label: "System", icon: "cpu", to: "/system" }] },
+  { group: "Betrieb", items: [
+    { id: "system", label: "System", icon: "cpu", to: "/system" },
+    { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
+  ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
   { group: "Verwaltung", phase: "2", items: [
     { id: "users", label: "Benutzer", icon: "users" }, { id: "rooms", label: "Räume", icon: "room" }, { id: "moderation", label: "Moderation", icon: "shield" },
@@ -32,7 +35,7 @@ const NAV: NavGroup[] = [
     { id: "federation", label: "Föderation", icon: "globe" }, { id: "bridges", label: "Bridges", icon: "audit" },
   ] },
   { group: "Compliance", phase: "5", items: [
-    { id: "audit", label: "Audit-Log", icon: "audit" }, { id: "workers", label: "Worker-Insights", icon: "activity" },
+    { id: "workers", label: "Worker-Insights", icon: "activity" },
   ] },
 ];
 
@@ -45,6 +48,7 @@ const TITLES: Record<string, [string, string]> = {
   "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
+  "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
 };
 
 function Logo() {
@@ -87,6 +91,7 @@ function activeId(path: string): string {
   if (path.startsWith("/hooks")) return "hooks";
   if (path.startsWith("/setup")) return "setup";
   if (path.startsWith("/system")) return "system";
+  if (path.startsWith("/audit")) return "audit";
   return "";
 }
 

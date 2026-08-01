@@ -13,6 +13,7 @@ import (
 
 	"github.com/bxnnyg/matrixctrl/internal/api"
 	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
+	"github.com/bxnnyg/matrixctrl/internal/audit"
 	"github.com/bxnnyg/matrixctrl/internal/auth"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/db"
@@ -50,6 +51,8 @@ func main() {
 	} else if n > 0 {
 		log.Printf("MatrixCtrl: closed %d upgrade(s) left in flight by an earlier restart", n)
 	}
+
+	auditStore := audit.New(pool)
 
 	bootstrapAuth := auth.NewBootstrap(ctx, pool)
 	if err := bootstrapAuth.EnsureAdminExists(ctx); err != nil {
@@ -173,6 +176,9 @@ func main() {
 		WS:     wsHandler,
 		Config: configHandler,
 		Setup:  setupHandler,
+		Audit:  handlers.NewAuditHandler(auditStore),
+
+		AuditSink: auditStore,
 	})
 
 	srv := server.New(addr, router)

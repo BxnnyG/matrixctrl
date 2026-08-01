@@ -60,7 +60,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 15 | **Greenfield end-to-end test** (S6) | "Works for anyone" was the product claim and it was **false** — deploy never worked. Fixed and proven. | ✅ 2026-08-01 (connect-OIDC still open) |
 | 16 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.14 — the README mis-installed the project. | ✅ 2026-08-01 |
 | 18 | **First impression** (S8, S9) | Nobody had ever looked at the repo as a stranger: no screenshots, no maturity notice, no disclosure that the UI is German. | ✅ 2026-08-01 |
-| 17 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
+| 17 | **Audit trail** (S10) | Not "a UI over existing writes" — checking found the writes never existed and production has 0 rows. Nothing records who did what. | ⏳ [plan](plans/etappe-17-audit-trail.md) |
 | — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
 
 ## Phase detail
