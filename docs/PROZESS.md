@@ -87,6 +87,18 @@ helm upgrade matrixctrl deploy/helm/matrixctrl -n matrixctrl \
 kubectl -n matrixctrl rollout status deploy/matrixctrl --timeout=180s
 ```
 
+> **`rollout status` is not proof that anything changed.** If the upgrade never
+> applied — a bad `-f` path, a values error — the deployment is untouched, and
+> `kubectl rollout status` cheerfully reports the *old* one as successfully rolled
+> out. That happened on 2026-08-01 and looked exactly like success. Always read
+> back the image tag and the Helm revision, not just the rollout:
+>
+> ```bash
+> helm list -n matrixctrl   # CHART/APP VERSION must be the new one
+> kubectl get deploy matrixctrl -n matrixctrl \
+>   -o jsonpath='{.spec.template.spec.containers[0].image}'
+> ```
+
 Then verify the **running** result, not the build output:
 
 - `curl` the public URL for a 200, and check the served bundle actually contains
