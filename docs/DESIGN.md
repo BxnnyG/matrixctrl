@@ -83,7 +83,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ⏳ not started | Phase 2 — parked behind S6 ([VISION.md](VISION.md)) |
-| S14 Day-2 operations (RTC/TLS/backup) | ⏳ not started | Phase 3 |
+| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ⅓ (E19) | RTC: the ports to forward read live from the Services, and inbound reachability stated as **unknown** rather than omitted (P2-9). TLS/DNS and backup not started |
 | S15 Federation & bridges | ⏳ not started | Phase 4 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |

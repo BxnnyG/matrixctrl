@@ -331,7 +331,13 @@ strangers depends on a code path nobody has ever run.
   roll-up, and group restarts that share a termination timestamp — simultaneous
   deaths are one incident.
   *Raised by the operator 2026-08-01, twice, because the first answer did not stick.*
-- **P2-9 · Nothing tells the operator that calling cannot work (S14).**
+- ~~**P2-9 · Nothing tells the operator that calling cannot work (S14).**~~ **Done
+  2026-08-01 (E19).** The fix is not a reachability test — that needs a vantage
+  point outside the network, and inventing one would repeat the failure. The page
+  states inbound reachability as **unknown**, permanently, next to the exact ports
+  and protocols read live from the Services. A test asserts that unknown finding
+  appears in every code path including the healthy one, because the original bug
+  was silence reading as reassurance. Original report:
   Element Call was broken on the production instance and MatrixCtrl showed nothing:
   all RTC pods healthy, all four SFU patches correctly applied, dashboard green.
   The patches are necessary but not sufficient — media needs *direct* inbound

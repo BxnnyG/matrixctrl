@@ -48,6 +48,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 15 | Greenfield proven — 4 defects found by the first real run on an empty cluster; ESS deployed end to end | ✅ 2026-08-01 · [plan](plans/etappe-15-greenfield-first-half.md) |
 | 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 | 17 | Audit trail — the writes that were documented for two months but never existed | ✅ 2026-08-01 · `v0.1.18` · [plan](plans/etappe-17-audit-trail.md) |
+| 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 
 > Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
 > reviewable slices (`9b226c5`…`c8fbd4d`).
@@ -62,6 +63,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 16 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.14 — the README mis-installed the project. | ✅ 2026-08-01 |
 | 18 | **First impression** (S8, S9) | Nobody had ever looked at the repo as a stranger: no screenshots, no maturity notice, no disclosure that the UI is German. | ✅ 2026-08-01 |
 | 17 | **Audit trail** (S10) | Not "a UI over existing writes" — checking found the writes never existed and production had 0 rows. | ✅ 2026-08-01 |
+| 19 | **Calling reachability** (S14) | Calling was broken while every signal was green; the deciding half was never shown. | ✅ 2026-08-01 |
 | — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
 
 ## Phase detail
