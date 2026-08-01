@@ -61,3 +61,51 @@ checklist someone follows.
   local imports. If the pull fails the deployment stalls — mitigated by verifying
   the pull before switching `pullPolicy`, and by `keep`-policy PVCs meaning a
   rollback loses nothing.
+
+## Outcome (2026-08-01, `v0.1.15`)
+
+**Published and verified by pulling it**, not by reading a green tick:
+
+```
+helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl   → version 0.1.15
+helm show values …                                        → image.tag "0.1.15"
+docker pull ghcr.io/bxnnyg/matrixctrl:0.1.15              → "MatrixCtrl 0.1.15 starting"
+```
+
+The cluster runs the registry image: the local copy was deleted from containerd
+first, so the pull had to be genuine — 6.1 s, 25.7 MB, visible in the pod events.
+S11 all green, 9/9 routes verified in headless chromium.
+
+**Four attempts failed first, and none of the causes were the one in the plan.**
+
+1. **25 min, then dead.** The Dockerfile had no `--platform=$BUILDPLATFORM`, so
+   buildx ran *every* builder stage under QEMU per architecture — including `npm
+   ci` and the whole Vite build, whose output is architecture-independent. Fixed
+   by building the builder stages natively and cross-compiling Go.
+2. **3.8 min, dead.** Faster, so the emulation fix worked, but something in the
+   arm64 path still broke. Dropped arm64 rather than keep guessing under a tag
+   (P2-7 tracks restoring it via native runners).
+3. **89 s, dead — with amd64 alone.** Faster than the same build takes locally,
+   so it was never reaching the end of the build.
+4. **Split "Build & push" into two steps** and the failure named itself:
+   **Push image**. The GHCR packages had been created by hand with a PAT and
+   never granted the repository's Actions token write access;
+   `permissions: packages: write` does not cover that.
+
+**The bug and its own history were the same thing.** GHCR sat at `0.1.9` for two
+months because releasing had always been a human with a PAT. There had never been
+an automation allowed to write, so the first one built ran straight into it.
+
+**Lesson worth keeping:** three cycles were burned guessing because job logs need
+a token the agent does not have, and the API could say *which step* but not *what
+happened*. Splitting build from push turned an opaque failure into a labelled one
+and answered in a single run what three guesses could not. The split stays.
+
+**Two more things fell out of the ship:**
+- The instance values file pinned `image.tag: 0.1.12` while `0.1.14` ran, surviving
+  only because every deploy passed `--set image.tag`. Released charts pin their own
+  image, so the pin is gone — the same drift this etappe fixed, one level down.
+- `verify-ui.mjs` reported `/hooks` as empty. It was not: the check sampled
+  `innerText` once at `networkidle`, which on a code-split route can land before
+  React mounts. Now it polls with a deadline. A flaky check is worse than no check,
+  and this one had been passing by luck.

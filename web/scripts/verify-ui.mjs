@@ -102,6 +102,23 @@ for (const route of ROUTES) {
 
     // A blank root means the bundle loaded but React never mounted — exactly the
     // failure mode a status-code check misses.
+    //
+    // Poll rather than sampling once: "networkidle" only means 500 ms without
+    // requests, which on a code-split route can land *before* React mounts —
+    // the chunk arrives, the network goes quiet, and the data query has not
+    // started yet. Sampling at that instant reported /hooks as empty while the
+    // page was perfectly fine on every manual check.
+    //
+    // innerText is also layout-dependent and reads empty until first paint, so
+    // the deadline covers rendering as well as mounting. A genuinely dead route
+    // still fails — it just gets 10 seconds to prove itself first.
+    await page
+      .waitForFunction(
+        () => (document.getElementById("root")?.innerText ?? "").trim().length >= 10,
+        { timeout: 10_000 },
+      )
+      .catch(() => {});
+
     const rendered = await page.evaluate(() => {
       const root = document.getElementById("root");
       return (root?.innerText ?? "").trim().length;
