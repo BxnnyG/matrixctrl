@@ -87,6 +87,8 @@ func (c *Client) Install(ctx context.Context, releaseName, version string, value
 	if values == nil {
 		values = map[string]interface{}{}
 	}
+	defer c.InvalidateRelease(releaseName)
+
 	rel, err := install.RunWithContext(ctx, ch, values)
 	if err != nil {
 		return nil, fmt.Errorf("helm install: %w", err)

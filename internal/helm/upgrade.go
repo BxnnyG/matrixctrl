@@ -66,6 +66,9 @@ func (c *Client) Upgrade(ctx context.Context, releaseName, toVersion string, val
 		values = map[string]interface{}{}
 	}
 
+	// Same reasoning as Rollback: a failed upgrade may still have moved the release.
+	defer c.InvalidateRelease(releaseName)
+
 	rel, err := upgrade.RunWithContext(ctx, releaseName, chart, values)
 	if err != nil {
 		return nil, fmt.Errorf("helm upgrade: %w", err)
@@ -82,5 +85,9 @@ func (c *Client) Rollback(releaseName string, revision int) error {
 	rollback.Version = revision
 	rollback.Wait = true
 	rollback.Timeout = 5 * time.Minute
+	// Invalidate unconditionally: a rollback that fails part-way through can still
+	// have changed the release, so trusting the error to mean "nothing happened"
+	// would leave a stale entry behind.
+	defer c.InvalidateRelease(releaseName)
 	return rollback.Run(releaseName)
 }
