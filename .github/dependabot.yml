@@ -1,0 +1,41 @@
+# Dependency updates. Grouped and monthly on purpose: this is a one-maintainer
+# project, and a PR queue nobody reads is the same as no updates at all — except
+# it also hides the security ones. Security advisories are raised by Dependabot
+# regardless of this schedule.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      go:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: monthly
+    groups:
+      # Monaco is self-hosted and pinned deliberately (DESIGN §4.10); a bumped
+      # editor version changes what ships in the bundle, so it gets its own PR.
+      monaco:
+        patterns: ["monaco-editor*", "@monaco-editor/*"]
+      frontend:
+        patterns: ["*"]
+        exclude-patterns: ["monaco-editor*", "@monaco-editor/*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

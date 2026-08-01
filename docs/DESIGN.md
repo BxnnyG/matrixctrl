@@ -76,8 +76,8 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ✅ (E16) | `v0.1.15` published by CI and verified by pulling it; released charts pin their image (§4.17) |
-| S9 Verification & CI | ✅ (E13, E14) | CI on push/PR, 26 frontend tests, 13 new backend tests (E14), headless-browser route check |
+| S8 Packaging & release | ✅ (E16, E18) | `v0.1.15` published by CI and verified by pulling it; released charts pin their image (§4.17); `CHANGELOG.md` + dependabot (E18). **Open:** the tag has no GitHub Release, and repo topics/homepage are unset — owner-only settings (BACKLOG P2-13) |
+| S9 Verification & CI | ✅ (E13, E14, E18) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
@@ -351,6 +351,29 @@ number. Released charts pin `image.tag` to their own version so
 **Consequences:** releasing needs a green `master` first — the release workflow does
 not re-run tests. New GHCR packages default to private, which is a first-publish
 trap documented in [RELEASING.md](RELEASING.md). Affects S8.
+
+### §4.18 — Screenshots are generated with redaction, not taken by hand (2026-08-01, agent)
+**Question:** the README had no screenshots, for a product that is entirely a user
+interface. The only instance with real data is production, and its Dashboard and
+System pages show the node name — the exact string §4.14 rewrote 39 commits to
+remove. How do you publish screenshots of a private cluster?
+**Decision:** `verify-ui.mjs` — which already walks every route and screenshots it —
+gained `--redact from=to`, which rewrites text nodes immediately before each shot
+and reports how many it changed. `docs/img/` is produced by that command.
+**Rationale:** the alternatives were worse. Blurring looks doctored and is a manual
+step repeated from memory every time; a second demo cluster costs an ESS deploy per
+screenshot refresh; renaming the production node was already refused (§4.14's
+outcome — all five PVs are node-pinned with `reclaimPolicy: Delete`). Putting the
+capability in the tool means the *next* person cannot forget it, which is the only
+form of a security rule that survives (S12).
+**Decision detail:** the replacement count is printed per route and a run where no
+rule matched prints a warning — a redaction that silently matched nothing is more
+dangerous than none, because it produces false confidence. The flag is a backstop,
+not the control: every image is looked at before it is committed.
+**Consequences:** screenshots go stale as the UI changes, and nothing detects that.
+Accepted — deliberately no golden-image comparison, for the same reason
+`verify-ui.mjs` never had one: it fails on every intentional design change and gets
+disabled within two etappes. Affects S9.
 
 ### §4.15 — Release info is cached, because there is no cheap way to read it (2026-08-01, agent)
 **Question:** `/status` was dominated by `GetRelease`. Is there a lighter Helm call?
