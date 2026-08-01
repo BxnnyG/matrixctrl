@@ -15,6 +15,20 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-08-01
+
+### Added
+
+- **An audit trail.** Every change made through MatrixCtrl — upgrade, config
+  deploy, rollback, hook run, pod restart, OIDC connect — is now recorded with
+  user, time, route and result, and readable under **Audit-Log**. Failed attempts
+  are recorded too; read-only requests deliberately are not.
+  The documentation had claimed since the first release that the writes existed.
+  They never did: the table was created and nothing ever wrote to it.
+- Request bodies, headers and query strings are **never** stored. Logging the
+  payload would put MAS client secrets and config YAML into the audit table; what
+  exactly changed is answered by the config repo's git history instead.
+
 ## [0.1.17] — 2026-08-01
 
 ### Fixed
@@ -138,7 +152,8 @@ with comment-preserving edits, history and rollback, admin-only OIDC login via
 MAS, the greenfield/adopt setup wizard, and the public-repo hardening that made
 the project AGPL and removed every instance detail.
 
-[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.17...HEAD
+[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.18...HEAD
+[0.1.18]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.18
 [0.1.17]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.17
 [0.1.16]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.16
 [0.1.15]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.15
