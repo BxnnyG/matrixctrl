@@ -155,7 +155,21 @@ strangers depends on a code path nobody has ever run.
   and the choice changes what gets built — so it is a decision, not a detail.
   **Do not run this on the production host**: the throwaway cluster would share the
   single 32 GB root filesystem with the live ESS PVs.
-- ~~**P1-3 · Release coherence (S8).**~~ **Done 2026-08-01 (E16).** The gap was
+- **P1-3 · Release coherence (S8) — code done, blocked on one setting.**
+  *Status 2026-08-01:* the workflow is built, tested and correct, but **no release
+  has published yet.** Four attempts failed; the fourth localised it precisely,
+  and it is not in the code: the `Push image` step is refused because
+  `ghcr.io/bxnnyg/matrixctrl` and `ghcr.io/bxnnyg/charts/matrixctrl` were created
+  by hand with a PAT and never granted the repository's Actions token write access.
+  `permissions: packages: write` does not help — package-level access is a separate
+  setting.
+  *This also explains the original symptom:* GHCR sat at `0.1.9` for two months
+  because publishing had always been manual with a PAT. There was never an
+  automation allowed to write; building one ran straight into that wall.
+  *Needs the operator (one click per package):* Packages → package → Package
+  settings → Manage Actions access → add repo `matrixctrl` with role **Write**.
+  Then re-run the failed job — no new tag required.
+  *Everything else below is done.* The gap was
   wider than this entry said: GHCR held image `0.1.9` while the repo told people to
   install `latest` and the chart was `0.1.0` — so the documented install produced a
   build five versions old.

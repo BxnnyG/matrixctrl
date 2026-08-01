@@ -84,12 +84,36 @@ The released chart pins `image.tag` to its own version, so
 `helm install --version X` is reproducible. The committed default stays `latest`
 for development; only the packaged copy is pinned.
 
+## One-time setup: let Actions write to the packages
+
+**This bit the first four release attempts and is invisible from the code.**
+
+`ghcr.io/bxnnyg/matrixctrl` and `ghcr.io/bxnnyg/charts/matrixctrl` were created by
+hand with a personal access token, back when releasing was a manual checklist. A
+GHCR package created that way does **not** grant the repository's `GITHUB_TOKEN`
+write access, no matter what `permissions: packages: write` says in the workflow.
+The build succeeds and the push is refused.
+
+Fix it once, per package:
+
+> **github.com/users/BxnnyG/packages** → select the package → **Package settings**
+> → *Manage Actions access* → **Add repository** → `matrixctrl`, role **Write**.
+
+Do it for both `matrixctrl` and `charts/matrixctrl`. Packages that Actions creates
+itself inherit this automatically; only ones predating the workflow need it.
+
+Afterwards, re-run the failed job from the Actions UI — no new tag needed.
+
 ## Gotchas
 
 - **New GHCR packages default to private.** `matrixctrl` and `charts/matrixctrl`
   are already public. If a publish ever creates a new package name, flip its
   visibility in the GitHub Packages UI or nobody can pull it without auth — and
   the failure looks like "not found", not "forbidden".
+- **Build and push are separate steps on purpose.** Job logs need a token, so when
+  a release fails the API can say *which step* but not *what happened*. Splitting
+  them makes the step name the diagnosis: "Build image" is the Dockerfile, "Push
+  image" is permissions. Please keep them separate.
 - **The workflow does not run the test suite.** It assumes the tagged commit
   already passed CI on `master`. Tag a commit that has a green run.
 - **Re-tagging a published version does not republish it cleanly.** Bump to a new
