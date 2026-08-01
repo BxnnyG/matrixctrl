@@ -94,7 +94,31 @@ strangers depends on a code path nobody has ever run.
     action taken here can retract it.
   - **What actually invalidates the leak** — as opposed to limiting further spread —
     is renaming the host and changing the address. Purging GitHub only stops new
-    disclosure. This is the operator's call and depends on what that rename costs.
+    disclosure.
+
+  *What the rename would actually cost here (checked 2026-08-01, not assumed):*
+  All five PersistentVolumes on this cluster are `local-path` and pin themselves to
+  the node **by name** via `nodeAffinity` — `ess/ess-postgres-data` (10 Gi),
+  `ess/ess-synapse-media` (10 Gi), `matrixctrl/matrixctrl-config`,
+  `matrixctrl/matrixctrl-postgres` and `kube-system/traefik`. Rename the node and
+  every one of them becomes unschedulable: the PV still demands a node that no
+  longer exists, and nothing starts.
+  **All five also carry `persistentVolumeReclaimPolicy: Delete`.** A PV's
+  `nodeAffinity` cannot be edited after binding, so the obvious repair — delete the
+  PV objects and recreate them pointing at the new name — would have
+  local-path-provisioner delete the backing directories, taking the homeserver's
+  database and media with it.
+  So this is a storage migration, not a hostname change. A safe sequence would be:
+  back up first · patch all five PVs to `reclaimPolicy: Retain` and confirm ·
+  rename · recreate the PV objects with the new affinity against the same
+  `/var/lib/rancher/k3s/storage/...` paths · rebind the PVCs · verify · only then
+  restore the reclaim policy. It needs a maintenance window and a tested restore.
+  *Cheaper options worth weighing:* change only the address (a network change, no PV
+  impact) if the subnet is the part that matters; or fold the rename into the next
+  planned rebuild rather than doing it as an emergency. Against a disclosure that is
+  an internal name plus an RFC1918 address, the risk of the migration may well
+  exceed the risk of the leak — that trade is the operator's to make, but it should
+  be made with these facts rather than without them.
 - ~~**P0-2 · Etappes 11 and 12 are uncommitted.**~~ **Done 2026-07-31** —
   committed in nine reviewable slices (`9b226c5`…`c8fbd4d`). Tagging is still
   open and folded into P1-3.
@@ -106,10 +130,16 @@ strangers depends on a code path nobody has ever run.
 - **P1-2 · Greenfield end-to-end test (S6).** Deploy-ess → connect-oidc on a
   throwaway cluster. This is the product claim; it has never run. Needs a scratch
   k3s (kind/k3d would do) because our instance cannot reach the code path.
-- **P1-3 · Release coherence (S8).** `Chart.yaml`, `appVersion`, README and
-  CONTRIBUTING all say `0.1.0`; the running image is `0.1.14`. Add a release
-  checklist that moves all version strings together, tag the repo (there are no
-  tags at all), and publish a chart that matches the image.
+- ~~**P1-3 · Release coherence (S8).**~~ **Done 2026-08-01 (E16).** The gap was
+  wider than this entry said: GHCR held image `0.1.9` while the repo told people to
+  install `latest` and the chart was `0.1.0` — so the documented install produced a
+  build five versions old.
+  Fixed by removing the manual path rather than writing a better checklist: a tag
+  triggers `.github/workflows/release.yml`, which publishes image and chart together
+  and **fails if the tag and `Chart.yaml` disagree**. Released charts pin
+  `image.tag` to their own version, so `helm install --version X` is reproducible
+  instead of tracking `latest`. Documented in [RELEASING.md](RELEASING.md); the
+  copy-paste block in CONTRIBUTING is gone, because that block *was* the bug.
 - ~~**P1-4 · Frontend tests (S9).**~~ **Done 2026-07-31** — 22 Vitest tests over
   the three functions that had each broken in production (version comparison,
   diff parsing, restart-cause mapping). Component tests deliberately still absent.
