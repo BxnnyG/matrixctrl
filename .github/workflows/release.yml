@@ -118,17 +118,36 @@ jobs:
       # This attempt doubles as the experiment that tells the two candidate causes
       # apart: if amd64 alone publishes, arm64/QEMU was the problem; if it still
       # fails, the Actions token cannot write to these pre-existing packages.
-      - name: Build & push image
+      # Build and push are deliberately separate steps.
+      #
+      # Three attempts failed inside a combined "Build & push image", and job logs
+      # need a token the agent does not have — so "which half broke" was unknowable
+      # from the API, and each guess cost a full release cycle. Split, the step
+      # names themselves carry the diagnosis: a failure in "Build image" is the
+      # Dockerfile, a failure in "Push image" is registry permissions.
+      #
+      # Worth keeping even once this is resolved. It costs nothing and turns an
+      # opaque failure into a labelled one.
+      - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: false
+          load: true
           platforms: linux/amd64
           build-args: |
             VERSION=${{ steps.v.outputs.version }}
           tags: |
             ghcr.io/bxnnyg/matrixctrl:${{ steps.v.outputs.version }}
             ghcr.io/bxnnyg/matrixctrl:latest
+
+      - name: Push image
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -x
+          docker push "ghcr.io/bxnnyg/matrixctrl:$VERSION"
+          docker push "ghcr.io/bxnnyg/matrixctrl:latest"
 
       # The chart's default image tag is "latest", which is how a chart pinned to
       # one version ends up pulling a different build months later. Pin the
