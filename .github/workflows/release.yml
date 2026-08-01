@@ -51,22 +51,25 @@ jobs:
           [ "$CHART" = "$VERSION" ] || { echo "::error::Chart.yaml version ($CHART) != tag ($VERSION)"; exit 1; }
           [ "$APP" = "$VERSION" ]   || { echo "::error::Chart.yaml appVersion ($APP) != tag ($VERSION)"; exit 1; }
 
-      # The README pins --version in its install commands, so a forgotten bump
-      # sends every new reader to an old chart. That is precisely the failure this
-      # etappe existed to fix, so it is checked here rather than left to a step in
-      # RELEASING.md that someone has to remember.
-      - name: README install commands must match the tag
+      # The README deliberately does not pin a chart version — Helm resolves the
+      # newest, so the quickstart cannot go stale and there is nothing to remember.
+      # This guard is only a backstop: if someone ever writes a concrete version
+      # into the docs, it has to be the one being released, or the docs start lying
+      # again the moment the next version ships.
+      #
+      # No pinned version is the expected case and passes.
+      - name: Any version pinned in the docs must match the tag
         env:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
-          FOUND=$(grep -oE '\-\-version [0-9]+\.[0-9]+\.[0-9]+' README.md | awk '{print $2}' | sort -u)
+          FOUND=$(grep -ohE '\-\-version [0-9]+\.[0-9]+\.[0-9]+' README.md docs/*.md 2>/dev/null | awk '{print $2}' | sort -u)
           if [ -z "$FOUND" ]; then
-            echo "::error::no pinned --version found in README.md — the install commands should pin one"
-            exit 1
+            echo "No hardcoded chart version in the docs — nothing to drift."
+            exit 0
           fi
-          echo "README pins: $FOUND"
+          echo "Found pinned versions: $FOUND"
           for v in $FOUND; do
-            [ "$v" = "$VERSION" ] || { echo "::error::README pins --version $v but the tag is $VERSION"; exit 1; }
+            [ "$v" = "$VERSION" ] || { echo "::error::docs pin --version $v but the tag is $VERSION"; exit 1; }
           done
 
       # The embedded frontend is committed, and a stale copy has shipped before
