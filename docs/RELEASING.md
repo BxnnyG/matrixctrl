@@ -20,14 +20,23 @@ Chart `version`, chart `appVersion` and the image tag are **the same number**.
 MatrixCtrl ships one artefact; two independent version lines would only recreate
 the drift this replaced.
 
-The workflow **fails the release** if the tag disagrees with either `Chart.yaml`
-or the `--version` pinned in the README's install commands. A mismatch means one
-of them is lying, and finding out at publish time is better than after someone
-installs it.
+The workflow **fails the release** if the tag disagrees with `Chart.yaml`. A
+mismatch means one of them is lying, and finding out at publish time is better
+than after someone installs it.
 
-The README check exists because pinning a version in prose recreates exactly the
-drift this replaced: forget the bump once and every new reader is sent to an old
-chart. Steps 2 and 3 below are therefore enforced, not merely documented.
+**The docs pin nothing.** The README's install command has no `--version`, so
+Helm resolves the newest published chart and the quickstart cannot go stale.
+This is deliberate: a pinned version in prose has to be remembered on every
+release, and "remember to update it" is the exact failure that left GHCR five
+versions behind. The problem is removed rather than guarded against.
+
+Reproducibility does not suffer, because each released chart pins its **own**
+image tag — "newest chart" still resolves to one exact, immutable pair. Readers
+who want a specific release add `--version <x.y.z>` themselves.
+
+A backstop remains: if a concrete version ever reappears in `README.md` or
+`docs/`, the release fails unless it matches the tag. Finding none is the
+expected case and passes.
 
 ## Cutting a release
 
@@ -40,8 +49,8 @@ chart. Steps 2 and 3 below are therefore enforced, not merely documented.
    appVersion: "0.1.15"
    ```
 
-3. Update the install commands in `README.md` (`--version 0.1.15`) — both of them.
-   The release fails if any pinned version disagrees with the tag.
+3. Nothing to change in the README — it pins no version. (If you added one
+   deliberately, the release will check it against the tag.)
 
 4. Commit, then tag and push:
 
@@ -60,10 +69,15 @@ chart. Steps 2 and 3 below are therefore enforced, not merely documented.
 Do not trust a green checkmark — pull it the way a stranger would:
 
 ```bash
-helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15
+V=0.1.15   # the version you just tagged
+
+helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl --version "$V"
 
 # The chart must reference the matching image, not "latest".
-helm show values oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15 | grep -A2 '^image:'
+helm show values oci://ghcr.io/bxnnyg/charts/matrixctrl --version "$V" | grep -A2 '^image:'
+
+# And what a new user actually gets — no --version, newest chart:
+helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl | grep -E '^version|^appVersion'
 ```
 
 The released chart pins `image.tag` to its own version, so

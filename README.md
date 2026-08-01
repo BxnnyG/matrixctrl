@@ -88,11 +88,18 @@ acceptable in your environment.
 The chart and image are published to GHCR, so one command is all you need:
 
 ```bash
-helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15 \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
   --namespace matrixctrl --create-namespace \
   --set ingress.host=matrixctrl.example.com \
   --set ingress.certIssuer=letsencrypt-prod
 ```
+
+No version is pinned here on purpose: Helm resolves the newest published chart, so
+this command cannot go stale. Each released chart pins its own matching image, so
+"newest chart" still means one exact, reproducible pair — not a moving `latest`.
+
+To install a specific release instead, add `--version <x.y.z>`; the available
+versions are on the [releases page](https://github.com/bxnnyg/matrixctrl/releases).
 
 The image is pulled from `ghcr.io/bxnnyg/matrixctrl`. Secrets (DB password, JWT key)
 auto-generate on first install — nothing to set.
@@ -119,7 +126,7 @@ Build and import the image straight into k3s containerd:
 ```bash
 make docker            # or: docker build -t ghcr.io/bxnnyg/matrixctrl:dev .
 docker save ghcr.io/bxnnyg/matrixctrl:dev | sudo k3s ctr images import -
-helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15 \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
   -n matrixctrl --create-namespace \
   --set image.tag=dev --set image.pullPolicy=IfNotPresent \
   --set ingress.host=matrixctrl.example.com
