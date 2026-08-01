@@ -545,9 +545,21 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 
 // buildMASClientConfig renders the inner MAS config fragment (a string the ESS
 // chart embeds verbatim) registering a static client + granting it admin.
+//
+// client_name is what MAS shows on the consent screen. Without it the operator is
+// asked to "Continue to 01KSPV9ZMR7NB4B2BBWMPYSD1P?" — a ULID, which looks like
+// something is wrong rather than like their own admin tool.
+//
+// It is not in MAS's documented field list, and MAS ignores unknown keys in this
+// section (verified against 1.15.0: a deliberately bogus field also passes
+// `mas-cli config check`). So this cannot break MAS startup — but whether it
+// actually renders depends on the MAS version. Upstream issue #4415 reports the
+// field existing for static clients yet not being synced to the database; it is
+// closed, so recent versions should honour it. Harmless if they do not.
 func buildMASClientConfig(clientID, secret, redirect string) string {
 	return fmt.Sprintf(`clients:
   - client_id: "%s"
+    client_name: "MatrixCtrl"
     client_auth_method: client_secret_basic
     client_secret: "%s"
     redirect_uris:
