@@ -20,9 +20,14 @@ Chart `version`, chart `appVersion` and the image tag are **the same number**.
 MatrixCtrl ships one artefact; two independent version lines would only recreate
 the drift this replaced.
 
-The workflow **fails the release** if the tag and `Chart.yaml` disagree. A
-mismatch means one of them is lying, and finding out at publish time is better
-than after someone installs it.
+The workflow **fails the release** if the tag disagrees with either `Chart.yaml`
+or the `--version` pinned in the README's install commands. A mismatch means one
+of them is lying, and finding out at publish time is better than after someone
+installs it.
+
+The README check exists because pinning a version in prose recreates exactly the
+drift this replaced: forget the bump once and every new reader is sent to an old
+chart. Steps 2 and 3 below are therefore enforced, not merely documented.
 
 ## Cutting a release
 
@@ -35,7 +40,8 @@ than after someone installs it.
    appVersion: "0.1.15"
    ```
 
-3. Update the install commands in `README.md` (`--version 0.1.15`).
+3. Update the install commands in `README.md` (`--version 0.1.15`) — both of them.
+   The release fails if any pinned version disagrees with the tag.
 
 4. Commit, then tag and push:
 
