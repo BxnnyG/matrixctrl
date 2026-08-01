@@ -368,24 +368,34 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		stream.emit("Seeding per-section config from chart defaults…")
-		if err := h.configStore.SeedSections(ctx, values, false); err != nil {
-			stream.emit("ERROR: seed config: " + err.Error())
-			stream.finish("failed")
-			return
+		// Seed only when the repo is empty, and treat "already populated" as a
+		// state to continue from rather than an error.
+		//
+		// Deploy only reaches this point when no ESS release exists (checked
+		// above), so config without a release means an earlier attempt got part
+		// of the way and stopped. Failing here made that unrecoverable: the
+		// wizard refused to run again and the operator was stuck with no way
+		// forward from the UI. Since every greenfield deploy failed before etappe
+		// 15, that is the state everyone would have been left in.
+		//
+		// Skipping rather than force-overwriting is deliberate — the config may
+		// have been prepared on purpose, and destroying it to retry a deploy
+		// would be a worse failure than the one being fixed.
+		existing, _ := h.configStore.List(ctx)
+		if len(existing) > 0 {
+			stream.emit(fmt.Sprintf(
+				"Config repo already has %d sections — keeping them and continuing.", len(existing)))
+		} else {
+			stream.emit("Seeding per-section config from chart defaults…")
+			if err := h.configStore.SeedSections(ctx, values, false); err != nil {
+				stream.emit("ERROR: seed config: " + err.Error())
+				stream.finish("failed")
+				return
+			}
 		}
 
-		// Server name + conventional component hostnames derived from it.
-		changes := map[string]interface{}{
-			"serverName":                               sn,
-			"synapse.ingress.host":                     "matrix." + sn,
-			"matrixAuthenticationService.ingress.host": "mas." + sn,
-			"elementWeb.ingress.host":                  "element." + sn,
-			"elementAdmin.ingress.host":                "admin." + sn,
-			"matrixRTC.ingress.host":                   "mrtc." + sn,
-			"wellKnownDelegation.ingress.host":         sn,
-		}
-		if err := h.configStore.SetSectionValues(ctx, changes, nil); err != nil {
+		changes := greenfieldHostnames(sn)
+		if err := h.configStore.SetSectionValues(ctx, changes, greenfieldRemovals()); err != nil {
 			stream.emit("WARNING: could not apply hostnames: " + err.Error())
 		}
 		if _, err := h.configStore.Commit(ctx, "config: greenfield seed for "+sn, userID); err != nil {
@@ -762,4 +772,51 @@ func intToStr(n int) string {
 		result = "-" + result
 	}
 	return result
+}
+
+// greenfieldHostnames maps a server name to the values the deploy wizard seeds.
+//
+// Every key here must exist in matrix-stack's values.schema.json, which sets
+// additionalProperties:false — an unknown key does not degrade gracefully, it
+// makes `helm install` fail validation and takes the whole greenfield deploy with
+// it.
+//
+// That is not hypothetical. `wellKnownDelegation.ingress.host` used to be in this
+// map, and its ingress schema has no `host` property: well-known is served at the
+// server name itself, which the chart derives from serverName. So every greenfield
+// deploy failed with "Additional property host is not allowed" — the product's
+// headline claim, broken from the first day, because our own instance already has
+// ESS and can never reach this code path. Etappe 15 ran it on an empty cluster for
+// the first time and it failed immediately.
+//
+// Before adding a component here, check its ingress block in
+// matrix-stack/values.schema.json actually accepts `host`.
+func greenfieldHostnames(serverName string) map[string]interface{} {
+	return map[string]interface{}{
+		"serverName":                               serverName,
+		"synapse.ingress.host":                     "matrix." + serverName,
+		"matrixAuthenticationService.ingress.host": "mas." + serverName,
+		"elementWeb.ingress.host":                  "element." + serverName,
+		"elementAdmin.ingress.host":                "admin." + serverName,
+		"matrixRTC.ingress.host":                   "mrtc." + serverName,
+	}
+}
+
+// greenfieldRemovals lists config keys that must not survive into a deploy,
+// because matrix-stack's schema rejects them and `helm install` fails on the
+// whole release.
+//
+// This heals repos written by an older build. Removing the key from
+// greenfieldHostnames stops it being written again, but an operator who already
+// tried the broken deploy has it sitting in their config repo — and since the
+// wizard now keeps existing config rather than overwriting it, the bad value
+// would survive every retry. The people most in need of the fix would have been
+// the only ones it did not reach.
+func greenfieldRemovals() []string {
+	return []string{
+		// Its ingress block has no `host` property and sets
+		// additionalProperties:false — well-known is served at the server name
+		// itself, which the chart derives from serverName.
+		"wellKnownDelegation.ingress.host",
+	}
 }
