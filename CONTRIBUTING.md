@@ -56,21 +56,20 @@ cd web && npm install && npm run dev
 
 ## Releasing (maintainers)
 
-Publish a new version to GHCR (image + OCI chart):
+**Cutting a release is pushing a tag** — see [docs/RELEASING.md](docs/RELEASING.md).
 
 ```bash
-VERSION=0.1.0
-# image
-docker build -t ghcr.io/bxnnyg/matrixctrl:$VERSION -t ghcr.io/bxnnyg/matrixctrl:latest .
-docker push ghcr.io/bxnnyg/matrixctrl:$VERSION
-docker push ghcr.io/bxnnyg/matrixctrl:latest
-# chart (bump version in deploy/helm/matrixctrl/Chart.yaml first)
-helm package deploy/helm/matrixctrl
-helm push matrixctrl-$VERSION.tgz oci://ghcr.io/bxnnyg/charts
+# bump version + appVersion in deploy/helm/matrixctrl/Chart.yaml, then:
+git tag v0.1.15
+git push origin master --tags
 ```
 
-New GHCR packages default to **private** — set both `matrixctrl` and `charts/matrixctrl`
-to **public** in the GitHub Packages UI so users can pull without auth.
+`.github/workflows/release.yml` publishes the image and the OCI chart to GHCR and
+fails if the tag and `Chart.yaml` disagree.
+
+> This used to be a block of commands to run by hand, and it was skipped: images
+> 0.1.10–0.1.14 never reached GHCR while the README told people to install
+> `latest`. Please do not reintroduce a manual path.
 
 ## Reporting bugs / requesting features
 

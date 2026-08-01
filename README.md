@@ -88,7 +88,7 @@ acceptable in your environment.
 The chart and image are published to GHCR, so one command is all you need:
 
 ```bash
-helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15 \
   --namespace matrixctrl --create-namespace \
   --set ingress.host=matrixctrl.example.com \
   --set ingress.certIssuer=letsencrypt-prod
@@ -119,7 +119,7 @@ Build and import the image straight into k3s containerd:
 ```bash
 make docker            # or: docker build -t ghcr.io/bxnnyg/matrixctrl:dev .
 docker save ghcr.io/bxnnyg/matrixctrl:dev | sudo k3s ctr images import -
-helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.0 \
+helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version 0.1.15 \
   -n matrixctrl --create-namespace \
   --set image.tag=dev --set image.pullPolicy=IfNotPresent \
   --set ingress.host=matrixctrl.example.com

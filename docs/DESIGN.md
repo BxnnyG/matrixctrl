@@ -76,7 +76,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ¾ | Deploy/adopt/connect built; **greenfield never e2e-tested on a fresh cluster** |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ⏳ ½ | Published chart is 0.1.0 while the running image is 0.1.14 — see §2 |
+| S8 Packaging & release | ✅ (E16) | Tag-triggered release publishes image + chart together; versions verified against each other (§4.17) |
 | S9 Verification & CI | ✅ (E13, E14) | CI on push/PR, 26 frontend tests, 13 new backend tests (E14), headless-browser route check |
 | S10 Audit trail | ⏳ ½ | `audit_log` table + middleware write; no UI to read it |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
@@ -333,6 +333,24 @@ weeks the values were public. Only renaming the host and changing the address
 invalidates the disclosed values themselves — see [BACKLOG.md](BACKLOG.md) P0-1b for
 the full assessment. Backup of the pre-rewrite history is a verified `git bundle`
 held outside the repo.
+
+### §4.17 — The tag is the release (2026-08-01, agent)
+**Question:** publishing was a block of commands in `CONTRIBUTING.md`. Images
+`0.1.10`–`0.1.14` were built locally, imported into k3s and never pushed, so GHCR
+sat at `0.1.9` for two months while the README told strangers to install `latest`.
+**Decision:** pushing a `v*` tag publishes the release. Image and chart go out
+together from `.github/workflows/release.yml`, and the run **fails** if the tag and
+`Chart.yaml` disagree.
+**Rationale:** no individual step of the old process was wrong — it depended on a
+human remembering it under pressure, which is the failure mode that guarantees
+recurrence. A better checklist would have been the same bug with more words.
+**Decision detail:** chart `version` == `appVersion` == image tag; one artefact, one
+number. Released charts pin `image.tag` to their own version so
+`helm install --version X` is reproducible, while the committed default stays
+`latest` for development.
+**Consequences:** releasing needs a green `master` first — the release workflow does
+not re-run tests. New GHCR packages default to private, which is a first-publish
+trap documented in [RELEASING.md](RELEASING.md). Affects S8.
 
 ### §4.15 — Release info is cached, because there is no cheap way to read it (2026-08-01, agent)
 **Question:** `/status` was dominated by `GetRelease`. Is there a lighter Helm call?
