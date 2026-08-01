@@ -130,6 +130,31 @@ strangers depends on a code path nobody has ever run.
 - **P1-2 · Greenfield end-to-end test (S6).** Deploy-ess → connect-oidc on a
   throwaway cluster. This is the product claim; it has never run. Needs a scratch
   k3s (kind/k3d would do) because our instance cannot reach the code path.
+
+  *Scoped 2026-08-01 — the blocker is not compute, it is DNS.* This host has room
+  (24 GB RAM, 32 CPUs, 13 GB disk after cleanup; the whole ESS image set is only
+  ~1.2 GiB), but **connect-OIDC fetches `/.well-known/openid-configuration` from
+  MAS's *public* URL** (`internal/auth/oidc.go:52`), and the deploy wizard derives
+  public hostnames (`matrix.`, `mas.`, `element.`) from the server name. So the
+  final step needs publicly-resolvable DNS and a certificate the Go HTTP client
+  will accept — neither of which a local k3d cluster has.
+  **This is itself a finding:** the greenfield path has an undocumented
+  prerequisite. A stranger with a fresh cluster and no DNS hits the same wall, and
+  nothing in `SETUP.md` or the README warns them.
+  *Three ways forward, in descending fidelity:*
+  1. A throwaway VM with a public IP and a real subdomain (e.g. `*.test.<domain>`).
+     Faithful, and the only variant that proves the whole claim. Needs a machine and
+     a DNS zone.
+  2. Local k3d plus split-horizon DNS and a CA trusted inside the MatrixCtrl pod.
+     Exercises everything except real TLS/DNS — cheap, but proves less exactly where
+     the risk is.
+  3. Stop before connect-OIDC: verify chart pull, config seeding, the ESS Helm
+     install and pods coming up on a local k3d cluster. Covers the largest untested
+     chunk with no DNS at all, and is honest about what it does not cover.
+  *Not started:* option 1 needs infrastructure that is the operator's to provide,
+  and the choice changes what gets built — so it is a decision, not a detail.
+  **Do not run this on the production host**: the throwaway cluster would share the
+  single 32 GB root filesystem with the live ESS PVs.
 - ~~**P1-3 · Release coherence (S8).**~~ **Done 2026-08-01 (E16).** The gap was
   wider than this entry said: GHCR held image `0.1.9` while the repo told people to
   install `latest` and the chart was `0.1.0` — so the documented install produced a
