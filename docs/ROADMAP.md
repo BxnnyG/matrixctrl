@@ -46,6 +46,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 14 | Reliable upgrade stream & dashboard latency — heartbeat, reconnect, release cache, client-go limits | ✅ 2026-08-01 · image 0.1.14 · [plan](plans/etappe-14-upgrade-stream-and-dashboard-latency.md) |
 | 16 | Release coherence — tag-triggered publish of image + chart, version guard, [RELEASING.md](RELEASING.md) | ✅ 2026-08-01 · `v0.1.15` · [plan](plans/etappe-16-release-coherence.md) |
 | 15 | Greenfield proven — 4 defects found by the first real run on an empty cluster; ESS deployed end to end | ✅ 2026-08-01 · [plan](plans/etappe-15-greenfield-first-half.md) |
+| 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 
 > Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
 > reviewable slices (`9b226c5`…`c8fbd4d`).
@@ -58,6 +59,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 14 | **Upgrade stream & dashboard latency** (S2, S4) | Both reported from the real 26.7.2 upgrade; a working upgrade looked like a failed one. | ✅ 2026-08-01 |
 | 15 | **Greenfield end-to-end test** (S6) | "Works for anyone" was the product claim and it was **false** — deploy never worked. Fixed and proven. | ✅ 2026-08-01 (connect-OIDC still open) |
 | 16 | **Release coherence** (S8) | Published chart 0.1.0 vs running image 0.1.14 — the README mis-installed the project. | ✅ 2026-08-01 |
+| 18 | **First impression** (S8, S9) | Nobody had ever looked at the repo as a stranger: no screenshots, no maturity notice, no disclosure that the UI is German. | ✅ 2026-08-01 |
 | 17 | **Audit log UI** (S10) | The table and the writes already exist; nothing reads them back. Cheap. | ⏳ |
 | — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
 

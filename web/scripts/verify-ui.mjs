@@ -15,6 +15,16 @@
 //
 // Auth: set MATRIXCTRL_TOKEN to a valid JWT to reach authenticated routes. The
 // token is injected into localStorage, never put in a URL or logged.
+//
+// Redaction (--redact from=to, repeatable): rewrites visible text before the
+// screenshot is taken. The only instance with real data is production, and its
+// node name must never reach a public repository (docs/DESIGN.md §4.14) — so
+// publishable screenshots are a command, not a manual cleanup someone forgets:
+//
+//   node scripts/verify-ui.mjs --base … --redact my-node-01=matrix-node-01
+//
+// The count of replacements per route is reported, because a redaction that
+// silently matched nothing is worse than none at all.
 
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -26,9 +36,21 @@ const argOf = (name, fallback) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 
+const allOf = (name) =>
+  args.flatMap((a, i) => (a === name && args[i + 1] ? [args[i + 1]] : []));
+
 const BASE = (argOf("--base", process.env.MATRIXCTRL_BASE) || "").replace(/\/$/, "");
 const OUT = argOf("--out", "/tmp/matrixctrl-verify");
 const TOKEN = process.env.MATRIXCTRL_TOKEN || "";
+
+const REDACTIONS = allOf("--redact").map((spec) => {
+  const i = spec.indexOf("=");
+  if (i <= 0) {
+    console.error(`--redact expects from=to, got: ${spec}`);
+    process.exit(2);
+  }
+  return { from: spec.slice(0, i), to: spec.slice(i + 1) };
+});
 
 if (!BASE) {
   console.error("usage: verify-ui.mjs --base <url>   (or set MATRIXCTRL_BASE)");
@@ -95,6 +117,7 @@ for (const route of ROUTES) {
   });
 
   let httpStatus = 0;
+  let redacted = 0;
   try {
     const resp = await page.goto(BASE + route.path, { waitUntil: "networkidle", timeout: 30_000 });
     httpStatus = resp?.status() ?? 0;
@@ -131,13 +154,33 @@ for (const route of ROUTES) {
       problems.push("redirected to /auth/login — token rejected");
     }
 
+    // Last thing before the shot, so what is redacted is exactly what is
+    // rendered — nothing can re-render the original in between.
+    if (REDACTIONS.length) {
+      redacted = await page.evaluate((subs) => {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        let n = 0;
+        for (const node of nodes) {
+          let value = node.nodeValue;
+          for (const { from, to } of subs) value = value.split(from).join(to);
+          if (value !== node.nodeValue) {
+            node.nodeValue = value;
+            n++;
+          }
+        }
+        return n;
+      }, REDACTIONS);
+    }
+
     await page.screenshot({ path: path.join(OUT, `${route.name}.png`), fullPage: true });
   } catch (err) {
     problems.push(`navigation: ${err.message}`);
   }
 
   await page.close();
-  results.push({ ...route, httpStatus, status: problems.length ? "fail" : "pass", problems });
+  results.push({ ...route, httpStatus, redacted, status: problems.length ? "fail" : "pass", problems });
 }
 
 await browser.close();
@@ -147,7 +190,8 @@ let failed = 0;
 console.log(`\nUI verification — ${BASE}\n`);
 for (const r of results) {
   if (r.status === "pass") {
-    console.log(`  PASS  ${r.path.padEnd(18)} ${r.name}.png`);
+    const red = r.redacted ? `  (${r.redacted} text node(s) redacted)` : "";
+    console.log(`  PASS  ${r.path.padEnd(18)} ${r.name}.png${red}`);
   } else if (r.status === "skipped") {
     console.log(`  SKIP  ${r.path.padEnd(18)} ${r.reason}`);
   } else {
@@ -162,5 +206,13 @@ console.log(`\nScreenshots: ${OUT}`);
 
 const skipped = results.filter((r) => r.status === "skipped").length;
 if (skipped) console.log(`${skipped} route(s) skipped — set MATRIXCTRL_TOKEN to include them.`);
+
+if (REDACTIONS.length) {
+  const total = results.reduce((n, r) => n + (r.redacted ?? 0), 0);
+  console.log(`Redaction: ${REDACTIONS.length} rule(s), ${total} text node(s) rewritten.`);
+  if (!total) {
+    console.log("  WARNING: no rule matched anything. Verify the strings before publishing.");
+  }
+}
 console.log(failed ? `\n${failed} route(s) failed.` : "\nAll checked routes rendered cleanly.");
 process.exit(failed ? 1 : 0);
