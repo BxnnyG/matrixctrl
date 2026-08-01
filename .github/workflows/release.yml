@@ -16,7 +16,10 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # write, because this workflow publishes the GitHub Release too. A release page
+  # created by hand is the same bug §4.17 removed from the artefacts: a publishing
+  # step that survives only as long as someone remembers it.
+  contents: write
   packages: write
 
 jobs:
@@ -76,6 +79,26 @@ jobs:
           for v in $FOUND; do
             [ "$v" = "$VERSION" ] || { echo "::error::docs pin --version $v but the tag is $VERSION"; exit 1; }
           done
+
+      # Checked here, before anything is published, rather than at the end where
+      # the artefacts would already be in GHCR and a missing entry could only be
+      # reported after the fact.
+      - name: CHANGELOG must have a section for this version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          awk -v v="## [$VERSION]" '
+            index($0, v) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section — write it before tagging"
+            exit 1
+          fi
+          echo "Release notes ($(wc -l < release-notes.md) lines):"
+          cat release-notes.md
 
       # The embedded frontend is committed, and a stale copy has shipped before
       # (see BACKLOG P2-2). Rebuild it here so the released image cannot embed an
@@ -171,6 +194,22 @@ jobs:
           helm package deploy/helm/matrixctrl --version "$VERSION" --app-version "$VERSION"
           helm push "matrixctrl-$VERSION.tgz" oci://ghcr.io/bxnnyg/charts
           helm registry logout ghcr.io || true
+
+      # Last, so the page only appears once the artefacts it describes exist.
+      # Idempotent: re-running a tag updates the notes instead of failing, which
+      # matters because tags do get re-cut (the history rewrite in P0-1c moved
+      # v0.1.15).
+      - name: Publish GitHub Release
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION exists — updating notes."
+            gh release edit "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md
+          else
+            gh release create "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md
+          fi
 
       - name: Summary
         env:
