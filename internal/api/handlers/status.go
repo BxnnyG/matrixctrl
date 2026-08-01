@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -36,23 +37,41 @@ type statusResponse struct {
 	EvictedPods int         `json:"evicted_pods"`
 }
 
+// Get answers the dashboard poll (every 15 s). The four sources are independent,
+// so they run concurrently — serially they added up to roughly the sum of the
+// slowest, and the Helm read alone used to dominate the whole response (P1-8).
+// Each result is written by exactly one goroutine and read after Wait, so no
+// mutex is needed.
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	var components interface{}
-	var nodes interface{}
-	var evicted int
-	if h.k8s != nil {
-		components, _ = h.k8s.ComponentHealth(ctx, h.essNS)
-		nodes, _ = h.k8s.NodeInfo(ctx)
-		evicted = h.k8s.EvictedPodCount(ctx, h.essNS)
+	var (
+		components interface{}
+		nodes      interface{}
+		release    interface{}
+		evicted    int
+		wg         sync.WaitGroup
+	)
+
+	run := func(f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f()
+		}()
 	}
 
-	var release interface{}
-	if h.helm != nil {
-		release, _ = h.helm.GetRelease(h.essRelease)
+	if h.k8s != nil {
+		run(func() { components, _ = h.k8s.ComponentHealth(ctx, h.essNS) })
+		run(func() { nodes, _ = h.k8s.NodeInfo(ctx) })
+		run(func() { evicted = h.k8s.EvictedPodCount(ctx, h.essNS) })
 	}
+	if h.helm != nil {
+		run(func() { release, _ = h.helm.GetRelease(h.essRelease) })
+	}
+
+	wg.Wait()
 
 	JSON(w, http.StatusOK, statusResponse{
 		Release:     release,
