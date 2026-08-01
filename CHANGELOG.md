@@ -15,6 +15,8 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-08-01
+
 ### Fixed
 
 - **Greenfield deploy never worked.** The wizard seeded
@@ -40,6 +42,20 @@ matching image, so a version identifies one exact pair
 - `internal/api/handlers/helm.go` (834 lines, five responsibilities) split into
   four files. Pure code motion, no behaviour change.
 - CI fails on unformatted Go.
+
+### Security
+
+- **The history was rewritten a second time** and this release is built from the
+  cleaned tree. Besides the cluster's node name, a sweep of every blob in the
+  history found the admin panel's own URL — including in the packaged chart's
+  default values — and the five ESS hostnames derived from the server name, in
+  code, a database migration and the committed frontend bundle. The `0.1.15`
+  artefacts published before this carried some of those strings inside the image;
+  `v0.1.15` was retagged and re-published from the cleaned tree.
+  The Matrix server name itself is public by definition and was not touched.
+- A `pre-commit` hook and a CI step now refuse content containing a known-sensitive
+  string, with the pattern list held outside the repository
+  ([DESIGN §4.19](docs/DESIGN.md)).
 
 ## [0.1.15] — 2026-08-01
 
@@ -99,7 +115,8 @@ with comment-preserving edits, history and rollback, admin-only OIDC login via
 MAS, the greenfield/adopt setup wizard, and the public-repo hardening that made
 the project AGPL and removed every instance detail.
 
-[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.15...HEAD
+[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.16...HEAD
+[0.1.16]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.16
 [0.1.15]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.15
 [0.1.14]: https://github.com/bxnnyg/matrixctrl/blob/master/docs/plans/etappe-14-upgrade-stream-and-dashboard-latency.md
 [0.1.12]: https://github.com/bxnnyg/matrixctrl/blob/master/docs/ROADMAP.md
