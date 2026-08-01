@@ -81,4 +81,3 @@ func YAMLToMap(s string) map[string]interface{} {
 	}
 	return m
 }
-

@@ -267,17 +267,17 @@ func (h *HooksHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 
 func hookToMap(h hooks.Hook) map[string]interface{} {
 	return map[string]interface{}{
-		"id":             h.ID,
-		"name":           h.Name,
-		"description":    h.Description,
-		"trigger":        h.Trigger,
-		"enabled":        h.Enabled,
-		"priority":       h.Priority,
-		"actions":        h.Actions,
-		"builtin":        h.Builtin,
-		"created_at":     h.CreatedAt,
-		"updated_at":     h.UpdatedAt,
-		"created_by":     h.CreatedBy,
-		"lastRunStatus":  h.LastRunStatus,
+		"id":            h.ID,
+		"name":          h.Name,
+		"description":   h.Description,
+		"trigger":       h.Trigger,
+		"enabled":       h.Enabled,
+		"priority":      h.Priority,
+		"actions":       h.Actions,
+		"builtin":       h.Builtin,
+		"created_at":    h.CreatedAt,
+		"updated_at":    h.UpdatedAt,
+		"created_by":    h.CreatedBy,
+		"lastRunStatus": h.LastRunStatus,
 	}
 }

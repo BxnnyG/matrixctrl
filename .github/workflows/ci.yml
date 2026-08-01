@@ -30,6 +30,13 @@ jobs:
       - name: Check embedded frontend assets exist
         run: test -d cmd/matrixctrl/dist || { echo "cmd/matrixctrl/dist missing — run 'make copy-dist'"; exit 1; }
 
+      # Ten files had drifted out of gofmt before this gate existed. Formatting
+      # is not worth an opinion, only a check.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          test -z "$unformatted" || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
+
       - run: go vet ./...
 
       # TestDiscoverLive self-skips unless RUN_LIVE=1, so no cluster is needed.

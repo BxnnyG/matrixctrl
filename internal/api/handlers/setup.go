@@ -26,11 +26,11 @@ func NewSetupHandler(h *helm.Client, store *config.Store, essRelease, essNamespa
 // GET /api/v1/setup/status — onboarding checklist state.
 func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
-		"ess_namespace":   h.essNamespace,
-		"ess_release":     h.essRelease,
-		"oidc_configured": h.oidcConfigured,
+		"ess_namespace":    h.essNamespace,
+		"ess_release":      h.essRelease,
+		"oidc_configured":  h.oidcConfigured,
 		"bootstrap_active": !h.oidcConfigured,
-		"ess_installed":   false,
+		"ess_installed":    false,
 	}
 
 	if h.helm != nil {
@@ -77,8 +77,8 @@ func (h *SetupHandler) Discover(w http.ResponseWriter, r *http.Request) {
 		found = []helm.ESSRelease{}
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{
-		"releases":         found,
-		"managed_release":  h.essRelease,
+		"releases":          found,
+		"managed_release":   h.essRelease,
 		"managed_namespace": h.essNamespace,
 	})
 }

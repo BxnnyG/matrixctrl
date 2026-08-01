@@ -58,8 +58,8 @@ func TestGreenfieldDerivesFromServerName(t *testing.T) {
 	got := greenfieldHostnames("bxnny.de")
 
 	cases := map[string]string{
-		"serverName":                               "bxnny.de",
-		"synapse.ingress.host":                     "matrix.bxnny.de",
+		"serverName":           "bxnny.de",
+		"synapse.ingress.host": "matrix.bxnny.de",
 		"matrixAuthenticationService.ingress.host": "mas.bxnny.de",
 		"elementWeb.ingress.host":                  "element.bxnny.de",
 		"elementAdmin.ingress.host":                "admin.bxnny.de",
