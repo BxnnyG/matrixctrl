@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemRouteImport } from './routes/system'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as RtcRouteImport } from './routes/rtc'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HooksIndexRouteImport } from './routes/hooks/index'
@@ -32,6 +33,11 @@ const SystemRoute = SystemRouteImport.update({
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RtcRoute = RtcRouteImport.update({
+  id: '/rtc',
+  path: '/rtc',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuditRoute = AuditRouteImport.update({
@@ -98,6 +104,7 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/audit'
+    | '/rtc'
     | '/setup'
     | '/system'
     | '/auth/callback'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/audit'
+    | '/rtc'
     | '/setup'
     | '/system'
     | '/auth/callback'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/audit'
+    | '/rtc'
     | '/setup'
     | '/system'
     | '/auth/callback'
@@ -198,6 +210,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
+  RtcRoute: typeof RtcRoute
   SetupRoute: typeof SetupRoute
   SystemRoute: typeof SystemRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
@@ -226,6 +239,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rtc': {
+      id: '/rtc'
+      path: '/rtc'
+      fullPath: '/rtc'
+      preLoaderRoute: typeof RtcRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audit': {
@@ -318,6 +338,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
+  RtcRoute: RtcRoute,
   SetupRoute: SetupRoute,
   SystemRoute: SystemRoute,
   AuthCallbackRoute: AuthCallbackRoute,

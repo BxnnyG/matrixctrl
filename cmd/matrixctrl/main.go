@@ -177,6 +177,7 @@ func main() {
 		Config: configHandler,
 		Setup:  setupHandler,
 		Audit:  handlers.NewAuditHandler(auditStore),
+		RTC:    handlers.NewRTCHandler(k8sClient, configStore, essNS),
 
 		AuditSink: auditStore,
 	})

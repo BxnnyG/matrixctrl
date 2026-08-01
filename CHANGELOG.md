@@ -15,6 +15,26 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-08-01
+
+### Added
+
+- **A Calls / RTC page that says what it cannot check.** Element Call was broken on
+  a production instance while every signal MatrixCtrl produced was green — pods
+  healthy, patches applied — because the half that decides whether a call connects
+  (are the node ports reachable from the internet?) was never looked at, and its
+  absence read as "fine".
+  The page now lists the exact ports to forward **with their protocol**, read live
+  from the NodePort services rather than from documentation, and states inbound
+  reachability as **unknown** rather than omitting it. An inbound test needs a
+  vantage point outside the network; inventing a green tick for it would repeat the
+  original failure.
+- It also surfaces that `turn-tls` runs with `externalTrafficPolicy: Cluster` while
+  the other three SFU services use `Local` — the built-in hook covers three of four
+  by design. Shown, deliberately not silently patched: whether TURN-over-TLS needs
+  source-IP preservation is a question about Element's SFU, and changing cluster
+  state on a hunch is how manual patches became fragile in the first place.
+
 ## [0.1.18] — 2026-08-01
 
 ### Added
@@ -152,7 +172,8 @@ with comment-preserving edits, history and rollback, admin-only OIDC login via
 MAS, the greenfield/adopt setup wizard, and the public-repo hardening that made
 the project AGPL and removed every instance detail.
 
-[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.18...HEAD
+[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.19...HEAD
+[0.1.19]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.19
 [0.1.18]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.18
 [0.1.17]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.17
 [0.1.16]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.16

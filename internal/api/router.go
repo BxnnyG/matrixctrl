@@ -19,6 +19,7 @@ type Deps struct {
 	Config *handlers.ConfigHandler
 	Setup  *handlers.SetupHandler
 	Audit  *handlers.AuditHandler
+	RTC    *handlers.RTCHandler
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -57,6 +58,9 @@ func NewRouter(deps Deps) http.Handler {
 
 		if deps.Audit != nil {
 			r.Get("/api/v1/audit", deps.Audit.List)
+		}
+		if deps.RTC != nil {
+			r.Get("/api/v1/rtc/status", deps.RTC.Status)
 		}
 
 		r.Route("/api/v1/status", func(r chi.Router) {

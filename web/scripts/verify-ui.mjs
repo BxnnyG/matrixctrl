@@ -69,6 +69,7 @@ const ROUTES = [
   { path: "/setup", name: "setup", auth: true },
   { path: "/system", name: "system", auth: true },
   { path: "/audit", name: "audit", auth: true },
+  { path: "/rtc", name: "rtc", auth: true },
 ];
 
 // Console noise that is not a defect.

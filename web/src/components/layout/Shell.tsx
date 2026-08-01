@@ -23,13 +23,14 @@ const NAV: NavGroup[] = [
   { group: "Betrieb", items: [
     { id: "system", label: "System", icon: "cpu", to: "/system" },
     { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
+    { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
   ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
   { group: "Verwaltung", phase: "2", items: [
     { id: "users", label: "Benutzer", icon: "users" }, { id: "rooms", label: "Räume", icon: "room" }, { id: "moderation", label: "Moderation", icon: "shield" },
   ] },
   { group: "Betrieb · Day-2", phase: "3", items: [
-    { id: "rtc", label: "Calls / RTC", icon: "phone" }, { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
+    { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
   ] },
   { group: "Netzwerk", phase: "4", items: [
     { id: "federation", label: "Föderation", icon: "globe" }, { id: "bridges", label: "Bridges", icon: "audit" },
@@ -49,6 +50,7 @@ const TITLES: Record<string, [string, string]> = {
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
+  "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 
 function Logo() {
@@ -92,6 +94,7 @@ function activeId(path: string): string {
   if (path.startsWith("/setup")) return "setup";
   if (path.startsWith("/system")) return "system";
   if (path.startsWith("/audit")) return "audit";
+  if (path.startsWith("/rtc")) return "rtc";
   return "";
 }
 
