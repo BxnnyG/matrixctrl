@@ -133,6 +133,29 @@ flag **and** re-reading every produced image before the commit.
 - ROADMAP row, DESIGN §1b, a §4 decision entry, BACKLOG updated
 - The GitHub click-list handed over, explicitly marked as not-done
 
+## Handover — the settings this etappe cannot apply
+
+No `gh`, no API token, SSH remote. All of the following are owner-only clicks on
+`github.com/bxnnyg/matrixctrl`. Tracked as **P2-13** so they are not silently lost.
+
+1. **Topics** — repo page → ⚙ next to *About*:
+   `matrix` · `matrix-synapse` · `element` · `matrix-homeserver` · `kubernetes` ·
+   `helm` · `self-hosted` · `golang` · `react` · `agpl`
+   *Highest-value item on this list. Six words decide whether the project is
+   findable at all.*
+2. **Homepage** — same dialog: `https://matrixctrl.bxnny.de` if it should be
+   public, otherwise leave empty rather than pointing at something private.
+3. **Description** — same dialog, one line:
+   *Day-2 admin UI for self-hosted Matrix / Element Server Suite — config,
+   Helm upgrades that keep your patches, and admin-only Matrix login.*
+4. **Release for `v0.1.15`** — Releases → *Draft a new release* → choose the
+   existing tag `v0.1.15` → body from [CHANGELOG.md](../../CHANGELOG.md). The tag
+   exists; the page every visitor checks is empty.
+5. **Tabs** — Settings → Features: **Wiki off**, **Projects off**,
+   **Discussions on**. Three empty tabs read as an abandoned project. Discussions
+   is the one worth keeping: a wiki would become a second documentation that rots
+   next to `docs/`.
+
 ## Outcome
 
 _(filled in when the etappe closes)_
