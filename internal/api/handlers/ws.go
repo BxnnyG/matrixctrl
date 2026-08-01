@@ -4,10 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/net/websocket"
 )
+
+// wsHeartbeatInterval keeps the connection non-idle during Helm's silent phase.
+// Traefik's default idleTimeout is 180 s; 20 s leaves room for a few lost beats
+// before anything upstream considers the connection dead.
+const wsHeartbeatInterval = 20 * time.Second
 
 type WSHandler struct {
 	helm *HelmHandler
@@ -39,38 +45,53 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 			return err == nil
 		}
 
-		// Send existing logs first
-		stream.mu.Lock()
-		existing := make([]string, len(stream.logs))
-		copy(existing, stream.logs)
-		isDone := stream.done
-		doneStatus := stream.status
-		stream.mu.Unlock()
-
+		// Replay what already happened, so a reconnecting client loses nothing.
+		existing, isDone, doneStatus := stream.snapshot()
 		for _, line := range existing {
 			if !send(map[string]string{"type": "log", "line": line}) {
 				return
 			}
 		}
-
 		if isDone {
 			send(map[string]string{"type": "done", "status": doneStatus})
 			return
 		}
 
-		// Subscribe to future logs
-		ch := make(chan string, 64)
-		stream.mu.Lock()
-		stream.subs = append(stream.subs, ch)
-		stream.mu.Unlock()
+		// Subscribing and re-checking done in one locked step: without it an upgrade
+		// finishing between the snapshot above and the subscription would close the
+		// stream with nobody listening, and this connection would wait forever.
+		ch, alreadyDone, status := stream.subscribe()
+		if alreadyDone {
+			send(map[string]string{"type": "done", "status": status})
+			return
+		}
+		defer stream.unsubscribe(ch)
 
-		for line := range ch {
-			if !send(map[string]string{"type": "log", "line": line}) {
-				return
+		// A heartbeat is required, not a nicety: helm runs with Wait=true and
+		// produces no output for minutes, and Traefik closes an idle connection
+		// after 180 s by default. golang.org/x/net/websocket has no ping/pong
+		// frames, so the heartbeat is an ordinary message the client ignores —
+		// which also survives proxies that would not forward control frames.
+		heartbeat := time.NewTicker(wsHeartbeatInterval)
+		defer heartbeat.Stop()
+
+		for {
+			select {
+			case line, ok := <-ch:
+				if !ok {
+					_, _, finalStatus := stream.snapshot()
+					send(map[string]string{"type": "done", "status": finalStatus})
+					return
+				}
+				if !send(map[string]string{"type": "log", "line": line}) {
+					return
+				}
+			case <-heartbeat.C:
+				if !send(map[string]string{"type": "ping"}) {
+					return
+				}
 			}
 		}
-
-		send(map[string]string{"type": "done", "status": stream.status})
 	})
 
 	wsHandler.ServeHTTP(w, r)
