@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-08-01
+
+### Fixed
+
+- **An upgrade whose process died kept saying it was still running.** The terminal
+  status is written by the goroutine driving the upgrade, so a pod restart in the
+  middle left the row in its in-flight state forever — the production instance had
+  one reading `running-hooks` a day after the release was `deployed` and both hooks
+  had reported OK. Startup now closes such rows as `interrupted`, which is the
+  honest label: the Helm revision may well have gone through, but whether the hooks
+  ran cannot be recovered after the fact.
+- The upgrade history was missing `running-hooks` and `interrupted` from its status
+  styling, so both rendered in the same calm blue as `pending`. An unrecognised
+  status is now shown as a warning instead of borrowing reassurance, and the labels
+  are German like the rest of the UI.
+- `/helm/history` shows a page title, like every other screen.
+
+### Added
+
+- Releasing a tag now publishes the GitHub Release too, with notes cut from this
+  file. A missing changelog section fails the release **before** anything reaches
+  GHCR.
+
 ## [0.1.16] — 2026-08-01
 
 ### Fixed
@@ -115,7 +138,8 @@ with comment-preserving edits, history and rollback, admin-only OIDC login via
 MAS, the greenfield/adopt setup wizard, and the public-repo hardening that made
 the project AGPL and removed every instance detail.
 
-[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.16...HEAD
+[Unreleased]: https://github.com/bxnnyg/matrixctrl/compare/v0.1.17...HEAD
+[0.1.17]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.17
 [0.1.16]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.16
 [0.1.15]: https://github.com/bxnnyg/matrixctrl/releases/tag/v0.1.15
 [0.1.14]: https://github.com/bxnnyg/matrixctrl/blob/master/docs/plans/etappe-14-upgrade-stream-and-dashboard-latency.md
