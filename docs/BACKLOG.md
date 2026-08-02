@@ -319,7 +319,33 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-10 · Element Call is unreachable: the RTC host has no path from outside (S14).**
+  Found 2026-08-02, after P1-9 was fixed and calling was *still* bad. The decisive
+  measurement was LiveKit's own metrics: `livekit_room_total 0`,
+  `livekit_participant_total 0` — **no client has ever joined this SFU.** The calls
+  the operator was making were legacy Matrix P2P, which is exactly why they worked
+  between some endpoints and not others, and why mobile was worse than desktop:
+  P2P cannot traverse the carrier's CGNAT.
+  The chain: `.well-known` correctly advertises `rtc_foci` → the client tries the
+  token endpoint on the RTC host → **connection never establishes** → Element falls
+  back to P2P. Inside the cluster the service is healthy (`405` on GET, `400` on an
+  empty POST). The RTC host resolves to the operator's WAN address, while the
+  Matrix and Element hosts resolve to a *different* public address and work fine —
+  so RTC is the only name pointed at the home connection, and **TCP 443 was not
+  among the forwarded ports** (30001, 30004, 31443, UDP 30000-40000).
+  *Not verifiable from here, deliberately stated as such:* whether 443 reaches the
+  node from the internet needs an outside vantage point — E19's permanent unknown.
+  The zero-request log of the auth service is strong evidence, not proof.
+  **What this says about the product:** every check MatrixCtrl performs was green
+  while the feature was completely dead, because none of them asked *"has anyone
+  ever actually used it?"*. LiveKit publishes that number on its metrics port and
+  nothing read it. A room counter of zero on a server that has been up for days is
+  worth more than any amount of health-check green.
 - **P1-9 · The SFU announces a stale public IP after every forced reconnect (S14).**
+  *Correction 2026-08-02: real, reproduced and fixed — but it was **not** why calling
+  was bad. See P1-10. The stale address would have broken media once clients could
+  reach the SFU at all; they never could. Two independent faults, and fixing the
+  visible one first proved nothing.*
   Found 2026-08-02 on the production instance while the operator asked, again, why
   calling is unreliable. LiveKit discovers its external address by STUN **once, at
   startup**, and caches it. The ISP re-assigns the WAN address roughly every 24 h;
