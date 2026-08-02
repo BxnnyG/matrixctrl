@@ -25,6 +25,14 @@
 //
 // The count of replacements per route is reported, because a redaction that
 // silently matched nothing is worse than none at all.
+//
+// --redact-ips replaces every IPv4 literal with an RFC 5737 documentation
+// address. Needed for pages that display an address resolved inside the cluster,
+// where the value cannot be known in advance to be passed as --redact.
+//
+// Independently of both flags, the rendered text is scanned for sensitive
+// *categories* before the screenshot is written (see below). A route that would
+// leak fails and produces no image.
 
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -43,6 +51,13 @@ const allOf = (name) =>
 const BASE = (argOf("--base", process.env.MATRIXCTRL_BASE) || "").replace(/\/$/, "");
 const OUT = argOf("--out", "/tmp/matrixctrl-verify");
 const TOKEN = process.env.MATRIXCTRL_TOKEN || "";
+
+// Detection works on categories; removal used to work only on strings you could
+// name in advance. That gap is why /rtc could not be photographed: the page shows
+// whatever IP the *pod* resolved, which is not necessarily what this host
+// resolves, so no --redact value could be known beforehand. --redact-ips closes
+// it by replacing every IPv4 literal, value unknown and unneeded.
+const REDACT_IPS = args.includes("--redact-ips");
 
 const REDACTIONS = allOf("--redact").map((spec) => {
   const i = spec.indexOf("=");
@@ -76,10 +91,21 @@ const SENSITIVE = [];
 // Always on, needs no secret, works in a fork: an IP literal in a screenshot is
 // never intentional. Octet-range checked so version numbers cannot match.
 const OCTET = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
-SENSITIVE.push({
-  name: "IPv4 address",
-  re: new RegExp(`\\b${OCTET}\\.${OCTET}\\.${OCTET}\\.${OCTET}\\b`),
-});
+const IPV4_SRC = `\\b${OCTET}\\.${OCTET}\\.${OCTET}\\.${OCTET}\\b`;
+
+// The documentation ranges reserved by RFC 5737 are what --redact-ips replaces
+// real addresses *with*. They must be exempt, or the detector fires on the
+// tool's own placeholder — which it did: the redaction ran, put 203.0.113.1 on
+// the page, the scan called that an IP address, and the retry loop replaced a
+// placeholder with a placeholder four times before giving up. A check that
+// cannot tell its own output from a leak is not a check.
+const DOC_RANGES = ["192.0.2.", "198.51.100.", "203.0.113."];
+const realIPs = (text) =>
+  [...String(text).matchAll(new RegExp(IPV4_SRC, "g"))]
+    .map((m) => m[0])
+    .filter((ip) => !DOC_RANGES.some((p) => ip.startsWith(p)));
+
+SENSITIVE.push({ name: "IPv4 address", find: realIPs });
 
 // Same contract as check-sensitive.sh: env wins, then an untracked file found by
 // walking up from the working directory. No source is not an error — a fork has
@@ -103,7 +129,11 @@ SENSITIVE.push({
     if (!p || p.startsWith("#")) continue;
     try {
       // Named by index, never by content: the pattern is itself the secret.
-      SENSITIVE.push({ name: `sensitive pattern #${SENSITIVE.length}`, re: new RegExp(p) });
+      const re = new RegExp(p, "g");
+      SENSITIVE.push({
+        name: `sensitive pattern #${SENSITIVE.length}`,
+        find: (text) => [...String(text).matchAll(re)].map((m) => m[0]),
+      });
     } catch {
       console.error(`  (ignoring an unparseable sensitive pattern)`);
     }
@@ -288,32 +318,64 @@ for (const route of ROUTES) {
     // So the guarantee is not "we replaced it" but "it is not there any more" —
     // checked, with retries for a late render, and a hard failure if it survives.
     // A redaction that silently did not apply is worse than none.
-    if (REDACTIONS.length) {
+    if (REDACTIONS.length || REDACT_IPS) {
       const subs = REDACTIONS;
       const redactOnce = () =>
-        page.evaluate((subs) => {
-          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          const nodes = [];
-          while (walker.nextNode()) nodes.push(walker.currentNode);
-          let n = 0;
-          for (const node of nodes) {
-            let value = node.nodeValue;
-            for (const { from, to } of subs) value = value.split(from).join(to);
-            if (value !== node.nodeValue) {
-              node.nodeValue = value;
-              n++;
+        page.evaluate(
+          ({ subs, ips, ipSrc, docRanges }) => {
+            // Same regex as the detector, rebuilt here because this runs in the
+            // page. RFC 5737 documentation range as the stand-in, so a reader can
+            // tell at a glance that it is not a real address — and skipped on the
+            // way in, so a second pass does not renumber its own placeholders.
+            const ipRe = new RegExp(ipSrc, "g");
+            const seen = new Map();
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            let n = 0;
+            for (const node of nodes) {
+              let value = node.nodeValue;
+              for (const { from, to } of subs) value = value.split(from).join(to);
+              if (ips) {
+                // Stable within a run: the same address always becomes the same
+                // placeholder, so "resolves to X" and "X" still read as one fact.
+                value = value.replace(ipRe, (m) => {
+                  if (docRanges.some((p) => m.startsWith(p))) return m;
+                  if (!seen.has(m)) seen.set(m, `203.0.113.${seen.size + 1}`);
+                  return seen.get(m);
+                });
+              }
+              if (value !== node.nodeValue) {
+                node.nodeValue = value;
+                n++;
+              }
             }
-          }
-          return n;
-        }, subs);
+            return n;
+          },
+          { subs, ips: REDACT_IPS, ipSrc: IPV4_SRC, docRanges: DOC_RANGES },
+        );
 
+      // Also asks about IP literals, so a late-rendered address gets the retry
+      // loop rather than going straight to a hard failure.
       const stillVisible = () =>
         page.evaluate(
-          (needles) => {
+          ({ needles, ips, ipSrc, docRanges }) => {
             const text = document.body.innerText || "";
-            return needles.filter((n) => text.includes(n));
+            const left = needles.filter((n) => text.includes(n));
+            if (ips) {
+              const real = [...text.matchAll(new RegExp(ipSrc, "g"))]
+                .map((m) => m[0])
+                .filter((ip) => !docRanges.some((p) => ip.startsWith(p)));
+              if (real.length) left.push("an IP address");
+            }
+            return left;
           },
-          REDACTIONS.map((r) => r.from),
+          {
+            needles: REDACTIONS.map((r) => r.from),
+            ips: REDACT_IPS,
+            ipSrc: IPV4_SRC,
+            docRanges: DOC_RANGES,
+          },
         );
 
       let leaked = [];
@@ -335,7 +397,7 @@ for (const route of ROUTES) {
     // The category check, after every redaction has run. This is the one that
     // does not depend on anyone having anticipated the right string.
     const visible = await page.evaluate(() => document.body.innerText || "");
-    const hits = SENSITIVE.filter((s) => s.re.test(visible)).map((s) => s.name);
+    const hits = SENSITIVE.filter((s) => s.find(visible).length > 0).map((s) => s.name);
     if (hits.length) {
       // Name the category, never the match — printing it here would put the
       // secret straight into a terminal or a CI log, one layer down.
