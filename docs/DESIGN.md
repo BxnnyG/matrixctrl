@@ -399,6 +399,30 @@ Accepted — deliberately no golden-image comparison, for the same reason
 `verify-ui.mjs` never had one: it fails on every intentional design change and gets
 disabled within two etappes. Affects S9.
 
+**Amended 2026-08-02 (E20).** The claim above that "the *next* person cannot forget
+it" was false, and it failed on the very next release. `--redact` removes the
+strings someone passes; the 0.1.20 run passed the node name and the admin hostname,
+and `/rtc` — a page added *after* this record was written — renders a different
+hostname next to a resolved **public IP**. Nothing matched, the replacement counter
+read 0, the route was reported PASS, and the screenshot carried the operator's IP
+address. `check-sensitive.sh` skips binaries with a comment stating that screenshots
+are covered here instead; they were not. Two safeguards, each pointing at the other.
+
+So redaction is no longer the guarantee — a **category scan** is. After every
+redaction pass the rendered text is checked against `.sensitive-patterns` (the same
+untracked source `check-sensitive.sh` uses) plus a built-in IPv4 rule that needs no
+secret and therefore also protects forks. A route that would leak fails and **no
+image is written**. `--redact-ips` replaces address literals whose value cannot be
+known in advance, because the page shows what the *pod* resolved.
+
+Two things this cost, both kept in the code as comments: the RFC 5737 placeholder
+the tool writes is itself a valid IPv4 address, so the scan flagged its own output
+and the retry loop replaced a placeholder with a placeholder four times; and the
+report header had been printing the production hostname on every run since the day
+it was written. The rule that generalises: **a safeguard aimed at an artefact type
+protects that artefact type only, and "the tool makes it impossible to forget" is a
+claim to re-test, not to assert.**
+
 ### §4.15 — Release info is cached, because there is no cheap way to read it (2026-08-01, agent)
 > **Superseded by §4.20 (2026-08-02).** The measurements below are correct and the
 > conclusion drawn from them is not. Kept unedited, because *how* a well-measured

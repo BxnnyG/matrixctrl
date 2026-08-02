@@ -165,6 +165,31 @@ just failed would see the previous release reported as fine. It was rejected for
 that reason and `TestProbeReportsAFailedNewestRevisionRatherThanTheLastGoodOne`
 exists so nobody re-discovers it as a saving.
 
+### Verification, and what it cost to get it
+
+Deployed as Helm revision 22 with the running image read back, not inferred.
+S11: 9 ESS pods healthy, Matrix `200`, MatrixCtrl `200` and `401` without a token,
+SFU 3/3 on `Local` (`turn-tls` still `Cluster`, as E19 documented), and **18 config
+sections / 2926 comment lines — unchanged across the upgrade**. In the pod logs
+`metadata client unavailable` appears zero times, so the fast path is what
+production actually runs rather than the fallback.
+
+The eleven-route screenshot check took four attempts, and none of the failures were
+in this etappe's code:
+
+1. The minted token was rejected — `MATRIXCTRL_JWT_SECRET` comes from a Secret and
+   beats the key persisted in Postgres. Every route silently rendered the login
+   page. Noticed only because all five screenshots were byte-identical in size.
+2. `/auth/login` makes no API calls, so the settle loop introduced in E19 could
+   never exit early and burned its full 25 s — on every run, and on all eleven
+   routes at once when the token was bad.
+3. **`/rtc` leaked a public IP into a screenshot and was reported PASS.** See
+   §4.18's amendment; this is the finding of the etappe that was not planned.
+4. The fix for (3) then flagged its own RFC 5737 placeholder as a leak.
+
+All four are fixed and committed. The through-line is the same one E19 ended on:
+each was found by *looking at the artefact*, never by a green check.
+
 ### Left undone, deliberately
 
 `/helm/history` still decodes every revision — the same bottleneck, but it needs
