@@ -28,6 +28,7 @@
 
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const args = process.argv.slice(2);
@@ -55,6 +56,58 @@ const REDACTIONS = allOf("--redact").map((spec) => {
 if (!BASE) {
   console.error("usage: verify-ui.mjs --base <url>   (or set MATRIXCTRL_BASE)");
   process.exit(2);
+}
+
+// --- Sensitive-content scan -------------------------------------------------
+//
+// `--redact` only removes the strings someone remembered to pass. On the run
+// that shipped 0.1.20 the rules covered the node name and the admin hostname,
+// and /rtc rendered the *RTC* hostname next to its resolved public IP — neither
+// was a rule, so nothing was replaced and the route was reported PASS. The tool
+// whose job is producing publishable screenshots produced one containing the
+// operator's public IP address and called it clean.
+//
+// `scripts/check-sensitive.sh` skips binaries with a comment saying screenshots
+// "are covered by verify-ui.mjs --redact instead". They were not. So the same
+// pattern source now guards the pixels too, and a route fails on a *category* of
+// secret rather than on a remembered string.
+const SENSITIVE = [];
+
+// Always on, needs no secret, works in a fork: an IP literal in a screenshot is
+// never intentional. Octet-range checked so version numbers cannot match.
+const OCTET = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
+SENSITIVE.push({
+  name: "IPv4 address",
+  re: new RegExp(`\\b${OCTET}\\.${OCTET}\\.${OCTET}\\.${OCTET}\\b`),
+});
+
+// Same contract as check-sensitive.sh: env wins, then an untracked file found by
+// walking up from the working directory. No source is not an error — a fork has
+// no access to the secret, and failing its build over a check it cannot satisfy
+// only gets the check deleted.
+{
+  let raw = process.env.SENSITIVE_PATTERNS || "";
+  if (!raw) {
+    const name = process.env.SENSITIVE_PATTERNS_FILE || ".sensitive-patterns";
+    for (let dir = process.cwd(); ; dir = path.dirname(dir)) {
+      try {
+        raw = readFileSync(path.join(dir, name), "utf8");
+        break;
+      } catch {
+        if (dir === path.dirname(dir)) break;
+      }
+    }
+  }
+  for (const line of raw.split("\n")) {
+    const p = line.trim();
+    if (!p || p.startsWith("#")) continue;
+    try {
+      // Named by index, never by content: the pattern is itself the secret.
+      SENSITIVE.push({ name: `sensitive pattern #${SENSITIVE.length}`, re: new RegExp(p) });
+    } catch {
+      console.error(`  (ignoring an unparseable sensitive pattern)`);
+    }
+  }
 }
 
 // Routes worth proving. `auth: false` must render without a token.
@@ -279,7 +332,20 @@ for (const route of ROUTES) {
       }
     }
 
-    if (!problems.some((p) => p.startsWith("redaction failed"))) {
+    // The category check, after every redaction has run. This is the one that
+    // does not depend on anyone having anticipated the right string.
+    const visible = await page.evaluate(() => document.body.innerText || "");
+    const hits = SENSITIVE.filter((s) => s.re.test(visible)).map((s) => s.name);
+    if (hits.length) {
+      // Name the category, never the match — printing it here would put the
+      // secret straight into a terminal or a CI log, one layer down.
+      problems.push(`sensitive content visible: ${hits.join(", ")} — no screenshot written`);
+    }
+
+    const unsafe = problems.some(
+      (p) => p.startsWith("redaction failed") || p.startsWith("sensitive content visible"),
+    );
+    if (!unsafe) {
       await page.screenshot({ path: path.join(OUT, `${route.name}.png`), fullPage: true });
     }
   } catch (err) {
@@ -293,8 +359,15 @@ for (const route of ROUTES) {
 await browser.close();
 
 // Report
+//
+// The redactions apply to what is printed too. The first version of this header
+// spelled out the production hostname on every run — the tool that exists to keep
+// that string out of published artefacts was putting it in its own output, which
+// is where terminal logs and pasted results come from.
+const safe = (s) => REDACTIONS.reduce((acc, { from, to }) => acc.split(from).join(to), String(s));
+
 let failed = 0;
-console.log(`\nUI verification — ${BASE}\n`);
+console.log(`\nUI verification — ${safe(BASE)}\n`);
 for (const r of results) {
   if (r.status === "pass") {
     const red = r.redacted ? `, ${r.redacted} redacted` : "";
@@ -307,11 +380,17 @@ for (const r of results) {
   } else {
     failed++;
     console.log(`  FAIL  ${r.path.padEnd(18)} HTTP ${r.httpStatus}  (${r.apiCalls} API call(s))`);
-    for (const p of r.problems) console.log(`          ${p}`);
+    // Problem strings carry URLs ("request failed: …"), so they go through the
+    // same redaction as everything else that leaves this process.
+    for (const p of r.problems) console.log(`          ${safe(p)}`);
   }
 }
 
-await writeFile(path.join(OUT, "results.json"), JSON.stringify(results, null, 2));
+const redactedResults = results.map((r) => ({
+  ...r,
+  problems: (r.problems ?? []).map(safe),
+}));
+await writeFile(path.join(OUT, "results.json"), JSON.stringify(redactedResults, null, 2));
 console.log(`\nScreenshots: ${OUT}`);
 
 const skipped = results.filter((r) => r.status === "skipped").length;
