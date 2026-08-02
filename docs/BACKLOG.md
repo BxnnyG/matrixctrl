@@ -366,13 +366,30 @@ strangers depends on a code path nobody has ever run.
   proving less than it claimed, and only *looking at the picture it produced*
   revealed it. **The screenshots are not a by-product of the check; on this
   occasion they were the check.**
-- **P2-21 · A cold `/status` still costs ~4.7 s (S4).** E14 took the warm path from
-  ~3.2 s to ~0.18 s and that holds — but the first request after the 60 s release
-  cache expires still pays the full Helm read, and the dashboard shows a skeleton
-  for all of it. So the operator's original complaint ("the dashboard loads slowly")
-  is *half* fixed: it is fast when you are already using it, and slow exactly when
-  you arrive. Worth a background refresh that keeps the cache warm, or a stale-
-  while-revalidate read so the page renders old numbers immediately.
+- ~~**P2-21 · A cold `/status` still costs ~4.7 s (S4).**~~ **Done 2026-08-02 (E20).**
+  Neither of the fixes proposed below was built. Both accept the 4.3 s Helm read as
+  a fact and work around it; measuring first showed it was not one. `action.NewGet`
+  asks the storage layer for `Last()`, which fetches and **decodes every revision**
+  (11 secrets, 2.93 MB) to return the newest — while the revision, status and
+  modification time are right there in the secret's *labels*, readable in ~15 ms
+  without transferring any payload. Cold **4.32 s → 505 ms**, and the 60 s staleness
+  window is gone rather than merely shortened (§4.20). Original entry:
+  E14 took the warm path from ~3.2 s to ~0.18 s and that holds — but the first
+  request after the 60 s release cache expires still pays the full Helm read, and
+  the dashboard shows a skeleton for all of it. So the operator's original complaint
+  ("the dashboard loads slowly") is *half* fixed: it is fast when you are already
+  using it, and slow exactly when you arrive. Worth a background refresh that keeps
+  the cache warm, or a stale-while-revalidate read so the page renders old numbers
+  immediately.
+- **P2-22 · `/helm/history` still decodes every revision (S2).** `ListHistory` uses
+  `action.NewHistory`, which has exactly the bottleneck E20 removed from
+  `GetRelease` — on the production release that is 11 decodes for one page load.
+  The label trick does not transfer unchanged, because the history table shows each
+  revision's **chart version**, and that is the one field not in the labels. So it
+  needs its own answer: memoise per revision (revisions are immutable once
+  superseded, so a decoded one never needs re-reading), or accept the cost for a
+  page nobody polls. Deliberately left out of E20 rather than guessed at inside it.
+  *Found 2026-08-02 while measuring E20; not yet measured on its own.*
 - **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and

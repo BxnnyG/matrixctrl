@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-08-02
+
+### Changed
+
+- **The dashboard is fast when you arrive, not only once you are already there.**
+  A cold `/status` cost ~4.7 s and showed a skeleton for all of it, because reading
+  the Helm release took ~4.3 s. It no longer does: **cold 4.32 s → 505 ms.**
+- The fix was not the one on the backlog. Keeping a cache warm and serving
+  stale-while-revalidate both treat the 4.3 s as a fact of life; measuring showed it
+  was not one. `action.NewGet` asks Helm's storage layer for the newest revision,
+  and to find it that layer fetches and **decodes every revision** — 11 secrets,
+  2.93 MB on the production release — to return one. The revision, the status and
+  the modification time are in the secret's *labels*, and a metadata-only list reads
+  those for all revisions in ~15 ms without transferring any release payload.
+- **The 60-second staleness window is gone, not shortened.** A cached value used to
+  be trusted because a timer had not expired; it is now trusted because the cluster
+  still reports the same release secret. The warm path costs 14 ms instead of 2.5 µs
+  as a result — a deliberate trade of an unmeasurable amount of speed for an answer
+  that is never quietly out of date.
+- Every way the fast path can fail falls back to the previous code, so the worst
+  case is the old latency and never a wrong answer. A live test asserts both paths
+  return the same thing.
+
 ## [0.1.19] — 2026-08-01
 
 ### Added

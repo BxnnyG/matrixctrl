@@ -126,3 +126,48 @@ creep gets justified.
   be re-checked rather than believed
 - Unit tests that do not need a cluster
 - Four regression checks (S11) green
+
+## Outcome (2026-08-02)
+
+Shipped in `0.1.20`. Measured on the live cluster, same release, same day:
+
+| | Before | After |
+|---|---|---|
+| Cold read | 4.32 s | **505 ms** |
+| Warm read | 2.5 µs | 14 ms |
+| Staleness window | up to 60 s | **none** |
+
+The warm path is four orders of magnitude slower and that is the right trade. The
+old 2.5 µs was a map lookup that answered from memory and could not tell you whether
+it was still true; the 14 ms is a question to the cluster that can. Against a
+`/status` response dominated by Kubernetes reads it is invisible, and it buys the
+removal of the one thing §4.15 wrote down as a known defect.
+
+### What the failure actually was
+
+Not a missed optimisation. §4.15 measured three Helm functions, found all three cost
+~4 s, and concluded the cost was inherent to reading a release. Three independent
+confirmations — except they were not independent. `NewGet`, `NewGetMetadata` and
+`NewList` all route through `storage.Last()`, which decodes every revision to sort
+them. It was one bottleneck measured three times, and the repetition made it look
+like evidence.
+
+**Measuring the alternatives you thought of is not the same as measuring the
+problem.** The question that broke it open was not "which Helm call is cheapest"
+but "what does the 4.3 s consist of" — and the answer was 2.93 MB of releases we
+throw away.
+
+### The cheap wrong version
+
+`storage.Deployed()` is one line and ~480 ms, nearly as fast, and it hides failed
+upgrades: it returns the last *successful* revision, so an operator whose upgrade
+just failed would see the previous release reported as fine. It was rejected for
+that reason and `TestProbeReportsAFailedNewestRevisionRatherThanTheLastGoodOne`
+exists so nobody re-discovers it as a saving.
+
+### Left undone, deliberately
+
+`/helm/history` still decodes every revision — the same bottleneck, but it needs
+each revision's chart version, which is the one field the labels do not carry. Filed
+as **P2-22** with the shape of the answer sketched, unmeasured, rather than folded
+into this etappe on a guess.

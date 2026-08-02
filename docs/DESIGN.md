@@ -73,7 +73,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
 | S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14); an upgrade whose process dies is reconciled to `interrupted` at startup instead of reading as running forever (P2-16) |
 | S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
-| S4 Cluster observability | ✅ (E3, E12, E14) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s (E14) |
+| S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
@@ -400,6 +400,10 @@ Accepted — deliberately no golden-image comparison, for the same reason
 disabled within two etappes. Affects S9.
 
 ### §4.15 — Release info is cached, because there is no cheap way to read it (2026-08-01, agent)
+> **Superseded by §4.20 (2026-08-02).** The measurements below are correct and the
+> conclusion drawn from them is not. Kept unedited, because *how* a well-measured
+> decision came out wrong is the useful part.
+
 **Question:** `/status` was dominated by `GetRelease`. Is there a lighter Helm call?
 **Decision:** no — cache it. `action.NewGet`, `NewGetMetadata` and `NewList` were all
 measured at ~3.9–5.6 s against the live cluster, because every one of them fetches
@@ -426,3 +430,47 @@ The latency was self-inflicted and invisible from the cluster side.
 **Consequences:** more load is possible against the API server; for one admin server
 against one cluster this is modest. The lesson generalises: any client-go default
 tuned for CLIs should be re-examined before it runs in a server. Affects S4.
+
+### §4.20 — The release read was never expensive; the question was (2026-08-02, agent)
+**Question:** a cold `/status` still cost ~4.7 s. P2-21 proposed keeping the cache
+warm or serving stale-while-revalidate. Both work *around* the 4.3 s Helm read —
+before building either, is the 4.3 s actually necessary?
+
+**Decision:** no. Read the release secret's **labels** instead of the release.
+`{"modifiedAt":…,"name":"ess","owner":"helm","status":"deployed","version":"22"}` —
+a metadata-only list (`PartialObjectMetadataList`) returns those for every revision
+in ~15 ms, transferring no release payload at all. Decode exactly one revision, and
+only when the identity `(revision, status, modifiedAt)` differs from what is already
+memoised. Decoding stays Helm's job via `storage.Storage.Get`, so the secret format
+never becomes our problem.
+
+**Rationale — why §4.15 got it wrong with correct numbers:** `action.NewGet`,
+`NewGetMetadata` and `NewList` were each measured at ~4 s and the cost was concluded
+to be inherent. All three are slow *for the same reason*: they ask the storage layer
+for `Last()`, which fetches and decodes **every** revision to sort them. The
+production release is 11 secrets holding 2.93 MB, and `GetRelease` keeps seven
+scalars. Three measurements of three functions that share one bottleneck read as
+corroboration, and they were really one measurement repeated. **Measuring the
+alternatives you thought of is not the same as measuring the problem.**
+
+**Decision detail:** `storage.Deployed()` would have been a one-line change at
+~480 ms and was rejected — it returns the last *successful* revision, so a failed
+upgrade would leave the dashboard showing the release before it. The probe takes
+the highest revision, matching `Last()`. A test pins that specific behaviour.
+
+**Consequences:**
+- cold **4.32 s → 505 ms**; warm **2.5 µs → 14 ms**.
+- The warm path got slower on purpose. The old 2.5 µs came with up to 60 s of
+  undetectable staleness (the trade §4.15 wrote down); the new 14 ms is a probe
+  that *confirms* the value is current. There is now no staleness window at all —
+  a stronger correctness property than before, of which the speedup is a side
+  effect.
+- Every failure mode of the fast path (no metadata client, probe error, decode
+  error) falls back to `action.NewGet`. The worst case is the old latency, never a
+  wrong answer. A live test (`RUN_LIVE=1`) asserts both paths return identical
+  `ReleaseInfo`.
+- `InvalidateRelease` is no longer required for correctness and is kept as a
+  deliberate belt-and-braces reset, which the code says out loud.
+- **Not fixed:** `ListHistory` (`/helm/history`) has the same shape of problem and
+  genuinely needs every revision's chart version, so the same trick does not apply
+  unchanged. Left as P2-22 rather than guessed at here. Affects S2, S4.

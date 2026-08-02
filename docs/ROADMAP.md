@@ -49,6 +49,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 | 17 | Audit trail — the writes that were documented for two months but never existed | ✅ 2026-08-01 · `v0.1.18` · [plan](plans/etappe-17-audit-trail.md) |
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
+| 20 | The release read was never expensive — cold `/status` 4.32 s → 505 ms, and the staleness window removed rather than shortened | ✅ 2026-08-02 · `v0.1.20` · [plan](plans/etappe-20-release-read.md) |
 
 > Etappes 11 and 12 were committed on 2026-07-31 as part of etappe 13, in nine
 > reviewable slices (`9b226c5`…`c8fbd4d`).
