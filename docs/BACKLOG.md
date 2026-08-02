@@ -319,6 +319,50 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-9 · The SFU announces a stale public IP after every forced reconnect (S14).**
+  Found 2026-08-02 on the production instance while the operator asked, again, why
+  calling is unreliable. LiveKit discovers its external address by STUN **once, at
+  startup**, and caches it. The ISP re-assigns the WAN address roughly every 24 h;
+  DynDNS updates the record, so clients resolve the *correct* address — and the SFU
+  keeps offering ICE candidates for the *old* one. Media goes nowhere. Restarting
+  the SFU fixed it immediately, which is the proof.
+  This was the real answer to a complaint that had been raised repeatedly and
+  written off as "calls are just bad".
+  **It is knowable from inside the cluster, and E19 put it in neither column of its
+  own knowable/not-knowable table.** E19 was right that inbound reachability needs
+  an outside vantage point. It never asked whether the address being announced is
+  still the address clients are told to use — and both values are already in the
+  product: the announced IP, and the DNS record `/rtc` already resolves.
+  *Fix:* compare them, warn loudly when they diverge, offer a restart. **No external
+  IP service is needed** — DNS is the reference the clients themselves use, so an
+  ipify-style lookup would add a dependency and a second source of truth for
+  nothing. Auto-restart only behind an explicit opt-in: it is a cluster mutation
+  driven by a poll, and that is the operator's decision, not a default.
+  *Open question, deliberately not guessed:* where to read the announced IP from.
+  Parsing `"nodeIP"` out of the pod log works but is fragile; whether LiveKit exposes
+  it on its HTTP port has not been checked.
+- **P2-23 · The SFU deployment cannot be restarted at all (S14).** `kubectl rollout
+  restart deploy/ess-matrix-rtc-sfu` hangs forever and reports nothing wrong. The
+  deployment is `hostNetwork: true`, `replicas: 1`, `strategy: RollingUpdate` with
+  **`maxUnavailable=0`**: the old pod must stay Running until the new one is Ready,
+  and the new one can never bind the host ports while the old one holds them.
+  Observed live — the replacement pod sat `Pending` for 23 minutes with
+  `FailedScheduling: didn't have free ports`, while the old pod kept serving the
+  stale IP. Only `delete pod` clears it.
+  This matters beyond the annoyance: **any automation built for P1-9 that uses
+  `rollout restart` will deadlock silently**, and the operator will believe the
+  restart happened. `strategy: Recreate` is the honest description of a
+  single-replica hostNetwork workload; it fits the existing built-in patch hook
+  (`internal/hooks/builtin/ess_rtc_patches.go`) which already survives Helm
+  upgrades.
+- **P2-24 · The host UDP buffer is 24× smaller than the SFU asks for (S14).** LiveKit
+  logs `UDP receive buffer is too small for a production set-up  current: 425984
+  suggested: 5000000` on every start; the host runs the kernel default
+  `net.core.rmem_max = 212992`. Honest scope: `RcvbufErrors` is currently **0**, so
+  nothing is being dropped *yet* — because P1-9 meant almost nobody was connecting.
+  It is a latent fault that surfaces under real call load, not the present cause.
+  Worth surfacing on `/rtc` as a pre-flight check, since it is read-only and
+  knowable from inside.
 - **P2-8 · The dashboard sums restarts across containers, which misleads (S4).**
   The operator read "postgres: 30 restarts" and reasonably concluded something was
   badly wrong. It is three containers in one pod — 15 + 8 + 7 — and they are three
