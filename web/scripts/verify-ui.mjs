@@ -117,19 +117,27 @@ for (const route of ROUTES) {
   // finished loading?" — every indirect signal tried before this one lied.
   let apiPending = 0;
   let apiSeen = 0;
+  let lastAPIActivity = 0; // a request starting *or* ending both count as activity
   const isAPI = (url) => url.includes("/api/v1/");
   page.on("request", (r) => {
     if (isAPI(r.url())) {
       apiPending++;
       apiSeen++;
+      lastAPIActivity = Date.now();
     }
   });
   page.on("requestfinished", (r) => {
-    if (isAPI(r.url())) apiPending--;
+    if (isAPI(r.url())) {
+      apiPending--;
+      lastAPIActivity = Date.now();
+    }
   });
   page.on("requestfailed", (req) => {
     const url = req.url();
-    if (isAPI(url)) apiPending--;
+    if (isAPI(url)) {
+      apiPending--;
+      lastAPIActivity = Date.now();
+    }
     if (IGNORE.some((re) => re.test(url))) return;
     problems.push(`request failed: ${url} (${req.failure()?.errorText ?? "?"})`);
   });
@@ -188,9 +196,21 @@ for (const route of ROUTES) {
     // What actually answers the question: are this page's API requests done?
     // Counted directly from the request/response events above, so it is precise
     // rather than inferred.
-    const settleDeadline = Date.now() + 25_000;
+    // Not every page has data to wait for: /auth/login calls nothing. Waiting for
+    // apiSeen > 0 on those can never succeed, so the loop below used to run its
+    // full 25 s on the login route of every single run, and on *all eleven* routes
+    // whenever the token was rejected — which is how a five-minute check turned
+    // into a stalled one. "No request has started for a while" is the signal that
+    // a page is done rather than slow.
+    // One condition covers both: nothing in flight, and nothing has happened for
+    // QUIET_MS. A page that asks for nothing is quiet from the start; a page whose
+    // first response triggers a second wave is not quiet until that wave lands.
+    const settleStart = Date.now();
+    const settleDeadline = settleStart + 25_000;
+    const QUIET_MS = 2_000;
     while (Date.now() < settleDeadline) {
-      if (apiPending === 0 && apiSeen > 0) break;
+      const quietSince = Math.max(lastAPIActivity, settleStart);
+      if (apiPending === 0 && Date.now() - quietSince > QUIET_MS) break;
       await page.waitForTimeout(250);
     }
     if (apiPending > 0) {
@@ -267,7 +287,7 @@ for (const route of ROUTES) {
   }
 
   await page.close();
-  results.push({ ...route, httpStatus, redacted, status: problems.length ? "fail" : "pass", problems });
+  results.push({ ...route, httpStatus, redacted, apiCalls: apiSeen, status: problems.length ? "fail" : "pass", problems });
 }
 
 await browser.close();
@@ -277,13 +297,16 @@ let failed = 0;
 console.log(`\nUI verification — ${BASE}\n`);
 for (const r of results) {
   if (r.status === "pass") {
-    const red = r.redacted ? `  (${r.redacted} text node(s) redacted)` : "";
-    console.log(`  PASS  ${r.path.padEnd(18)} ${r.name}.png${red}`);
+    const red = r.redacted ? `, ${r.redacted} redacted` : "";
+    // The API-call count is printed on purpose. A data page that made zero calls
+    // rendered *something*, and the screenshot will look plausible — that number
+    // is the cheapest way to notice it was the wrong something.
+    console.log(`  PASS  ${r.path.padEnd(18)} ${r.name}.png  (${r.apiCalls} API call(s)${red})`);
   } else if (r.status === "skipped") {
     console.log(`  SKIP  ${r.path.padEnd(18)} ${r.reason}`);
   } else {
     failed++;
-    console.log(`  FAIL  ${r.path.padEnd(18)} HTTP ${r.httpStatus}`);
+    console.log(`  FAIL  ${r.path.padEnd(18)} HTTP ${r.httpStatus}  (${r.apiCalls} API call(s))`);
     for (const p of r.problems) console.log(`          ${p}`);
   }
 }
