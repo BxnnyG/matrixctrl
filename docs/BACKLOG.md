@@ -319,6 +319,25 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-12 · Legacy 1:1 calls have no TURN server, and nothing says so (S14).** Found
+  2026-08-02, after the entire MatrixRTC path was repaired and verified end to end
+  from the internet — and calling *still* failed with "ringing → connecting → dead".
+  `livekit_room_total` stayed at 0 **during** the call and the token endpoint logged
+  no request, so the client never attempted Element Call at all. It was making a
+  **legacy Matrix 1:1 call**, which is plain peer-to-peer WebRTC and needs a TURN
+  relay from Synapse's own config. Synapse has `turn_uris` unset, and **the ESS
+  chart offers no such option** — `helm show values` has no `coturn`, no
+  `turnServer`, nothing. So on a carrier connection behind CGNAT, a legacy call can
+  never connect, and the failure is silent on both ends.
+  Ruled out on the way: CORS on the token endpoint (`access-control-allow-origin: *`
+  on preflight and POST), reachability, certificates, routing.
+  **This is a third independent fault behind one symptom** (see P1-9, P1-10). Each
+  was real, each was fixed, and none of them alone would have made calling work —
+  which is exactly why "I fixed it, try now" was wrong three times in a row.
+  *Product angle:* MatrixCtrl's `/rtc` page reports on the SFU and says nothing
+  about the legacy path, so an operator whose users make 1:1 calls gets a page full
+  of green about a component their calls never touch. The page should state which
+  call path a deployment actually supports, and that legacy 1:1 has no relay.
 - **P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly (S2).**
   Found 2026-08-02. The RTC Ingress carried `ingressClassName: disabled` and
   `kubernetes.io/ingress.class: ignore` — **neither is rendered by the chart**. Both
