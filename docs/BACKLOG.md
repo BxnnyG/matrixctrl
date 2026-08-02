@@ -319,6 +319,24 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly (S2).**
+  Found 2026-08-02. The RTC Ingress carried `ingressClassName: disabled` and
+  `kubernetes.io/ingress.class: ignore` — **neither is rendered by the chart**. Both
+  were applied by hand 69 days ago, together with a stand-alone Traefik
+  `IngressRoute` that did the real routing. Helm's three-way merge *preserves*
+  fields it has never owned, so the exception outlived every upgrade and nothing
+  ever mentioned it.
+  The cost was concrete: changing the RTC hostname through config produced a
+  correct Ingress that Traefik was still instructed to ignore, so the new host
+  404'd while the old one kept working — a failure that looks like a chart bug and
+  is not one.
+  **This is the exact failure mode MatrixCtrl was built to prevent, and it cannot
+  currently see it.** The hook engine re-applies *known* patches; nothing detects
+  *unknown* ones.
+  *Fix:* drift detection — render the release's manifests and diff them against
+  live objects, reporting fields that exist only in the cluster. That is a read-only
+  comparison of two things the product already has, and it would have printed this
+  in one line.
 - **P1-10 · Element Call is unreachable: the RTC host has no path from outside (S14).**
   Found 2026-08-02, after P1-9 was fixed and calling was *still* bad. The decisive
   measurement was LiveKit's own metrics: `livekit_room_total 0`,
