@@ -33,6 +33,23 @@ func (c *Client) Patch(ctx context.Context, resourceType, namespace, name string
 	return nil
 }
 
+// GetObjectJSON returns the live object as JSON, using the same resource-type
+// vocabulary as Patch. It lives next to Patch on purpose: the drift check applies
+// hook patches to what this returns, and if the two disagreed about what
+// "deployment" means, the check would report drift nobody could act on.
+func (c *Client) GetObjectJSON(ctx context.Context, resourceType, namespace, name string) ([]byte, error) {
+	gvr, ok := knownGVRs[resourceType]
+	if !ok {
+		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
+	}
+
+	obj, err := c.Dynamic.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get %s %s/%s: %w", resourceType, namespace, name, err)
+	}
+	return obj.MarshalJSON()
+}
+
 // WaitForRollout polls until the deployment's ready replicas match desired.
 func (c *Client) WaitForRollout(ctx context.Context, namespace, name string) error {
 	for {

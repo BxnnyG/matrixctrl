@@ -20,6 +20,7 @@ type Deps struct {
 	Setup  *handlers.SetupHandler
 	Audit  *handlers.AuditHandler
 	RTC    *handlers.RTCHandler
+	Drift  *handlers.DriftHandler
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -87,6 +88,11 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/{id}/runs", deps.Hooks.ListRuns)
 			r.Get("/{id}/runs/{runId}", deps.Hooks.GetRun)
 		})
+
+		// Reports whether those hooks' patches are still in effect. Separate from
+		// /hooks because "enabled" and "applied" are different questions, and
+		// conflating them is what let a broken cluster read as green.
+		r.Get("/api/v1/drift", deps.Drift.Status)
 
 		r.Route("/api/v1/config", func(r chi.Router) {
 			r.Get("/slices", deps.Config.ListSlices)

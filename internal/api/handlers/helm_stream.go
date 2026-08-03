@@ -106,9 +106,19 @@ func (s *upgradeStream) snapshot() (logs []string, done bool, status string) {
 // no way to tell a working upgrade from a hung one (P1-7). The lines go through
 // emit, so they are recorded in the log buffer and a reconnecting client replays
 // them.
+//
+// stop waits for the emitter to have finished, rather than merely signalling it.
+// Without that wait, a tick already in flight can land *after* stop returns, so a
+// caller that stops the heartbeat and then writes a final line can have the
+// heartbeat appear underneath it. It showed up first as a flaky test — the
+// assertion "no further lines after stop" failed roughly one run in twenty, and
+// only under parallel load, which is exactly the shape of a race that reaches
+// production as "the log order is sometimes weird".
 func (s *upgradeStream) startProgress(label string, interval time.Duration) (stop func()) {
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		started := time.Now()
 		t := time.NewTicker(interval)
 		defer t.Stop()
@@ -122,7 +132,10 @@ func (s *upgradeStream) startProgress(label string, interval time.Duration) (sto
 		}
 	}()
 	var once sync.Once
-	return func() { once.Do(func() { close(done) }) }
+	return func() {
+		once.Do(func() { close(done) })
+		<-finished // a second call also blocks here, harmlessly: the channel stays closed
+	}
 }
 
 // formatElapsed renders a duration the way an operator reads it while waiting:

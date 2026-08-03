@@ -162,6 +162,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc, pool, bootstrapAuth.JWTKey())
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
+	driftHandler := handlers.NewDriftHandler(pool, k8sClient)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
 	wsHandler := handlers.NewWSHandler(helmHandler)
@@ -172,6 +173,7 @@ func main() {
 		Auth:   authHandler,
 		Status: statusHandler,
 		Hooks:  hooksHandler,
+		Drift:  driftHandler,
 		Helm:   helmHandler,
 		WS:     wsHandler,
 		Config: configHandler,
