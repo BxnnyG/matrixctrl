@@ -10,6 +10,22 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+interface DriftFinding {
+  hook: string;
+  action: string;
+  name: string;
+  status: "satisfied" | "drifted" | "unknown";
+  detail: string;
+  paths?: string[];
+}
+
+interface DriftResponse {
+  findings: DriftFinding[];
+  satisfied: number;
+  drifted: number;
+  unknown: number;
+}
+
 interface ComponentStatus {
   name: string;
   kind?: string;
@@ -115,6 +131,14 @@ function Dashboard() {
     queryFn: () => api.get<EventInfo[]>("/api/v1/status/events?limit=25"),
     refetchInterval: 20_000,
   });
+  // Whether the hooks' patches are still in effect — a different question from
+  // whether the hooks are enabled, and the one that was silently "no" while every
+  // other panel on this page was green (see internal/drift).
+  const { data: drift } = useQuery({
+    queryKey: ["drift"],
+    queryFn: () => api.get<DriftResponse>("/api/v1/drift"),
+    refetchInterval: 60_000,
+  });
   const { data: sysinfo } = useQuery({
     queryKey: ["sysinfo"],
     queryFn: () => api.get<SysInfoResponse>("/api/v1/status/sysinfo"),
@@ -203,6 +227,37 @@ function Dashboard() {
             <strong>{hotComponents.map((c) => shortName(c.name)).join(", ")}</strong> in Restart-Schleife — Ursache ansehen.
           </span>
           <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => setDrawer(hotComponents[0].name)}>Diagnose</Button>
+        </Card>
+      )}
+
+      {/* Drift banner. A patch that is no longer applied is invisible everywhere
+          else: the pod is healthy, the release is deployed, the hook says enabled.
+          Only "would this patch still change something?" gives it away. */}
+      {(drift?.drifted ?? 0) > 0 && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-err) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-err) 28%, var(--border))" }}>
+          <Icon name="alert" size={18} style={{ color: "var(--status-err)" }} />
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 13, color: "var(--text)" }}>
+              <strong>{drift!.drifted} Hook-Patch{drift!.drifted === 1 ? "" : "es"} nicht mehr aktiv.</strong>{" "}
+              Meist die Folge eines Helm-Upgrades, das an MatrixCtrl vorbei lief.
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 3, fontFamily: "var(--mono)" }}>
+              {drift!.findings.filter((f) => f.status === "drifted").slice(0, 3)
+                .map((f) => `${f.name}: ${(f.paths ?? []).join(", ")}`).join(" · ")}
+            </div>
+          </div>
+          <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/hooks" })}>Hooks ausführen</Button>
+        </Card>
+      )}
+
+      {/* Unknown is shown too, quieter. It means the check could not answer — which
+          must not look like an all-clear, and must not look like an alarm either. */}
+      {(drift?.unknown ?? 0) > 0 && (drift?.drifted ?? 0) === 0 && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface-2)" }}>
+          <Icon name="info" size={17} style={{ color: "var(--text-dim)" }} />
+          <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-dim)" }}>
+            {drift!.unknown} Hook-Patch{drift!.unknown === 1 ? "" : "es"} nicht prüfbar — der Zustand ist unbekannt, nicht bestätigt.
+          </span>
         </Card>
       )}
 
