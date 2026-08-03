@@ -15,6 +15,31 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-08-03
+
+### Added
+
+- **Drift detection: the dashboard now says when a hook patch is no longer in
+  effect.** A Helm upgrade run outside MatrixCtrl re-rendered the RTC SFU without
+  `hostNetwork: true` and reset three Services to `externalTrafficPolicy: Cluster`.
+  Calling broke. Every panel stayed green, because "the hook is enabled" and "the
+  hook's effect is in the cluster" are different statements and only the first one
+  was ever checked.
+- The check needs no list of fields to watch: each hook already records the
+  resource, the name and the patch. The live object is fetched, the patch is applied
+  **in memory**, and if nothing would change, the patch is in effect. That is exact,
+  and it covers hooks that do not exist yet.
+- `unknown` is reported as itself. A cluster read that fails, a resource that is
+  absent on a greenfield install, or a patch that cannot be parsed are never shown
+  as satisfied — the whole defect being fixed was an unknown reading as fine.
+
+### Fixed
+
+- The upgrade stream's progress heartbeat could emit one more line after being
+  stopped, so a final message could end up underneath it. `stop()` now waits for the
+  emitter instead of only signalling it. Found as a test that failed about one run
+  in twenty under parallel load.
+
 ## [0.1.20] — 2026-08-02
 
 ### Changed

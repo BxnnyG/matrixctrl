@@ -72,15 +72,15 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 |---|---|---|
 | S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
 | S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14); an upgrade whose process dies is reconciled to `interrupted` at startup instead of reading as running forever (P2-16) |
-| S3 Post-upgrade hooks | ✅ (E2, E12) | Engine + built-ins + editor; enable/disable per deployment |
+| S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21) |
 | S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
-| S9 Verification & CI | ✅ (E13, E14, E18) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
+| S9 Verification & CI | ✅ (E13, E14, E18, E20) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
 | S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
-| S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished" |
+| S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ⏳ not started | Phase 2 — parked behind S6 ([VISION.md](VISION.md)) |
 | S14 Day-2 operations (RTC/TLS/backup) | ⏳ ⅓ (E19) | RTC: the ports to forward read live from the Services, and inbound reachability stated as **unknown** rather than omitted (P2-9). TLS/DNS and backup not started |
@@ -498,3 +498,35 @@ the highest revision, matching `Last()`. A test pins that specific behaviour.
 - **Not fixed:** `ListHistory` (`/helm/history`) has the same shape of problem and
   genuinely needs every revision's chart version, so the same trick does not apply
   unchanged. Left as P2-22 rather than guessed at here. Affects S2, S4.
+
+### §4.21 — "Enabled" and "applied" are different questions (2026-08-03, agent)
+**Question:** on 2026-08-02 a Helm upgrade was run outside MatrixCtrl. The chart
+re-rendered the SFU deployment without `hostNetwork: true` and three Services fell
+back to `externalTrafficPolicy: Cluster`. The SFU stopped binding its host ports and
+calling broke. Every screen stayed green — pods healthy, release deployed, hooks
+listed as **enabled**. How does the product notice?
+
+**Decision:** `internal/drift` fetches each live object, applies the hook's patch to
+it **in memory**, and asks whether anything would change. A patch that changes
+nothing has already taken effect.
+
+**Rationale:** no new specification was needed, because the hooks already are one —
+each `kubectl_patch` action carries `resource`, `name`, `namespace` and the patch
+body. So the check is exact rather than heuristic, and it keeps working for hooks
+nobody has written yet: nothing in the package names the SFU or any field. The
+alternative on the table was a curated list of fields to watch, which would only
+ever find what someone already thought of — the same shape of mistake as §4.18.
+
+**Decision detail:** `unknown` is a first-class result. A failed read, an absent
+resource (greenfield has no SFU) or an undecodable patch never render as
+`satisfied`. Strategic merge is **refused** rather than approximated: it needs the
+typed schema to handle lists, and guessing would flag fields that are fine — a
+report that cries wolf is ignored within two weeks, taking the exact part with it.
+The check is read-only: re-applying automatically would hide that something reset
+it, and that is the information the operator actually needs.
+
+**Consequences:** S11 check #4 ("the SFU patches survive a Helm upgrade") stops
+being a sentence in a document and becomes a number on the dashboard. What it does
+*not* cover is manual edits no hook knows about — the `ingressClassName: disabled`
+that Helm preserved for 69 days needs manifest-versus-live diffing, which is the
+open half of P1-11. Affects S2, S11.

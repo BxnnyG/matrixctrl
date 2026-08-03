@@ -95,3 +95,44 @@ is usually wrong gets ignored within two weeks and then the exact half is gone t
 - An API error can never produce `satisfied`
 - Logic under test without a cluster
 - Verified against the live cluster, where the answer is currently known
+
+## Outcome (2026-08-03)
+
+Shipped in `0.1.21`. Verified against the live cluster from both directions:
+
+| Case | Result |
+|---|---|
+| The four real hook patches, currently applied | `satisfied`, **no false positives** |
+| `turn-tls`, which runs `Cluster` by design, against a `Local` patch | `drifted`, `paths: [spec.externalTrafficPolicy]` |
+
+The negative case matters more than the positive one. A checker that can only ever
+say "fine" is indistinguishable from no checker, and this one had to be shown saying
+"no" against a real object — which `turn-tls` allows without touching the cluster,
+because E19 already established that its policy difference is deliberate.
+
+The no-false-positives result is the other half. A live Deployment carries hundreds
+of defaulted and controller-set fields; a naive diff would have flagged every one of
+them and the report would have been switched off within a fortnight.
+
+### What made this cheap
+
+Nothing here had to be specified, because the hooks already were a specification.
+That is worth noticing as a pattern: the product had been carrying a machine-readable
+statement of "what must be true after an upgrade" since E2, and used it only to
+*write*. Reading it was a day's work and it closes a hole that cost the operator an
+evening.
+
+### Found on the way
+
+`startProgress`'s `stop()` only signalled the emitter. A tick already in flight could
+land after it returned, so a caller writing a final line could have the heartbeat
+appear underneath it. It surfaced as a test failing about one run in twenty under
+parallel load — the shape of thing that reaches production as "the log order is
+sometimes weird" and is never diagnosed. `stop()` now waits.
+
+### Still open
+
+The other half of P1-11: manual edits **no hook knows about**, such as the
+`ingressClassName: disabled` that Helm preserved for 69 days. That needs
+manifest-versus-live diffing and a curated field list. Shipping the exact half first
+is deliberate.

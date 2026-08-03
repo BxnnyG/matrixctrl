@@ -367,6 +367,10 @@ strangers depends on a code path nobody has ever run.
   of green about a component their calls never touch. The page should state which
   call path a deployment actually supports, and that legacy 1:1 has no relay.
 - **P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly (S2).**
+  **Half done 2026-08-03 (E21):** patches *a hook declares* are now checked against
+  the live object continuously and shown on the dashboard (§4.21). Still open: edits
+  **no hook knows about**, which need manifest-versus-live diffing and a curated
+  field list. Original entry:
   Found 2026-08-02. The RTC Ingress carried `ingressClassName: disabled` and
   `kubernetes.io/ingress.class: ignore` — **neither is rendered by the chart**. Both
   were applied by hand 69 days ago, together with a stand-alone Traefik
