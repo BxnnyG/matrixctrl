@@ -319,6 +319,34 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-13 · Calling: where the investigation of 2026-08-02/03 actually stopped (S14).**
+  Recorded so the next attempt starts from measurements rather than from scratch.
+  **Established, each by measurement:** signalling works end to end from the
+  internet (token endpoint returns the auth service's own error, CORS headers
+  present, WebSocket upgrade succeeds); the client *does* reach Element Call — the
+  SFU creates the room, mints identities and logs `starting RTC session`; the
+  announced address matches the current WAN address and DNS.
+  **Where it fails:** `removing participant without connection`. ICE reports
+  `requestsSent: 8, responsesReceived: 0, requestsReceived: 0` on every candidate
+  pair — the SFU hears nothing from the client and the client hears nothing back.
+  Packet counters on UDP 30001/30002/30004 stayed at **0** across every attempt, so
+  no media packet has ever reached the node.
+  The SFU offers exactly one candidate, `type(host/)` on the NAT1To1 address — no
+  `srflx`, no `relay`. One of the client's candidates is `100.110.142.x`, i.e.
+  RFC 6598 carrier NAT.
+  **Ruled out by measurement, not assumption:** stale announced IP (P1-9, fixed and
+  re-verified), lost `hostNetwork` and `externalTrafficPolicy` patches (see below,
+  restored and verified — the SFU now binds 30002/30004/30001 on the host), the
+  RTC hostname and its routing (P1-10/P1-11), CORS, certificates, well-known.
+  **Not yet answered:** whether a single inbound UDP packet reaches the node's WAN
+  interface at all. That needs a counter read *during* a call, or a capture — and
+  `tcpdump` is not installed on the host. Everything upstream of that question is
+  now known-good, which is worth more than it sounds: it means the remaining
+  surface is one hop wide.
+  *Three "it should work now" claims were made during this investigation and all
+  three were wrong. Each rested on a real, fixed defect; none of them was the last
+  one. The lesson is not "measure more" — every step was measured — it is that a
+  fixed cause is not evidence of the only cause.*
 - **P1-12 · Legacy 1:1 calls have no TURN server, and nothing says so (S14).** Found
   2026-08-02, after the entire MatrixRTC path was repaired and verified end to end
   from the internet — and calling *still* failed with "ringing → connecting → dead".
