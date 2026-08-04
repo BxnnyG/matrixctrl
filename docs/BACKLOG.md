@@ -339,7 +339,63 @@ strangers depends on a code path nobody has ever run.
   same fate, and shipping it before that is measured would be the fourth "it should
   work now".
 
-- **P1-13 · Calling: where the investigation of 2026-08-02/03 actually stopped (S14).**
+- **P1-13 · ANSWERED 2026-08-04: nothing inbound reaches the node (S14).**
+  Measured, finally, from outside the network — the vantage point E19 said was
+  needed and which turned out to be one HTTP request to a public port checker:
+
+  | checked from the internet | result |
+  |---|---|
+  | TCP 30001 on the operator's public address | **closed** |
+  | TCP 443 on the same address | closed (expected — moved to the Cloudflare tunnel) |
+  | TCP 443 on an unrelated public host | open — so the checker is honest |
+
+  And the node itself has **only private addresses** on every interface. It sits
+  behind the router's NAT, so a **DNAT port forward** is mandatory for anything
+  inbound. The firewall screenshots from 2026-08-02 showed *allow rules*, which on
+  most routers is a separate thing from a port forward: an allow rule permits
+  traffic that is already addressed to the host, and does nothing to redirect
+  traffic addressed to the router's public address. **That distinction is the whole
+  three-day investigation.**
+
+  One cause explains every measurement taken since 2026-08-02: ICE reporting
+  `requestsSent: 8, responsesReceived: 0, requestsReceived: 0`; packet counters
+  staying at 0 on all four ports; `nf_conntrack` empty during a live call; both
+  participants reaching the SFU over signalling and neither ever exchanging a media
+  packet; `livekit_quality_score_count` at 0 after rooms were created (E23's warning
+  case, which the product now reports on its own).
+
+  A Cloudflare tunnel cannot substitute: it is outbound-only and carries HTTP, while
+  media needs real inbound UDP.
+
+  *Also found while measuring:* the SFU's LiveKit config has `turn: {enabled: true,
+  udp_port: 30004}` with **no `domain`**, and neither client produced a `srflx` or
+  `relay` candidate in any attempt — only host candidates on private, VPN and
+  Tailscale addresses. LiveKit cannot hand out a TURN URI without a domain, so the
+  relay that is enabled is never offered to anyone. Secondary to the port forward,
+  and worth fixing after it.
+
+  *Three "it should work now" claims were made during this investigation and all
+  three were wrong. Each rested on a real, fixed defect; none was the last one. The
+  lesson stands, and is now paid for: a fixed cause is not evidence of the only
+  cause. This entry closes on a measurement, not on a prediction — whether calling
+  works after the forward is opened is the next question, not this one.*
+
+- **P1-15 · MatrixCtrl should offer the outside-in check, opt-in (S14).**
+  E19 recorded "inbound reachability cannot be tested from inside the network it
+  terminates in" as a permanent unknown, and it is true — but it quietly implied
+  that therefore nothing can be done, and that was wrong. A public port checker is
+  an outside vantage point, and one request to it answered in seconds what three
+  days of inside-out measurement could not.
+  *Shape:* a button on `/rtc` that checks the listed ports from outside and reports
+  open/closed per port, replacing the permanent "cannot be checked" with an answer.
+  *Must be opt-in and must say so plainly:* it sends the deployment's public address
+  to a third party. That is not a secret — it is in DNS — but sending it is the
+  operator's decision, not the product's, and a status page that silently phones
+  home is a status page nobody should run.
+  *Honest limit:* the useful ports are UDP and free checkers test TCP. TCP 30001 is
+  still decisive, because a router that forwards nothing forwards neither.
+
+- **P1-13-original · Where the investigation stopped, for the record (S14).**
   Recorded so the next attempt starts from measurements rather than from scratch.
   **Established, each by measurement:** signalling works end to end from the
   internet (token endpoint returns the auth service's own error, CORS headers
