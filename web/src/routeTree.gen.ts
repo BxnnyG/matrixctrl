@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UsersRouteImport } from './routes/users'
 import { Route as SystemRouteImport } from './routes/system'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RtcRouteImport } from './routes/rtc'
@@ -25,6 +26,11 @@ import { Route as ConfigSliceRouteImport } from './routes/config/$slice'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
+const UsersRoute = UsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SystemRoute = SystemRouteImport.update({
   id: '/system',
   path: '/system',
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/users'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/users'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/users'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -213,6 +225,7 @@ export interface RootRouteChildren {
   RtcRoute: typeof RtcRoute
   SetupRoute: typeof SetupRoute
   SystemRoute: typeof SystemRoute
+  UsersRoute: typeof UsersRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
   ConfigSliceRoute: typeof ConfigSliceRoute
@@ -227,6 +240,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/users': {
+      id: '/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/system': {
       id: '/system'
       path: '/system'
@@ -341,6 +361,7 @@ const rootRouteChildren: RootRouteChildren = {
   RtcRoute: RtcRoute,
   SetupRoute: SetupRoute,
   SystemRoute: SystemRoute,
+  UsersRoute: UsersRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,
   ConfigSliceRoute: ConfigSliceRoute,

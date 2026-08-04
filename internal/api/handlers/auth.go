@@ -12,6 +12,7 @@ import (
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/auth"
+	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
 type TokenService interface {
@@ -61,6 +62,18 @@ func (h *AuthHandler) ReloadOIDC(ctx context.Context) error {
 	h.mu.Unlock()
 	log.Printf("OIDC hot-reloaded: issuer=%s client_id=%s", cfg.Issuer, cfg.ClientID)
 	return nil
+}
+
+// MAS returns the current OIDC service's shared MAS admin client, or nil in
+// bootstrap mode. Read through the same lock ReloadOIDC writes under, so a swap
+// mid-request hands back a consistent client rather than a torn read.
+func (h *AuthHandler) MAS() *mas.Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.oidc == nil {
+		return nil
+	}
+	return h.oidc.MAS()
 }
 
 func (h *AuthHandler) ValidateToken(token string) (string, error) {

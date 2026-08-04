@@ -49,6 +49,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 | 17 | Audit trail — the writes that were documented for two months but never existed | ✅ 2026-08-01 · `v0.1.18` · [plan](plans/etappe-17-audit-trail.md) |
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
+| 27 | Phase 2 beginnt — user list from MAS, read-only: shared admin client, cursor paging, locked ≠ deactivated | ✅ 2026-08-04 · `v0.1.28` · [plan](plans/etappe-27-users.md) |
 | 26 | Von außen prüfen — the permanent "cannot be checked from here" replaced by an opt-in outside vantage point, with a control that decides whether "closed" can be believed | ✅ 2026-08-04 · `v0.1.27` · [plan](plans/etappe-26-reachability.md) |
 | 25 | Hand-Edits — ask the API server who owns each field instead of diffing manifests; closes the half of P1-11 that E21 could not see | ✅ 2026-08-04 · `v0.1.26` · [plan](plans/etappe-25-manual-edits.md) |
 | 24 | Calls — which path does this actually support: the page reported on the SFU while the failing calls were legacy 1:1, which needs a relay ESS has no option for | ✅ 2026-08-04 · `v0.1.25` · [plan](plans/etappe-24-call-paths.md) |
@@ -71,7 +72,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 18 | **First impression** (S8, S9) | Nobody had ever looked at the repo as a stranger: no screenshots, no maturity notice, no disclosure that the UI is German. | ✅ 2026-08-01 |
 | 17 | **Audit trail** (S10) | Not "a UI over existing writes" — checking found the writes never existed and production had 0 rows. | ✅ 2026-08-01 |
 | 19 | **Calling reachability** (S14) | Calling was broken while every signal was green; the deciding half was never shown. | ✅ 2026-08-01 |
-| — | Phase 2 — users, rooms, moderation (S13) | Deliberately parked behind the above ([VISION.md](VISION.md)). | ⬜ |
+| 20 | Phase 2 — users, rooms, moderation (S13) | Started 2026-08-04 with the user list (E27). Rooms, moderation and user *writes* still open. | 🔄 |
 
 ## Phase detail
 

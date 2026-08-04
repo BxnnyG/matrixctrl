@@ -25,9 +25,13 @@ const NAV: NavGroup[] = [
     { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
     { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
   ] },
+  // Users is real as of E27; rooms and moderation are still roadmap entries.
+  { group: "Verwaltung", items: [
+    { id: "users", label: "Benutzer", icon: "users", to: "/users" },
+  ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
-  { group: "Verwaltung", phase: "2", items: [
-    { id: "users", label: "Benutzer", icon: "users" }, { id: "rooms", label: "Räume", icon: "room" }, { id: "moderation", label: "Moderation", icon: "shield" },
+  { group: "Verwaltung · geplant", phase: "2", items: [
+    { id: "rooms", label: "Räume", icon: "room" }, { id: "moderation", label: "Moderation", icon: "shield" },
   ] },
   { group: "Betrieb · Day-2", phase: "3", items: [
     { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
@@ -50,6 +54,7 @@ const TITLES: Record<string, [string, string]> = {
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
+  "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 

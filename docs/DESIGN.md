@@ -635,3 +635,38 @@ still decisive: a router that forwards nothing forwards neither.
 is `POST`, never runs on a page load or a timer, names both third-party hosts in the
 UI before the click, and stores nothing — no consent flag to forget about. A status
 page that silently phones home is one nobody should run. Affects S14.
+
+### §4.25 — One way to talk to MAS, and it reports MAS (2026-08-04, agent)
+**Question:** Phase 2 begins with user management, and MAS admin access already
+existed — inside `internal/auth/oidc.go`, minting a `client_credentials` token per
+call to answer one question at login. Does user management get its own?
+
+**Decision:** no. `internal/mas` holds the client; the login path uses it too. The
+token is cached with its `expires_in`, and a `401` drops the cache and retries once.
+
+**Rationale:** CLAUDE.md rule 3, applied where it actually bites. Two clients would
+not fail loudly — they would drift the day someone changes the scope, the issuer
+trimming or the 404 semantics in one copy, and the symptom would be an admin who
+can log in but sees no users, or the reverse. The per-call token mint was also
+correct for one check per login and wrong for a paged list, where it doubles the
+request count for every page.
+
+**Decision detail:** the API shape was read from the **live** OpenAPI spec at
+`/api/spec.json`, not from documentation. That is where the design constraint came
+from: MAS pages by **cursor**, not offset, so there is no page number to render and
+a UI with page numbers would be a lie told in the client. Cursors are extracted from
+the returned links rather than replayed whole — replaying a link would let the
+caller ask MAS for whatever that link happened to contain.
+
+**Decision detail:** `locked_at` and `deactivated_at` are separate timestamps and
+stay separate all the way to the UI. Locked is reversible and usually temporary;
+deactivated is the account being gone. Collapsing both into "disabled" would throw
+away exactly what an operator needs in order to decide what to do.
+
+**Consequences:** the page reports **MAS accounts** and says so. Synapse keeps its
+own user table and the two can disagree on a migrated stack; reconciling them is
+real work and gets its own etappe rather than a footnote. Writes — lock, deactivate,
+set-admin, set-password — are deliberately not in this etappe: each is destructive in
+a different way and needs confirmation plus audit entries, and shipping the dangerous
+half alongside the subsystem that introduces it is how the dangerous half goes
+untested. Affects S13.

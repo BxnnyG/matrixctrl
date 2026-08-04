@@ -13,6 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
 // OIDCConfig holds all config needed for the OIDC authorization-code flow.
@@ -44,7 +46,16 @@ type OIDCService struct {
 	db        *pgxpool.Pool
 	jwtKey    []byte
 	discovery *oidcDiscovery
+	// mas is the shared MAS admin client. The token minting and the admin lookup
+	// used to live in this file, which was correct while login was the only caller.
+	// User management is the second one, and two copies would drift the day someone
+	// changes the scope or the error semantics in one of them (CLAUDE.md rule 3).
+	mas *mas.Client
 }
+
+// MAS exposes the shared admin client so the API layer can reuse the same
+// credentials and token cache rather than building a second one.
+func (o *OIDCService) MAS() *mas.Client { return o.mas }
 
 func NewOIDCService(cfg OIDCConfig, db *pgxpool.Pool, jwtKey []byte) (*OIDCService, error) {
 	svc := &OIDCService{cfg: cfg, db: db, jwtKey: jwtKey}
@@ -59,6 +70,9 @@ func NewOIDCService(cfg OIDCConfig, db *pgxpool.Pool, jwtKey []byte) (*OIDCServi
 		return nil, fmt.Errorf("oidc discovery parse: %w", err)
 	}
 	svc.discovery = &d
+	// Built here rather than lazily: discovery has just produced the token endpoint,
+	// and a second opinion about that value later is a bug waiting for a config change.
+	svc.mas = mas.New(cfg.Issuer, d.TokenEndpoint, cfg.ClientID, cfg.ClientSecret)
 	return svc, nil
 }
 
@@ -191,84 +205,18 @@ func (o *OIDCService) ExchangeCode(ctx context.Context, code, state string) (str
 	return mxid, nil
 }
 
-// masAdminToken fetches a short-lived client_credentials token with the urn:mas:admin
-// scope, using MatrixCtrl's own OIDC client credentials.
-func (o *OIDCService) masAdminToken(ctx context.Context) (string, error) {
-	body := url.Values{
-		"grant_type": {"client_credentials"},
-		"scope":      {"urn:mas:admin"},
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", o.discovery.TokenEndpoint,
-		strings.NewReader(body.Encode()))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(o.cfg.ClientID, o.cfg.ClientSecret)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("admin token request: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-
-	var tr struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
-		ErrorDesc   string `json:"error_description"`
-	}
-	if err := json.Unmarshal(raw, &tr); err != nil {
-		return "", fmt.Errorf("parse admin token: %w", err)
-	}
-	if tr.Error != "" {
-		return "", fmt.Errorf("admin token error %s: %s", tr.Error, tr.ErrorDesc)
-	}
-	return tr.AccessToken, nil
-}
-
-// isMASAdmin queries the MAS Admin API to check whether the given user ID (ULID, the
-// OIDC `sub`) has admin rights (can_request_admin=true).
+// isMASAdmin asks MAS whether the given user ID (a ULID, the OIDC `sub`) may
+// request admin. An account MAS does not know is not an admin — a definite answer,
+// not a failure to determine one.
 func (o *OIDCService) isMASAdmin(ctx context.Context, userID string) (bool, error) {
-	token, err := o.masAdminToken(ctx)
+	user, err := o.mas.UserByID(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-
-	base := strings.TrimRight(o.cfg.Issuer, "/")
-	endpoint := base + "/api/admin/v1/users/" + url.PathEscape(userID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return false, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("mas admin API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if user == nil {
 		return false, nil
 	}
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("mas admin API returned %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Data struct {
-			Attributes struct {
-				Admin bool `json:"admin"`
-			} `json:"attributes"`
-		} `json:"data"`
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if err := json.Unmarshal(body, &result); err != nil {
-		return false, fmt.Errorf("parse mas admin response: %w", err)
-	}
-	return result.Data.Attributes.Admin, nil
+	return user.Admin, nil
 }
 
 // CreateOIDCSession creates a DB session for a Matrix user and returns a JWT.

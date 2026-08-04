@@ -15,6 +15,34 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-08-04
+
+### Added
+
+- **Phase 2 starts: a user list.** Accounts from the Matrix Authentication Service,
+  searchable, filterable by state, with cursor paging. Until now the answer to "show
+  me the users" was "go use element-admin".
+- **Locked and deactivated stay distinct** — separate timestamps, separate states,
+  separate wording. Locked is reversible and usually temporary; deactivated is the
+  account being gone, and an operator deciding what to do needs to know which.
+- The page states that it reads **MAS**, which is authoritative for accounts under
+  MSC3861, rather than implying it lists every user Synapse has ever seen.
+- Bootstrap mode explains that the feature needs MAS credentials instead of showing
+  an empty list that reads as "no users".
+
+### Changed
+
+- MAS admin access moved out of `internal/auth` into `internal/mas`, shared with the
+  login path. The admin token is now cached with its lifetime instead of minted per
+  call — the old behaviour doubled the request count for every page — and a `401`
+  drops the cache and retries once, so a rotated secret costs one retry rather than
+  every request until the process restarts.
+
+### Not in this release
+
+- Writes: lock, deactivate, set-admin, set-password. Each is destructive in a
+  different way and needs confirmation plus audit entries.
+
 ## [0.1.27] — 2026-08-04
 
 ### Added
