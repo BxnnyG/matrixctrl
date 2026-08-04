@@ -70,3 +70,39 @@ misread.
 - A quiet SFU produces `unknown`, not a warning and not an all-clear
 - Metrics parsing tested without a cluster, including a malformed body
 - S11 green **after** the deploy
+
+## Outcome (2026-08-04)
+
+Shipped in `0.1.24`.
+
+Production at the time of writing: rooms created earlier in the day, **zero**
+quality samples and zero forward samples. The page states that in one line —
+signalling works, media does not — which is the conclusion two days of manual
+measurement arrived at.
+
+### The trap the tests caught
+
+A truncated metrics body (`livekit_quality_score_count{unclosed 5`) parsed
+successfully and set a real counter, which would have produced a **false all-clear**
+from a half-delivered response. Label sets must now close before the value is taken.
+That is the only failure mode of this feature that really matters: reporting media
+where there is none sends the operator away from a real fault.
+
+`livekit_node_packet_total{type="out"}` was the obvious candidate and is a trap of
+its own — it climbed by 2400 in two minutes on an SFU with zero participants. Using
+it as evidence would have produced a permanent green tick. It is reported for
+context, and a test pins that it never counts as media.
+
+### Found while shipping it
+
+The tag was pushed with `Chart.yaml` still on the previous version, because a `cd`
+in a build command persisted and the version bump silently ran in the wrong
+directory. **E16's release guard caught it**: the workflow compares the tag against
+the chart and failed before anything reached GHCR. That guard was written for
+exactly this and had never fired in anger until now.
+
+### What it still does not say
+
+Whether the ports are open, or whether the *next* call will work. E19's permanent
+unknown stands. This narrows it: "has media ever arrived" is answerable from inside,
+"can it arrive" is not, and keeping those apart is the whole point.

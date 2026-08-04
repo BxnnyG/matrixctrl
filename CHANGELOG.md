@@ -15,6 +15,26 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-08-04
+
+### Added
+
+- **Calls / RTC now answers "has a call ever actually worked?"** Every check the
+  product had reported on a component — pods healthy, ports listed, patches applied,
+  signalling reachable — and none of them answered that. The SFU has counted it all
+  along: `livekit_quality_score_count` and `livekit_forward_latency_ns_count` only
+  move when media is being carried.
+- The distinction that makes it usable: **rooms created but zero media samples** is
+  a fault and says so, pointing at the media path rather than at signalling.
+  **Zero rooms** is not a fault — nobody called — and is reported as unknown rather
+  than as an alarm. An alarm that fires on a quiet night is switched off before it
+  ever fires on a real one.
+- `livekit_node_packet_total{type="out"}` rises on a completely idle SFU (16208 →
+  18633 in two minutes with no participants), so it is shown for context and
+  explicitly does not count as evidence.
+- Every statement is scoped "since the SFU started", with the uptime, because the
+  counters reset with the pod and a number without its window gets misread.
+
 ## [0.1.23] — 2026-08-03
 
 ### Fixed
