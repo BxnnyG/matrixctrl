@@ -15,6 +15,19 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-08-03
+
+### Fixed
+
+- **The stale-address check only observed when someone opened the Calls page.**
+  Which is exactly when they would notice the problem anyway. It measures *when* the
+  public address changed, and that timestamp can only be as good as the observation
+  interval — a history built from page views has gaps precisely where nobody was
+  looking. A background watcher now resolves the announced host every five minutes,
+  bounding the error to five minutes against a change that happens about daily.
+- A failed lookup still records nothing, so a cluster that briefly loses DNS does
+  not appear to change address every five minutes.
+
 ## [0.1.22] — 2026-08-03
 
 ### Added

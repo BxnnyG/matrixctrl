@@ -59,7 +59,7 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	host := h.announcedHost(ctx)
+	host := h.AnnouncedHost(ctx)
 
 	var ips []string
 	var resolveErr error
@@ -92,10 +92,12 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// announcedHost reads matrixRTC.ingress.host — what clients are actually told.
+// AnnouncedHost reads matrixRTC.ingress.host — what clients are actually told.
+// Exported so the background watcher observes the *same* host the page reports on;
+// a second reader of the same config key would be one refactor away from drifting.
 // An empty result is a valid answer and is reported as such rather than guessed
 // at from the server name.
-func (h *RTCHandler) announcedHost(ctx context.Context) string {
+func (h *RTCHandler) AnnouncedHost(ctx context.Context) string {
 	if h.configStore == nil {
 		return ""
 	}

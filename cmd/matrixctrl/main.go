@@ -22,6 +22,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
 	builtin "github.com/bxnnyg/matrixctrl/internal/hooks/builtin"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
 	"github.com/bxnnyg/matrixctrl/internal/version"
 )
@@ -163,6 +164,7 @@ func main() {
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	driftHandler := handlers.NewDriftHandler(pool, k8sClient)
+	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
 	wsHandler := handlers.NewWSHandler(helmHandler)
@@ -179,10 +181,15 @@ func main() {
 		Config: configHandler,
 		Setup:  setupHandler,
 		Audit:  handlers.NewAuditHandler(auditStore),
-		RTC:    handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool),
+		RTC:    rtcHandler,
 
 		AuditSink: auditStore,
 	})
+
+	// Observe the announced RTC address on a timer. Doing it only on page view
+	// would leave the history with gaps exactly where nobody was looking, and the
+	// thing being measured is *when* the address changed.
+	go rtc.NewWatcher(rtc.NewStore(pool), rtcHandler.AnnouncedHost, 0).Start(context.Background())
 
 	srv := server.New(addr, router)
 
