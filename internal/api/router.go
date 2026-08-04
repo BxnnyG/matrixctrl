@@ -94,6 +94,10 @@ func NewRouter(deps Deps) http.Handler {
 		// conflating them is what let a broken cluster read as green.
 		r.Get("/api/v1/drift", deps.Drift.Status)
 
+		// Replacing the SFU pod is the fix for an announced address that went stale
+		// overnight. POST so it lands in the audit log like every other mutation.
+		r.Post("/api/v1/rtc/restart-sfu", deps.RTC.RestartSFU)
+
 		r.Route("/api/v1/config", func(r chi.Router) {
 			r.Get("/slices", deps.Config.ListSlices)
 			r.Get("/slices/{name}", deps.Config.GetSlice)

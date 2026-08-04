@@ -117,7 +117,45 @@ func contains(s, sub string) bool {
 // goes wrong — it is the permanent, correct statement that inbound reachability
 // cannot be tested from inside the network it terminates in.
 func Assess(ports []Port, announcedHost string, resolvedIPs []string, resolveErr error) []Finding {
+	return AssessWithFreshness(ports, announcedHost, resolvedIPs, resolveErr, FreshnessUnknown, "")
+}
+
+// AssessWithFreshness is Assess plus the answer to "is the address the SFU announces
+// still the current one?" — see address.go. Kept as a separate entry point so the
+// existing callers and tests that have no freshness input keep working unchanged,
+// and so a caller that cannot determine freshness passes Unknown explicitly rather
+// than having it defaulted somewhere out of sight.
+func AssessWithFreshness(ports []Port, announcedHost string, resolvedIPs []string, resolveErr error,
+	freshness Freshness, freshnessDetail string) []Finding {
 	var findings []Finding
+
+	switch freshness {
+	case FreshnessStale:
+		findings = append(findings, Finding{
+			Level: LevelWarn,
+			Title: "Die SFU kündigt eine veraltete Adresse an",
+			Detail: freshnessDetail + " LiveKit ermittelt seine öffentliche Adresse einmal beim Start und behält sie. " +
+				"Nach einer Zwangstrennung bekommen Clients per DNS die richtige Adresse, die SFU nennt in ihren " +
+				"ICE-Candidates aber die alte — Medien laufen ins Leere, während Signalisierung und Pods gesund aussehen.",
+			Action: "SFU-Pod ersetzen. Nicht per rollout restart: hostNetwork mit maxUnavailable=0 blockiert " +
+				"sich selbst, der neue Pod bekommt die Host-Ports nie und bleibt Pending.",
+		})
+	case FreshnessOK:
+		findings = append(findings, Finding{
+			Level:  LevelOK,
+			Title:  "Angekündigte Adresse ist aktuell",
+			Detail: freshnessDetail + " Die SFU wurde nach der letzten Adressänderung gestartet.",
+		})
+	case FreshnessUnknown:
+		if freshnessDetail != "" {
+			findings = append(findings, Finding{
+				Level:  LevelUnknown,
+				Title:  "Ob die angekündigte Adresse aktuell ist, steht noch nicht fest",
+				Detail: freshnessDetail + " Beobachtet wird ab jetzt; ein Urteil braucht mindestens eine gesehene Änderung.",
+				Action: "Nichts zu tun — der Hinweis verschwindet, sobald eine Adressänderung beobachtet wurde.",
+			})
+		}
+	}
 
 	if len(ports) == 0 {
 		findings = append(findings, Finding{

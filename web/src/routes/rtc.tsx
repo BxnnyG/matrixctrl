@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState } from "@/components/mc";
+import { Card, Badge, Icon, EmptyState, Button } from "@/components/mc";
 
 export const Route = createFileRoute("/rtc")({
   component: RTCStatus,
@@ -26,6 +26,8 @@ interface RTCStatusResp {
   announced_host: string;
   resolved_ips: string[] | null;
   ports: Port[];
+  /** Whether the address the SFU announces can still be current — see internal/rtc/address.go. */
+  freshness: "ok" | "stale" | "unknown";
   findings: Finding[];
 }
 
@@ -38,10 +40,23 @@ const TONE = {
 };
 
 function RTCStatus() {
+  const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["rtc", "status"],
     queryFn: () => api.get<RTCStatusResp>("/api/v1/rtc/status"),
     refetchInterval: 60_000,
+  });
+
+  // Replacing the pod is the fix for a stale announcement. The backend deletes the
+  // pod rather than rolling the deployment, because a rolling update of a
+  // hostNetwork workload with one replica deadlocks (P2-23).
+  const restart = useMutation({
+    mutationFn: () => api.post("/api/v1/rtc/restart-sfu", {}),
+    onSuccess: () => {
+      // The new pod needs a moment to start and re-discover its address; refetching
+      // immediately would show the old verdict and look like the button did nothing.
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["rtc"] }), 6000);
+    },
   });
 
   if (error) {
@@ -91,6 +106,18 @@ function RTCStatus() {
           </div>
         )}
       </Card>
+
+      {data?.freshness === "stale" && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-warn) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
+          <Icon name="alert" size={18} style={{ color: "var(--status-warn)" }} />
+          <span style={{ flex: 1, minWidth: 220, fontSize: 13, color: "var(--text)" }}>
+            Ein Neustart der SFU behebt das sofort — bis zur nächsten Adressänderung.
+          </span>
+          <Button variant="soft" size="sm" icon="rotate" onClick={() => restart.mutate()} disabled={restart.isPending}>
+            {restart.isPending ? "Starte neu…" : "SFU neu starten"}
+          </Button>
+        </Card>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {data?.findings.map((f, i) => {
