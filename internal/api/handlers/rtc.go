@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -81,6 +83,7 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	freshness, freshnessDetail := h.freshness(ctx, host)
+	media, mediaOK, uptime := h.mediaEvidence(ctx)
 
 	ports := rtc.SFUPorts(services)
 	JSON(w, http.StatusOK, map[string]any{
@@ -88,7 +91,11 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"resolved_ips":   ips,
 		"ports":          ports,
 		"freshness":      freshness,
-		"findings":       rtc.AssessWithFreshness(ports, host, ips, resolveErr, freshness, freshnessDetail),
+		"media":          media,
+		"findings": append(
+			rtc.AssessWithFreshness(ports, host, ips, resolveErr, freshness, freshnessDetail),
+			rtc.AssessMedia(media, mediaOK, uptime),
+		),
 	})
 }
 
@@ -197,4 +204,64 @@ func (h *RTCHandler) RestartSFU(w http.ResponseWriter, r *http.Request) {
 		deleted = append(deleted, p.Name)
 	}
 	JSON(w, http.StatusOK, map[string]any{"restarted": deleted})
+}
+
+// mediaEvidence reads the SFU's own counters. They are the only thing in this
+// product that can say whether a call has ever *worked*, as opposed to whether the
+// pieces of it look healthy — see internal/rtc/media.go.
+func (h *RTCHandler) mediaEvidence(ctx context.Context) (rtc.MediaEvidence, bool, string) {
+	if h.k8s == nil {
+		return rtc.MediaEvidence{}, false, ""
+	}
+
+	uptime := "unbekannt"
+	if pods, err := h.k8s.ListDeploymentPods(ctx, h.essNS, h.sfuDeployment()); err == nil && len(pods) > 0 {
+		var start time.Time
+		for _, p := range pods {
+			if t := rtc.ParsePodStart(p.StartedAt); t.After(start) {
+				start = t
+			}
+		}
+		if !start.IsZero() {
+			uptime = formatUptime(time.Since(start))
+		}
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	url := "http://" + h.sfuDeployment() + "." + h.essNS + ".svc.cluster.local:6789/metrics"
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return rtc.MediaEvidence{}, false, uptime
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return rtc.MediaEvidence{}, false, uptime
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return rtc.MediaEvidence{}, false, uptime
+	}
+
+	// Bounded: a metrics body is tens of kilobytes, and an unbounded read from a
+	// component that could be misbehaving is how a status page becomes the outage.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return rtc.MediaEvidence{}, false, uptime
+	}
+
+	ev, ok := rtc.ParseMetrics(string(body))
+	return ev, ok, uptime
+}
+
+func formatUptime(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h %d min", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%d Tagen", int(d.Hours())/24)
+	}
 }
