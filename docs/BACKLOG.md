@@ -319,6 +319,26 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P1-14 · MatrixCtrl should be able to install and manage a TURN relay (S14).**
+  Requested by the operator 2026-08-04, immediately after P1-12's finding landed:
+  "kannste das adden ... als one click install ... verwaltbar für den user".
+  The ESS chart has **no** option for a Synapse-side relay, so every ESS install has
+  the P1-12 gap permanently, and the product can currently only name it. Naming a gap
+  it cannot close is half a feature.
+  *Shape:* deploy coturn into the managed namespace, generate the shared secret,
+  write `turn_uris` + `turn_shared_secret` into `synapse.additional`, and list the
+  ports it needs on `/rtc` next to the SFU's. Every one of those four pieces already
+  exists in some form — the config store writes ESS values, the hook engine applies
+  patches, `/rtc` renders port lists.
+  *Open questions to settle first, not to guess at:* whether coturn runs as a chart
+  dependency or a MatrixCtrl-owned Deployment; whether it needs `hostNetwork` like
+  the SFU does; how the shared secret is stored and rotated; what happens on
+  uninstall. A relay that is installed but unreachable is worse than none, because
+  clients will try it and wait for the timeout.
+  *Precondition:* P1-13. A relay behind the same unproven port forward inherits the
+  same fate, and shipping it before that is measured would be the fourth "it should
+  work now".
+
 - **P1-13 · Calling: where the investigation of 2026-08-02/03 actually stopped (S14).**
   Recorded so the next attempt starts from measurements rather than from scratch.
   **Established, each by measurement:** signalling works end to end from the
@@ -338,9 +358,17 @@ strangers depends on a code path nobody has ever run.
   re-verified), lost `hostNetwork` and `externalTrafficPolicy` patches (see below,
   restored and verified — the SFU now binds 30002/30004/30001 on the host), the
   RTC hostname and its routing (P1-10/P1-11), CORS, certificates, well-known.
+  **Narrowed 2026-08-04, by two cheap measurements that should have been taken on
+  day one:** the node's own WAN address is a normal public address — **not** RFC 6598
+  carrier NAT — so the case in which no port forward could ever work is ruled out on
+  the server side. And `/proc/net/nf_conntrack` is readable, which answers the
+  question `tcpdump` was needed for: an inbound packet on 30001–30004 creates a
+  conntrack entry. Read while idle it shows none, which proves nothing (UDP entries
+  expire in ~30 s and nobody was calling) — but read **during** a call it is a direct
+  yes/no. That is a one-command check now, where it was previously written off as
+  unmeasurable.
   **Not yet answered:** whether a single inbound UDP packet reaches the node's WAN
-  interface at all. That needs a counter read *during* a call, or a capture — and
-  `tcpdump` is not installed on the host. Everything upstream of that question is
+  interface at all. That needs the conntrack read taken *during* a call. Everything upstream of that question is
   now known-good, which is worth more than it sounds: it means the remaining
   surface is one hop wide.
   *Three "it should work now" claims were made during this investigation and all
@@ -362,11 +390,24 @@ strangers depends on a code path nobody has ever run.
   **This is a third independent fault behind one symptom** (see P1-9, P1-10). Each
   was real, each was fixed, and none of them alone would have made calling work —
   which is exactly why "I fixed it, try now" was wrong three times in a row.
-  *Product angle:* MatrixCtrl's `/rtc` page reports on the SFU and says nothing
-  about the legacy path, so an operator whose users make 1:1 calls gets a page full
-  of green about a component their calls never touch. The page should state which
-  call path a deployment actually supports, and that legacy 1:1 has no relay.
+  *Product angle — done 2026-08-04 (E24, [DESIGN.md §4.22](DESIGN.md)):* `/rtc` now
+  states both call paths before reporting on either, and reads `turn_uris` out of the
+  live Synapse ConfigMap. Production reports "klassische 1:1-Anrufe haben kein Relay".
+  *Corrected while building it:* the chart **does** ship a TURN — LiveKit's own,
+  `matrixRTC.sfu.exposedServices.turn`, enabled by default on 30004. It authenticates
+  with LiveKit tokens, so it serves Element Call and **cannot** be used by Synapse,
+  which needs the REST scheme. The earlier note that ESS has "nothing" was too coarse
+  and would have made the panel look wrong to anyone who read the values.
+  *Still open:* actually running a relay — see P1-14.
 - **P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly (S2).**
+  **Cluster cleaned 2026-08-04, on the operator's instruction:** the leftovers this
+  entry was written about are gone. `IngressRoute/matrix-rtc-tls` (71 days old, no
+  chart, routing the *old* RTC host including a path-less catch-all into the SFU) and
+  its `Middleware/matrix-rtc-cors` were deleted; namespace `ess` now contains no
+  hand-built Traefik objects at all, and the three public hosts were re-checked
+  afterwards. The `ingressClassName: disabled` and `ingress.class: ignore` fields had
+  already been removed on 2026-08-02. **The detection gap is unchanged** — nothing in
+  the product would have found any of this; it was found by hand, twice.
   **Half done 2026-08-03 (E21):** patches *a hook declares* are now checked against
   the live object continuously and shown on the dashboard (§4.21). Still open: edits
   **no hook knows about**, which need manifest-versus-live diffing and a curated

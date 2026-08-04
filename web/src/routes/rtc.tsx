@@ -22,12 +22,26 @@ interface Finding {
   action?: string;
 }
 
+/**
+ * Calling is two independent mechanisms, and this page used to report on one of
+ * them. Element Call routes media through the SFU; a classic 1:1 call is
+ * peer-to-peer and never touches it, needing a TURN relay from Synapse instead.
+ * On 2026-08-02 the entire SFU path was green and calling still failed, because
+ * the calls being made were the other kind (P1-12).
+ */
+interface CallPaths {
+  element_call: boolean;
+  turn: "present" | "absent" | "unknown";
+  turn_uris?: string[];
+}
+
 interface RTCStatusResp {
   announced_host: string;
   resolved_ips: string[] | null;
   ports: Port[];
   /** Whether the address the SFU announces can still be current — see internal/rtc/address.go. */
   freshness: "ok" | "stale" | "unknown";
+  call_paths: CallPaths;
   findings: Finding[];
 }
 
@@ -38,6 +52,24 @@ const TONE = {
   // how "we never checked" came to read as "fine".
   unknown: { tone: "info" as const, icon: "info", label: "nicht prüfbar" },
 };
+
+/** One call mechanism and whether this deployment can carry it. `unknown` keeps its
+ *  own neutral tone rather than borrowing the warning colour: not knowing and being
+ *  broken look different because they are different. */
+function PathRow({ name, sub, state, ok, unknown }: {
+  name: string; sub: string; state: string; ok: boolean; unknown?: boolean;
+}) {
+  const tone = unknown ? "info" : ok ? "ok" : "warn";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 14px", borderRadius: "var(--radius-sm)", background: "var(--surface-2)" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 650, color: "var(--text)" }}>{name}</div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>{sub}</div>
+      </div>
+      <Badge tone={tone} size="sm">{state}</Badge>
+    </div>
+  );
+}
 
 function RTCStatus() {
   const qc = useQueryClient();
@@ -69,8 +101,47 @@ function RTCStatus() {
     );
   }
 
+  const paths = data?.call_paths;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {paths && (
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>
+            Welche Anrufwege diese Installation unterstützt
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 4, marginBottom: 14 }}>
+            Zwei getrennte Mechanismen mit getrennten Fehlerbildern. Alles Weitere auf dieser
+            Seite betrifft nur den ersten.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <PathRow
+              name="Element Call"
+              sub="Gruppenanrufe und Element X — läuft über die SFU"
+              ok={paths.element_call}
+              state={
+                paths.element_call
+                  ? `SFU vorhanden, ${data!.ports.length} ${data!.ports.length === 1 ? "Port" : "Ports"}`
+                  : "keine SFU gefunden"
+              }
+            />
+            <PathRow
+              name="Klassische 1:1-Anrufe"
+              sub="Direkte Peer-to-Peer-Verbindung — braucht ein TURN-Relay von Synapse"
+              ok={paths.turn === "present"}
+              unknown={paths.turn === "unknown"}
+              state={
+                paths.turn === "present"
+                  ? `Relay konfiguriert (${paths.turn_uris?.length ?? 0})`
+                  : paths.turn === "unknown"
+                    ? "nicht feststellbar"
+                    : "kein Relay"
+              }
+            />
+          </div>
+        </Card>
+      )}
+
       <Card>
         <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>
           Diese Ports müssen aus dem Internet auf diesen Node zeigen

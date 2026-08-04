@@ -15,6 +15,31 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-08-04
+
+### Added
+
+- **Calls / RTC states which call paths the deployment supports**, before it reports
+  on any of them. Calling is two independent mechanisms: Element Call routes media
+  through the SFU, while a classic 1:1 call is peer-to-peer and never touches it,
+  needing a TURN relay from Synapse instead. On 2026-08-02 the entire SFU path was
+  repaired and verified from the internet and calling still failed, because the calls
+  being made were the other kind — a full page of green about a component they never
+  used.
+- `turn_uris` is read out of the **live** Synapse ConfigMap rather than the chart
+  values, for the reason P1-11 made expensive: intent and live state diverge. The
+  config is a merged directory, so files are sorted and the last definition wins, and
+  it is parsed as YAML — a commented-out `# turn_uris:` is not a setting, and
+  `turn_uris: []` is present, empty and exactly as relayless as absent.
+
+### Fixed
+
+- The finding now names LiveKit's own TURN (`matrixRTC.sfu.exposedServices.turn`, on
+  by default) and says it serves Element Call only, because it authenticates with
+  LiveKit tokens rather than the REST scheme Synapse uses. Without that, an operator
+  reads "no TURN", finds `turn.enabled: true` in the values, and concludes the panel
+  is wrong.
+
 ## [0.1.24] — 2026-08-04
 
 ### Added

@@ -530,3 +530,38 @@ being a sentence in a document and becomes a number on the dashboard. What it do
 *not* cover is manual edits no hook knows about — the `ingressClassName: disabled`
 that Helm preserved for 69 days needs manifest-versus-live diffing, which is the
 open half of P1-11. Affects S2, S11.
+
+### §4.22 — A status page must say which question it is answering (2026-08-04, operator + agent)
+**Question:** on 2026-08-02 the entire MatrixRTC path was repaired and verified end
+to end from the internet, and calling still failed. The calls being made were
+**legacy Matrix 1:1** — plain peer-to-peer WebRTC that never touches the SFU and
+needs a TURN relay from Synapse's own config. `/rtc` was a full page of green about
+a component those calls never used. How does a status page avoid being confidently
+right about the wrong thing?
+
+**Decision:** the page states **which call paths the deployment supports** before it
+reports on any of them, and `internal/rtc/callpath.go` reads `turn_uris` out of the
+live Synapse ConfigMap to answer for the second path.
+
+**Rationale:** reading the *live* ConfigMap rather than the chart values follows
+§4.21 and P1-11 directly — intent and live state diverge, and the live state is the
+one answering calls. The config is a merged directory, so files are sorted and the
+last definition wins; parsed as YAML rather than string-matched, so a commented-out
+`# turn_uris:` does not read as configured and `turn_uris: []` reads as what it is:
+present, empty, and exactly as relayless as absent.
+
+**Decision detail:** this warns where E23 deliberately would not. A quiet SFU is an
+*absence of evidence* and reports unknown; a missing relay is a *measured property*
+of the deployment that stays true until someone changes it, and it is actionable —
+so it warns, and the action names all three steps rather than pointing at a manual.
+The finding must also name LiveKit's own TURN (`matrixRTC.sfu.exposedServices.turn`,
+on by default) and say that it serves Element Call only, because it authenticates
+with LiveKit tokens rather than the REST scheme Synapse uses. Without that sentence
+an operator reads "no TURN", finds `turn.enabled: true` in the values, and concludes
+the panel is broken.
+
+**Consequences:** the ESS chart has no option for a Synapse-side relay at all, so
+this finding is permanently true for every ESS install until one is run alongside.
+That makes it the strongest argument yet for MatrixCtrl managing a TURN deployment
+itself (P1-14) — the product can now name the gap, and naming a gap it cannot close
+is only half a feature. Affects S14.

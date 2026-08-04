@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -34,6 +35,9 @@ func NewRTCHandler(k8sClient *k8s.Client, cfgStore *config.Store, essNS, essRele
 // sfuDeployment is the chart's naming, derived from the release rather than
 // hardcoded so an adopted release under another name still resolves.
 func (h *RTCHandler) sfuDeployment() string { return h.essRelease + "-matrix-rtc-sfu" }
+
+// synapseConfigMap holds the config directory Synapse actually mounts.
+func (h *RTCHandler) synapseConfigMap() string { return h.essRelease + "-synapse" }
 
 // Status answers "can a call connect?" — with the half that is knowable stated
 // as fact and the half that is not stated as unknown (see internal/rtc).
@@ -86,15 +90,19 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 	media, mediaOK, uptime := h.mediaEvidence(ctx)
 
 	ports := rtc.SFUPorts(services)
+	paths := h.callPaths(ctx, ports)
+
 	JSON(w, http.StatusOK, map[string]any{
 		"announced_host": host,
 		"resolved_ips":   ips,
 		"ports":          ports,
 		"freshness":      freshness,
 		"media":          media,
+		"call_paths":     paths,
 		"findings": append(
 			rtc.AssessWithFreshness(ports, host, ips, resolveErr, freshness, freshnessDetail),
 			rtc.AssessMedia(media, mediaOK, uptime),
+			rtc.AssessCallPaths(paths),
 		),
 	})
 }
@@ -204,6 +212,35 @@ func (h *RTCHandler) RestartSFU(w http.ResponseWriter, r *http.Request) {
 		deleted = append(deleted, p.Name)
 	}
 	JSON(w, http.StatusOK, map[string]any{"restarted": deleted})
+}
+
+// callPaths answers which of the two calling mechanisms this deployment supports.
+//
+// The TURN half is read from the **live** ConfigMap Synapse mounts rather than from
+// the chart values, for the reason P1-11 made expensive: intent and live state
+// diverge, and the live state is the one answering calls. A read that fails leaves
+// the status Unknown, which the finding renders as "could not tell" — never as "no
+// relay", which looks identical to a real fault.
+func (h *RTCHandler) callPaths(ctx context.Context, ports []rtc.Port) rtc.CallPaths {
+	paths := rtc.CallPaths{ElementCall: len(ports) > 0, TURN: rtc.TURNUnknown}
+	if h.k8s == nil {
+		return paths
+	}
+
+	raw, err := h.k8s.GetObjectJSON(ctx, "configmap", h.essNS, h.synapseConfigMap())
+	if err != nil {
+		return paths
+	}
+
+	var cm struct {
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &cm); err != nil {
+		return paths
+	}
+
+	paths.TURN, paths.TURNURIs = rtc.TURNFromConfig(cm.Data)
+	return paths
 }
 
 // mediaEvidence reads the SFU's own counters. They are the only thing in this
