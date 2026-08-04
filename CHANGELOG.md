@@ -15,6 +15,30 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.26] — 2026-08-04
+
+### Added
+
+- **Fields changed by hand are now visible.** E21 checks the patches a hook
+  declares; it could not see an edit no hook knows about — which is the case P1-11
+  was opened for, where an Ingress carried `ingressClassName: disabled` applied by
+  hand and Helm's three-way merge preserved it through every upgrade in silence.
+- The mechanism is `metadata.managedFields`: the API server records which manager
+  set which field, so this is read rather than inferred. No manifest rendering, no
+  curated list of fields to watch — a curated list only ever finds what someone
+  already thought of.
+- Two levels, because they are two statements: a hand-edit **no hook maintains**
+  will never be restored by anything and is loud; one a hook maintains means someone
+  bypassed the product and is quiet.
+- Metadata-only listing, so the scan costs kilobytes rather than most of a megabyte
+  per poll. Ownership lives in metadata; the spec is never fetched.
+
+### Fixed
+
+- `kubectl rollout restart`'s `restartedAt` stamp and ESS's own `matrix-tools` are
+  not reported. On the production cluster they were three of eight findings — enough
+  noise to teach an operator to skim past the two that mattered.
+
 ## [0.1.25] — 2026-08-04
 
 ### Added

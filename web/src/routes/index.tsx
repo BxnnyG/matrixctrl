@@ -19,11 +19,28 @@ interface DriftFinding {
   paths?: string[];
 }
 
+/** A field owned by something other than the chart — see internal/drift/manual.go.
+ *  `covered` means a hook maintains it: someone went around the product, but the
+ *  intent is owned. Uncovered means nothing will ever put it back. */
+interface ManualEdit {
+  resource: string;
+  name: string;
+  manager: string;
+  kind: "human" | "automation" | "foreign";
+  paths: string[];
+  covered: boolean;
+}
+
 interface DriftResponse {
   findings: DriftFinding[];
   satisfied: number;
   drifted: number;
   unknown: number;
+  manual_edits: ManualEdit[] | null;
+  manual_partial: boolean;
+  manual_unmaintained: number;
+  manual_by_hand: number;
+  manual_foreign: number;
 }
 
 interface ComponentStatus {
@@ -247,6 +264,39 @@ function Dashboard() {
             </div>
           </div>
           <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/hooks" })}>Hooks ausführen</Button>
+        </Card>
+      )}
+
+      {/* Hand-edits nothing maintains. This is the failure MatrixCtrl was built to
+          prevent and could not see until now: Helm's three-way merge preserves
+          fields it has never owned, so an exception applied once outlives every
+          upgrade in silence. The API server tracks ownership itself, so this is
+          read, not inferred (P1-11). */}
+      {(drift?.manual_unmaintained ?? 0) > 0 && (
+        <Card style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-warn) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 28%, var(--border))" }}>
+          <Icon name="alert" size={18} style={{ color: "var(--status-warn)", marginTop: 1 }} />
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 13, color: "var(--text)" }}>
+              <strong>{drift!.manual_unmaintained} Feld{drift!.manual_unmaintained === 1 ? "" : "er"} von Hand gesetzt, ohne dass ein Hook es trägt.</strong>{" "}
+              Helm überschreibt solche Felder nicht — sie überleben jedes Upgrade unbemerkt.
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4, fontFamily: "var(--mono)", lineHeight: 1.6 }}>
+              {(drift!.manual_edits ?? []).filter((e) => e.kind === "human" && !e.covered).slice(0, 4)
+                .map((e) => `${e.resource}/${e.name}: ${e.paths.join(", ")}`).join(" · ")}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Quieter: the field is hand-set but a hook owns the same intent, so it will
+          be re-applied. Worth knowing — someone bypassed the product — but not an
+          alarm, and mixing it into the loud banner would bury the loud one. */}
+      {(drift?.manual_by_hand ?? 0) > 0 && (drift?.manual_unmaintained ?? 0) === 0 && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface-2)" }}>
+          <Icon name="info" size={17} style={{ color: "var(--text-dim)" }} />
+          <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-dim)" }}>
+            {drift!.manual_by_hand} von Hand gesetzte{drift!.manual_by_hand === 1 ? "s Feld" : " Felder"} — jeweils von einem Hook getragen, wird also wieder angewendet.
+          </span>
         </Card>
       )}
 

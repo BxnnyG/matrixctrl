@@ -2,10 +2,12 @@ package k8s
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -13,6 +15,11 @@ import (
 type Client struct {
 	Static  *kubernetes.Clientset
 	Dynamic dynamic.Interface
+	// Meta lists objects without their spec. Field ownership lives in metadata, so
+	// the drift check reads it this way rather than pulling whole objects — the
+	// same trade E20 made for release reads. May be nil: a missing metadata client
+	// costs one feature, not the process.
+	Meta metadata.Interface
 }
 
 // client-go defaults to QPS 5 / Burst 10, which is sized for a one-shot CLI. As a
@@ -45,7 +52,17 @@ func New() (*Client, error) {
 		return nil, fmt.Errorf("dynamic client: %w", err)
 	}
 
-	return &Client{Static: static, Dynamic: dyn}, nil
+	c := &Client{Static: static, Dynamic: dyn}
+
+	// Nil-tolerant on purpose, mirroring internal/helm: the ownership report is
+	// worth having and not worth refusing to start over.
+	if meta, err := metadata.NewForConfig(cfg); err != nil {
+		log.Printf("k8s: metadata client unavailable (%v) — the manual-edit report will be empty", err)
+	} else {
+		c.Meta = meta
+	}
+
+	return c, nil
 }
 
 func config() (*rest.Config, error) {

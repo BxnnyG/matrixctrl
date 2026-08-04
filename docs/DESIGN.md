@@ -565,3 +565,39 @@ this finding is permanently true for every ESS install until one is run alongsid
 That makes it the strongest argument yet for MatrixCtrl managing a TURN deployment
 itself (P1-14) — the product can now name the gap, and naming a gap it cannot close
 is only half a feature. Affects S14.
+
+### §4.23 — Ask the cluster who owns the field, do not diff for it (2026-08-04, agent)
+**Question:** §4.21 checks every patch a hook *declares*. It cannot see an edit no
+hook knows about — the case P1-11 was actually opened for, where an Ingress carried
+`ingressClassName: disabled` applied by hand 69 days earlier and Helm's three-way
+merge preserved it through every upgrade. The same class of leftover was found
+again on 2026-08-04, and again by hand. How does the product see it?
+
+**Decision:** read `metadata.managedFields`. The API server records one entry per
+manager naming exactly which fields that manager set, so the question becomes "who
+owns this field" — which the cluster answers — instead of "what differs from the
+chart", which needs interpretation.
+
+**Rationale:** the plan recorded in P1-11 was to render the release manifests and
+diff them against live objects. That is the obvious approach and it is bad: a live
+object carries hundreds of fields no manifest mentions — defaults, `clusterIP`,
+`resourceVersion`, status — so a naive diff reports all of them and needs a curated
+list of fields to watch. A curated list only ever finds what someone already
+thought of, which is the failure §4.18 and §4.21 both already warned about. Field
+ownership needs no list, no rendering, and no schema.
+
+**Decision detail:** only `kubectl-*` is reported as human, because it is the one
+manager name that unambiguously means somebody ran a command; unknown tools are
+surfaced a level quieter as *foreign* rather than accused. Hook coverage splits the
+report in two: a hand-edit on a field a hook maintains means someone bypassed the
+product, while one on a field nothing maintains means nothing will ever restore it,
+and only the second is loud. Calibration against the live cluster removed two
+sources of noise that were three of eight findings — `kubectl rollout restart`'s
+`restartedAt` stamp, which records an event rather than a configuration exception,
+and ESS's own `matrix-tools`.
+
+**Consequences:** on production the report is exactly one loud line —
+`ingress/ess-matrix-rtc: spec.ingressClassName`, human-owned, hook-less — which is
+the same object P1-11 was opened about. Four further hand-edits are shown quietly
+because hooks own them; they are the agent's own manual restorations of 2026-08-02,
+which is itself the record of having gone around the product. Affects S2, S11.

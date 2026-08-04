@@ -14,12 +14,13 @@ import (
 )
 
 type DriftHandler struct {
-	db  *pgxpool.Pool
-	k8s *k8s.Client
+	db    *pgxpool.Pool
+	k8s   *k8s.Client
+	essNS string
 }
 
-func NewDriftHandler(db *pgxpool.Pool, k8sClient *k8s.Client) *DriftHandler {
-	return &DriftHandler{db: db, k8s: k8sClient}
+func NewDriftHandler(db *pgxpool.Pool, k8sClient *k8s.Client, essNS string) *DriftHandler {
+	return &DriftHandler{db: db, k8s: k8sClient, essNS: essNS}
 }
 
 // Status answers "are the hooks' patches still in effect?" — see internal/drift for
@@ -46,12 +47,66 @@ func (h *DriftHandler) Status(w http.ResponseWriter, r *http.Request) {
 	findings := drift.Check(ctx, actions, fetcher)
 	counts := drift.Summary(findings)
 
+	manual, manualPartial := h.manualEdits(ctx, actions)
+	unmaintained, byHand, foreign := drift.SummariseManual(manual)
+
 	JSON(w, http.StatusOK, map[string]any{
 		"findings":  findings,
 		"satisfied": counts[drift.Satisfied],
 		"drifted":   counts[drift.Drifted],
 		"unknown":   counts[drift.Unknown],
+
+		"manual_edits": manual,
+		// Partial means at least one resource type could not be listed. Reporting
+		// zero hand-edits from an incomplete scan would be the same mistake as
+		// reporting "fine" for something never checked.
+		"manual_partial":      manualPartial,
+		"manual_unmaintained": unmaintained,
+		"manual_by_hand":      byHand,
+		"manual_foreign":      foreign,
 	})
+}
+
+// manualEdits answers the other half of the drift question: which fields does
+// something *other* than the chart own? See internal/drift/manual.go — the API
+// server tracks this itself, so nothing here diffs or guesses.
+func (h *DriftHandler) manualEdits(ctx context.Context, actions []drift.Action) ([]drift.ManualEdit, bool) {
+	if h.k8s == nil {
+		return nil, true
+	}
+
+	owned, problems := h.k8s.ListOwnership(ctx, h.essNS, k8s.OwnershipTypes)
+	if len(owned) == 0 && len(problems) > 0 {
+		return nil, true
+	}
+
+	objects := make([]drift.ObjectFields, 0, len(owned))
+	for _, o := range owned {
+		entries := make([]drift.ManagedFieldsEntry, 0, len(o.Entries))
+		for _, e := range o.Entries {
+			entries = append(entries, drift.ManagedFieldsEntry{
+				Manager:     e.Manager,
+				Operation:   e.Operation,
+				Time:        e.Time,
+				Subresource: e.Subresource,
+				FieldsV1:    e.FieldsV1,
+			})
+		}
+		objects = append(objects, drift.ObjectFields{
+			Resource: o.Resource, Namespace: o.Namespace, Name: o.Name, Entries: entries,
+		})
+	}
+
+	// The hooks are already loaded for the patch check, so the cross-reference is
+	// free: an edit on a field a hook maintains is a different statement from one
+	// on a field nothing maintains.
+	hookPaths := map[string][]string{}
+	for _, a := range actions {
+		key := drift.HookKey(a.Resource, a.Namespace, a.Name)
+		hookPaths[key] = append(hookPaths[key], drift.PatchPaths(a.PatchType, a.Patch)...)
+	}
+
+	return drift.FindManualEdits(objects, hookPaths), len(problems) > 0
 }
 
 // patchActions flattens every enabled hook's kubectl_patch actions. Disabled hooks

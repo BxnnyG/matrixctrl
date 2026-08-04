@@ -16,6 +16,9 @@ var knownGVRs = map[string]schema.GroupVersionResource{
 	"statefulset": {Group: "apps", Version: "v1", Resource: "statefulsets"},
 	"daemonset":   {Group: "apps", Version: "v1", Resource: "daemonsets"},
 	"configmap":   {Group: "", Version: "v1", Resource: "configmaps"},
+	// Ingresses carried the 69-day-old hand edit P1-11 was opened for, so the
+	// ownership report cannot see the case it exists for without this line.
+	"ingress": {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
 }
 
 func (c *Client) Patch(ctx context.Context, resourceType, namespace, name string, patchType types.PatchType, data []byte) error {

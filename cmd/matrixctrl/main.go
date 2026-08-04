@@ -163,7 +163,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc, pool, bootstrapAuth.JWTKey())
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
-	driftHandler := handlers.NewDriftHandler(pool, k8sClient)
+	driftHandler := handlers.NewDriftHandler(pool, k8sClient, essNS)
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)

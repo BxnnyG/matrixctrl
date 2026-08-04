@@ -408,10 +408,15 @@ strangers depends on a code path nobody has ever run.
   afterwards. The `ingressClassName: disabled` and `ingress.class: ignore` fields had
   already been removed on 2026-08-02. **The detection gap is unchanged** — nothing in
   the product would have found any of this; it was found by hand, twice.
-  **Half done 2026-08-03 (E21):** patches *a hook declares* are now checked against
-  the live object continuously and shown on the dashboard (§4.21). Still open: edits
-  **no hook knows about**, which need manifest-versus-live diffing and a curated
-  field list. Original entry:
+  **Done 2026-08-04 (E25, [DESIGN.md §4.23](DESIGN.md)).** The other half is closed,
+  and *not* by the manifest-diffing this entry proposed — that needs a curated list of
+  fields to watch, which only ever finds what someone already thought of. The API
+  server records field ownership itself in `metadata.managedFields`, so the product
+  asks who owns a field instead of inferring it. Production reports exactly one loud
+  line: `ingress/ess-matrix-rtc: spec.ingressClassName`, human-owned, maintained by no
+  hook — the same object this entry was opened about.
+  **Half done 2026-08-03 (E21):** patches *a hook declares* are checked against the
+  live object continuously and shown on the dashboard (§4.21). Original entry:
   Found 2026-08-02. The RTC Ingress carried `ingressClassName: disabled` and
   `kubernetes.io/ingress.class: ignore` — **neither is rendered by the chart**. Both
   were applied by hand 69 days ago, together with a stand-alone Traefik
@@ -425,10 +430,8 @@ strangers depends on a code path nobody has ever run.
   **This is the exact failure mode MatrixCtrl was built to prevent, and it cannot
   currently see it.** The hook engine re-applies *known* patches; nothing detects
   *unknown* ones.
-  *Fix:* drift detection — render the release's manifests and diff them against
-  live objects, reporting fields that exist only in the cluster. That is a read-only
-  comparison of two things the product already has, and it would have printed this
-  in one line.
+  *Fix as originally written (superseded):* render the release's manifests and diff
+  them against live objects. See §4.23 for why ownership beat diffing.
 - **P1-10 · Element Call is unreachable: the RTC host has no path from outside (S14).**
   Found 2026-08-02, after P1-9 was fixed and calling was *still* bad. The decisive
   measurement was LiveKit's own metrics: `livekit_room_total 0`,
