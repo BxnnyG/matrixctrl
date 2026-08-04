@@ -410,7 +410,12 @@ strangers depends on a code path nobody has ever run.
   ever actually used it?"*. LiveKit publishes that number on its metrics port and
   nothing read it. A room counter of zero on a server that has been up for days is
   worth more than any amount of health-check green.
-- **P1-9 · The SFU announces a stale public IP after every forced reconnect (S14).**
+- ~~**P1-9 · The SFU announces a stale public IP after every forced reconnect (S14).**~~
+  **Done 2026-08-03 (E22).** Detected by comparing the SFU pod's start time with the
+  moment the announced host's DNS answer last changed — the announced address is
+  never read, because LiveKit exposes it only in a log line. A restart action ships
+  with it, deleting the pod because a rolling update of this deployment deadlocks
+  (P2-23, also confirmed live). Original entry:
   *Correction 2026-08-02: real, reproduced and fixed — but it was **not** why calling
   was bad. See P1-10. The stale address would have broken media once clients could
   reach the SFU at all; they never could. Two independent faults, and fixing the
@@ -436,7 +441,11 @@ strangers depends on a code path nobody has ever run.
   *Open question, deliberately not guessed:* where to read the announced IP from.
   Parsing `"nodeIP"` out of the pod log works but is fragile; whether LiveKit exposes
   it on its HTTP port has not been checked.
-- **P2-23 · The SFU deployment cannot be restarted at all (S14).** `kubectl rollout
+- ~~**P2-23 · The SFU deployment cannot be restarted at all (S14).**~~ **Worked around
+  2026-08-03 (E22)** — the product's restart action deletes the pod instead. The
+  deployment's own strategy is still wrong and `kubectl rollout restart` still hangs
+  for anyone who types it; setting `strategy: Recreate` via the patch hook remains
+  worth doing. Original entry: `kubectl rollout
   restart deploy/ess-matrix-rtc-sfu` hangs forever and reports nothing wrong. The
   deployment is `hostNetwork: true`, `replicas: 1`, `strategy: RollingUpdate` with
   **`maxUnavailable=0`**: the old pod must stay Running until the new one is Ready,

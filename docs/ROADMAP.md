@@ -49,6 +49,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 | 17 | Audit trail — the writes that were documented for two months but never existed | ✅ 2026-08-01 · `v0.1.18` · [plan](plans/etappe-17-audit-trail.md) |
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
+| 22 | Stale announcement — the SFU discovers its public address once at startup, and a consumer line is re-addressed daily | ✅ 2026-08-03 · `v0.1.22` · [plan](plans/etappe-22-stale-address.md) |
 | 21 | Drift — "enabled" is not "applied": every hook patch checked against the live object, after an upgrade run outside MatrixCtrl broke calling | ✅ 2026-08-03 · [plan](plans/etappe-21-drift.md) |
 | 20 | The release read was never expensive — cold `/status` 4.32 s → 505 ms, and the staleness window removed rather than shortened | ✅ 2026-08-02 · `v0.1.20` · [plan](plans/etappe-20-release-read.md) |
 

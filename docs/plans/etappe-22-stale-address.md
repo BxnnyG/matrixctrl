@@ -108,3 +108,33 @@ automates the obvious way gets a restart that silently does nothing.
 - The restart replaces the pod and is verified to actually complete
 - Logic under test without a cluster or a database
 - Four regression checks (S11) green **after** the deploy, not before
+
+## Outcome (2026-08-03)
+
+Shipped in `0.1.22`.
+
+The design decision that mattered was refusing the obvious source. Scraping
+`"nodeIP"` out of the pod log would have worked today and broken silently on the
+next LiveKit upgrade — and it would have broken *quietly*, reporting `unknown`
+forever while the operator assumed they were being watched. Deriving the answer from
+two timestamps the product already holds has no such failure mode.
+
+The second one was `Changes < 2 → unknown`. A single observation looks exactly like
+the stale case under a naive comparison: the pod started before `first_seen`. Getting
+that wrong would have made every fresh install cry wolf on day one, and a page that
+cries wolf on day one is switched off on day two.
+
+### The trap that shipped with it
+
+`kubectl rollout restart` on this deployment can never complete — `hostNetwork`, one
+replica, `maxUnavailable: 0`. The replacement sat `Pending` for 23 minutes on the
+production cluster reporting `FailedScheduling: didn't have free ports`, while the
+old pod carried on serving the stale address. Anyone automating the fix the obvious
+way gets a restart that silently does nothing. That is why the action ships in the
+same etappe as the detection rather than being left to the operator.
+
+### What it does not answer
+
+Whether the media ports are reachable at all (P1-13). This etappe removes one
+recurring cause of calls failing; it does not prove that removing it is sufficient.
+Those are different claims and today has been an object lesson in not confusing them.

@@ -15,6 +15,28 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-08-03
+
+### Added
+
+- **Calls / RTC now says when the SFU is announcing an address that no longer
+  routes.** LiveKit discovers its public address once, at startup, and offers it in
+  every ICE candidate for as long as the process lives. A consumer line is
+  re-addressed roughly every 24 hours: DynDNS updates the record so clients resolve
+  the correct address, while the SFU keeps naming the old one. Media goes nowhere
+  and everything else looks healthy. Seen twice on a production instance, 22 hours
+  apart.
+- The check never reads the announced address, because LiveKit does not expose it
+  anywhere except a log line. It compares two timestamps instead — when the SFU pod
+  started, and when the announced host's DNS answer last changed. Same answer, no
+  dependency on a log format.
+- **A "restart SFU" button**, because the fix is otherwise a daily manual chore. It
+  deletes the pod rather than rolling the deployment: with `hostNetwork`, one replica
+  and `maxUnavailable: 0`, a rolling update deadlocks — the old pod holds the ports
+  the new one needs, and the replacement waits forever while reporting nothing wrong.
+- Before any change has been observed, the verdict is **unknown**, not "fine". A
+  fresh install has seen nothing, and having seen nothing is not evidence.
+
 ## [0.1.21] — 2026-08-03
 
 ### Added
