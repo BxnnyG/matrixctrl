@@ -601,3 +601,37 @@ and ESS's own `matrix-tools`.
 the same object P1-11 was opened about. Four further hand-edits are shown quietly
 because hooks own them; they are the agent's own manual restorations of 2026-08-02,
 which is itself the record of having gone around the product. Affects S2, S11.
+
+### §4.24 — "Cannot be checked from here" was true and still too small (2026-08-04, agent)
+**Question:** §4.18 and E19 established that inbound reachability cannot be tested
+from inside the network it terminates in, and wrote it into `/rtc` as a permanent
+`unknown`. Three days of measuring from the inside followed — ICE statistics,
+packet counters, conntrack — and none of it answered the question. Then one request
+to a public port checker answered it in seconds: nothing inbound reached the node at
+all, which explained every measurement taken since 2026-08-02.
+
+**Decision:** `internal/reach` performs the check from outside, on an explicit
+click, and reports open/closed per TCP port.
+
+**Rationale:** the original statement was accurate and its implication was not.
+"MatrixCtrl cannot test this" quietly became "this cannot be tested", and the
+product stopped looking. The vantage point outside the network was always one HTTP
+request away.
+
+**Decision detail:** a **control** decides whether any result can be believed — a
+port known to be open on an unrelated public host. A checker that is blocked,
+rate-limited or broken reports everything as closed, and an operator who acts on
+that reconfigures a router that was already correct, then builds the next three
+attempts on top of that mistake. If the control does not come back open, every
+result is `unknown` and the action explicitly says to change nothing.
+The address tested is the node's **own egress address**, not the announced RTC
+hostname: where that resolves to a proxy or a tunnel — as it does on the cluster
+this was built for — testing the hostname tests the proxy.
+Free checkers speak TCP while the port that matters most is UDP, so the untested
+UDP count is carried into the result rather than dropped. A closed TCP port is
+still decisive: a router that forwards nothing forwards neither.
+
+**Consequences:** this is the only code in MatrixCtrl that leaves the cluster, so it
+is `POST`, never runs on a page load or a timer, names both third-party hosts in the
+UI before the click, and stores nothing — no consent flag to forget about. A status
+page that silently phones home is one nobody should run. Affects S14.

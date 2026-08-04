@@ -97,6 +97,9 @@ func NewRouter(deps Deps) http.Handler {
 		// Replacing the SFU pod is the fix for an announced address that went stale
 		// overnight. POST so it lands in the audit log like every other mutation.
 		r.Post("/api/v1/rtc/restart-sfu", deps.RTC.RestartSFU)
+		// POST because it discloses the deployment's public address to a third
+		// party — see handlers.Reachability. Never reachable by a page load.
+		r.Post("/api/v1/rtc/reachability", deps.RTC.Reachability)
 
 		r.Route("/api/v1/config", func(r chi.Router) {
 			r.Get("/slices", deps.Config.ListSlices)

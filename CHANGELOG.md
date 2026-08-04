@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-08-04
+
+### Added
+
+- **Calls / RTC can now check the ports from outside**, on an explicit click. E19
+  recorded inbound reachability as a permanent unknown — true from inside, and it
+  quietly implied nothing could be done. One request to an outside vantage point
+  answered in seconds what three days of inside-out measurement could not.
+- A **control** decides whether the result is believable: a port known to be open on
+  an unrelated host. A blocked or broken checker reports everything as closed, and
+  acting on that means reconfiguring a router that was already correct. Without the
+  control, every result is `unknown` and the action says to change nothing.
+- The result names the distinction that cost three days: a **port forward (DNAT)** is
+  not the same as a firewall rule allowing the port.
+- Untestable UDP ports are counted and stated rather than dropped — the most
+  important port on an RTC deployment is UDP, and free checkers speak TCP.
+
+### Privacy
+
+- This is the only code in MatrixCtrl that leaves the cluster. It is `POST`, never
+  runs on a page load or a timer, names both third-party hosts in the UI before the
+  click, and stores nothing.
+
 ## [0.1.26] — 2026-08-04
 
 ### Added

@@ -45,6 +45,24 @@ interface RTCStatusResp {
   findings: Finding[];
 }
 
+interface ReachPort {
+  protocol: string;
+  port: number;
+  status: "open" | "closed" | "unknown";
+  purpose?: string;
+}
+
+interface ReachResp {
+  result: {
+    address: string;
+    ports: ReachPort[] | null;
+    control_ok: boolean;
+    udp_skipped: number;
+    error?: string;
+  };
+  verdict: { level: "ok" | "warn" | "unknown"; title: string; detail: string; action?: string };
+}
+
 const TONE = {
   ok: { tone: "ok" as const, icon: "check", label: "geprüft" },
   warn: { tone: "warn" as const, icon: "alert", label: "Problem" },
@@ -89,6 +107,13 @@ function RTCStatus() {
       // immediately would show the old verdict and look like the button did nothing.
       setTimeout(() => qc.invalidateQueries({ queryKey: ["rtc"] }), 6000);
     },
+  });
+
+  // The one call in this product that leaves the cluster. Never on load, never on a
+  // timer — it sends the deployment's public address to a third party, and that is
+  // the operator's decision to make each time.
+  const reach = useMutation({
+    mutationFn: () => api.post<ReachResp>("/api/v1/rtc/reachability", {}),
   });
 
   if (error) {
@@ -174,6 +199,58 @@ function RTCStatus() {
           <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-faint)", fontFamily: "var(--mono)" }}>
             Clients wird angekündigt: {data.announced_host}
             {data.resolved_ips?.length ? ` → ${data.resolved_ips.join(", ")}` : ""}
+          </div>
+        )}
+      </Card>
+
+      {/* E19 recorded inbound reachability as a permanent unknown, which was true
+          from inside and quietly implied nothing could be done. One request to an
+          outside vantage point answered in seconds what three days of inside-out
+          measurement could not (P1-15). */}
+      <Card>
+        <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>
+          Von außen prüfen
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 4, marginBottom: 12, lineHeight: 1.55 }}>
+          Ob die Ports aus dem Internet erreichbar sind, lässt sich von innen nicht feststellen — von außen schon.
+          Diese Prüfung <strong>verlässt den Cluster</strong> und übermittelt die öffentliche Adresse dieser
+          Installation an <code style={{ fontFamily: "var(--mono)" }}>api.ipify.org</code> und{" "}
+          <code style={{ fontFamily: "var(--mono)" }}>portchecker.io</code>. Sie läuft nur auf Klick,
+          nie automatisch, und es wird nichts gespeichert.
+        </div>
+
+        <Button variant="soft" size="sm" icon="search" onClick={() => reach.mutate()} disabled={reach.isPending}>
+          {reach.isPending ? "Prüfe von außen…" : "Jetzt von außen prüfen"}
+        </Button>
+
+        {reach.isError && (
+          <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 10 }}>
+            Die Prüfung konnte nicht ausgeführt werden. Das ist keine Aussage über die Ports.
+          </div>
+        )}
+
+        {reach.data && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <Badge tone={reach.data.verdict.level === "ok" ? "ok" : reach.data.verdict.level === "warn" ? "warn" : "info"} size="sm">
+                {reach.data.verdict.title}
+              </Badge>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>{reach.data.verdict.detail}</div>
+            {reach.data.verdict.action && (
+              <div style={{ fontSize: 12.5, color: "var(--text)", marginTop: 8, paddingLeft: 11, borderLeft: "2px solid var(--accent)", lineHeight: 1.55 }}>
+                {reach.data.verdict.action}
+              </div>
+            )}
+            {!!reach.data.result.ports?.length && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {reach.data.result.ports.map((p) => (
+                  <Badge key={`${p.protocol}-${p.port}`} tone={p.status === "open" ? "ok" : p.status === "closed" ? "warn" : "info"} size="sm">
+                    {p.protocol} {p.port}: {p.status === "open" ? "offen" : p.status === "closed" ? "geschlossen" : "unklar"}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Card>

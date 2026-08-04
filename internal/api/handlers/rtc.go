@@ -14,6 +14,7 @@ import (
 
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/reach"
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 )
 
@@ -241,6 +242,45 @@ func (h *RTCHandler) callPaths(ctx context.Context, ports []rtc.Port) rtc.CallPa
 
 	paths.TURN, paths.TURNURIs = rtc.TURNFromConfig(cm.Data)
 	return paths
+}
+
+// Reachability answers the question E19 wrote off as permanently unanswerable: are
+// these ports open from the internet? It is answerable — from outside — and one
+// request settled in seconds what three days of inside-out measurement could not.
+//
+// POST, never GET, and never on a timer or a page load: this is the only thing in
+// MatrixCtrl that leaves the cluster, and it sends the deployment's public address
+// to a third party. That address is not a secret, but disclosing it is the
+// operator's decision. Nothing is stored — no consent flag to forget about.
+func (h *RTCHandler) Reachability(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+	defer cancel()
+
+	var services []rtc.ServicePort
+	if h.k8s != nil {
+		exposed, err := h.k8s.NodePorts(ctx, h.essNS)
+		if err != nil {
+			Error(w, http.StatusServiceUnavailable, "could not read services: "+err.Error())
+			return
+		}
+		for _, e := range exposed {
+			services = append(services, rtc.ServicePort{
+				Service: e.Service, Name: e.Name, Protocol: e.Protocol,
+				NodePort: e.NodePort, ExternalTrafficPolicy: e.ExternalTrafficPolicy,
+			})
+		}
+	}
+
+	ports := make([]reach.PortResult, 0)
+	for _, p := range rtc.SFUPorts(services) {
+		ports = append(ports, reach.PortResult{Protocol: p.Protocol, Port: p.Port, Purpose: p.Purpose})
+	}
+
+	result := reach.NewClient().Check(ctx, ports)
+	JSON(w, http.StatusOK, map[string]any{
+		"result":  result,
+		"verdict": reach.Assess(result),
+	})
 }
 
 // mediaEvidence reads the SFU's own counters. They are the only thing in this
