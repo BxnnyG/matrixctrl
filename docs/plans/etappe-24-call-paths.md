@@ -77,3 +77,35 @@ action says all three steps rather than "consult the documentation".
 - Parsing tested with no cluster, including malformed and unexpected shapes
 - The page states both paths, not just the SFU
 - S11 green **after** the deploy
+
+## Outcome (2026-08-04)
+
+Shipped in `0.1.25`. Verified against the live ConfigMap before the release: four
+config files, `turn_uris` absent, finding renders as *"Klassische 1:1-Anrufe haben
+kein Relay"* at warn level. S11 all four green **after** the deploy (revision 27).
+
+### Corrected while building it
+
+The claim that "the ESS chart offers no TURN" — carried in P1-12 since 2026-08-02
+and repeated to the operator earlier today — is too coarse. The chart **does** ship
+one: `matrixRTC.sfu.exposedServices.turn`, enabled by default on node port 30004.
+It is LiveKit's own, authenticates with LiveKit tokens, and therefore serves Element
+Call and nothing else; Synapse needs the REST scheme (`turn_shared_secret`, HMAC)
+and cannot use it. So the gap is real, but its shape is "the relay that exists
+serves the other path", not "there is no relay anywhere" — and a finding that said
+the latter would look wrong to anyone who read the values. The finding now names
+both.
+
+Also found: `turnTLS` is `enabled: false` and its `domain` still points at the RTC
+host that was replaced. That is the TCP/TLS fallback for clients that cannot get UDP
+out — the most interesting switch on the page for the operator's actual symptom.
+Enabling it needs a certificate and a forwarded port, and it is **not** claimed here
+as a fix: three such claims were made during P1-13 and all three were wrong.
+
+### Found while cleaning up alongside it
+
+`IngressRoute/matrix-rtc-tls` (71 days old, built by hand, no chart) and its
+middleware were deleted on the operator's instruction. It routed the *old* RTC host
+into the SFU including a path-less catch-all. Namespace `ess` now holds no
+hand-built Traefik objects. Nothing in the product would have found it — which is
+the open half of P1-11, unchanged.
