@@ -35,7 +35,9 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware)
+	// No CORS middleware. The frontend is served by this same binary on the same
+	// origin, so nothing needs it — and a wildcard Access-Control-Allow-Origin on an
+	// admin API is worth removing rather than configuring (P2-26).
 
 	// Public auth routes. Bootstrap login is always registered but the handler
 	// refuses once OIDC is active — so we can switch auth modes at runtime.
@@ -44,6 +46,9 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/oidc/available", deps.Auth.OIDCAvailable)
 		r.Get("/oidc/redirect", deps.Auth.OIDCRedirect)
 		r.Get("/oidc/callback", deps.Auth.OIDCCallback)
+		// Trades the one-time code from the callback fragment for the session
+		// token, over a POST whose body is never logged (P0-5).
+		r.Post("/exchange", deps.Auth.ExchangeCode)
 	})
 
 	// Protected routes
@@ -151,17 +156,4 @@ func NewRouter(deps Deps) http.Handler {
 	r.NotFound(deps.Status.ServeFrontend)
 
 	return r
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

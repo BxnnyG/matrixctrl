@@ -2,11 +2,14 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -25,13 +28,23 @@ type AuthHandler struct {
 	svc    TokenService
 	db     *pgxpool.Pool
 	jwtKey []byte
+	// codes issues and redeems the one-time login codes that replaced putting the
+	// session JWT in a URL (P0-5).
+	codes *auth.AuthCodes
+	// throttle limits failed password attempts, counted in Postgres so a restart
+	// does not reset them (P1-17).
+	throttle *auth.Throttle
 
 	mu   sync.RWMutex
 	oidc *auth.OIDCService
 }
 
 func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Pool, jwtKey []byte) *AuthHandler {
-	return &AuthHandler{svc: svc, oidc: oidcSvc, db: db, jwtKey: jwtKey}
+	return &AuthHandler{
+		svc: svc, oidc: oidcSvc, db: db, jwtKey: jwtKey,
+		codes:    auth.NewAuthCodes(db),
+		throttle: auth.NewThrottle(db),
+	}
 }
 
 func (h *AuthHandler) getOIDC() *auth.OIDCService {
@@ -99,10 +112,57 @@ func (h *AuthHandler) BootstrapLogin(w http.ResponseWriter, r *http.Request) {
 	if ip == "" {
 		ip = r.RemoteAddr
 	}
+
+	// Both keys are checked: per-IP stops one source hammering every account, and
+	// per-user stops a distributed attempt on one account. Either being locked
+	// refuses the request (P1-17).
+	keys := []string{"ip:" + ip, "user:" + strings.ToLower(req.Username)}
+	var delay time.Duration
+	for _, key := range keys {
+		d, err := h.throttle.Check(r.Context(), key)
+		if err != nil {
+			var locked *auth.ErrLockedOut
+			if errors.As(err, &locked) {
+				Error(w, http.StatusTooManyRequests, locked.Error())
+				return
+			}
+			// The limiter could not be consulted. Refusing is the uncomfortable
+			// direction and the right one: the alternative is that taking the
+			// database down disables the rate limit. The login needs Postgres to
+			// verify a password anyway, so nothing that worked is lost.
+			log.Printf("login throttle unavailable: %v", err)
+			Error(w, http.StatusServiceUnavailable, "Anmeldung derzeit nicht möglich")
+			return
+		}
+		if d > delay {
+			delay = d
+		}
+	}
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return
+		}
+	}
+
 	token, err := h.svc.Login(r.Context(), req.Username, req.Password, ip, r.UserAgent())
 	if err != nil {
+		for _, key := range keys {
+			if ferr := h.throttle.Failed(r.Context(), key); ferr != nil {
+				log.Printf("could not record failed login: %v", ferr)
+			}
+		}
 		Error(w, http.StatusUnauthorized, "invalid credentials")
 		return
+	}
+
+	// Only a correct password clears the counter; anything else would hand an
+	// attacker a way to reset their own budget.
+	for _, key := range keys {
+		if cerr := h.throttle.Succeeded(r.Context(), key); cerr != nil {
+			log.Printf("could not clear login attempts: %v", cerr)
+		}
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"token": token})
@@ -174,13 +234,55 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if ip == "" {
 		ip = r.RemoteAddr
 	}
-	token, err := o.CreateOIDCSession(r.Context(), userID, ip, r.UserAgent())
-	if err != nil {
-		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
+	// A one-time code, carried in the URL **fragment**, replaces handing the SPA
+	// the session JWT in a query parameter. chi's request logger writes the full
+	// URL, so the old form wrote the token to the application log by the very
+	// request that delivered it (P0-5). Fragments are never sent to a server, so
+	// there is nothing to log and nothing to leak through Referer; the code is
+	// single-use and expires in a minute, so the copy in browser history is spent.
+	code, cerr := h.codes.Issue(r.Context(), userID, ip, r.UserAgent())
+	if cerr != nil {
+		log.Printf("OIDC callback: could not issue login code: %v", cerr)
+		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape("Anmeldung konnte nicht abgeschlossen werden"), http.StatusFound)
 		return
 	}
 
-	// Hand the token to the SPA via query param; the /auth/callback route
-	// reads it, stashes it in localStorage, and redirects to /.
-	http.Redirect(w, r, "/auth/callback?token="+url.QueryEscape(token), http.StatusFound)
+	http.Redirect(w, r, "/auth/callback#code="+url.QueryEscape(code), http.StatusFound)
+}
+
+// ExchangeCode trades a one-time code for the session token, over a POST whose body
+// is not logged. This is where the session is actually created — the code only
+// proves that OIDC already said yes.
+func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := Decode(r, &req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	redeemed, err := h.codes.Redeem(r.Context(), req.Code)
+	if err != nil {
+		// One message for expired, unknown and already-used. Telling them apart
+		// would say whether a code ever existed, which only helps an attacker.
+		Error(w, http.StatusUnauthorized, "Anmeldecode ungültig oder abgelaufen")
+		return
+	}
+
+	o := h.getOIDC()
+	if o == nil {
+		Error(w, http.StatusServiceUnavailable, "OIDC ist nicht konfiguriert")
+		return
+	}
+
+	// The IP and user agent come from the redeemed code, not from this request:
+	// they describe the browser that actually went through OIDC.
+	token, err := o.CreateOIDCSession(r.Context(), redeemed.UserID, redeemed.IP, redeemed.UserAgent)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Sitzung konnte nicht erstellt werden")
+		return
+	}
+
+	JSON(w, http.StatusOK, map[string]string{"token": token})
 }

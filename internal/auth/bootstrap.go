@@ -76,11 +76,23 @@ func getOrCreateJWTSecret(ctx context.Context, db *pgxpool.Pool) ([]byte, error)
 	return decoded, nil
 }
 
+// randomKey returns 32 bytes of entropy, or does not return.
+//
+// It used to fall back to a time-seeded string. That was reachable from **two**
+// places, and the second one mattered: getOrCreateJWTSecret base64-encodes this
+// value and INSERTs it as the instance's permanent JWT secret. A failed
+// crypto/rand at first boot therefore persisted `matrixctrl-fallback-<unix-nanos>`
+// as the signing key — derivable by anyone who can see roughly when the pod
+// started, which Kubernetes events publish, and surviving every restart after
+// (P1-16).
+//
+// There is no degraded mode worth having: the alternative to not starting is an
+// admin panel with forgeable sessions, which is worse than an admin panel that is
+// down and says why.
 func randomKey() []byte {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// crypto/rand failing is catastrophic; fall back to a time-seeded value.
-		return []byte(fmt.Sprintf("matrixctrl-fallback-%d", time.Now().UnixNano()))
+		log.Fatalf("FATAL: crypto/rand is unavailable (%v) — refusing to start rather than sign sessions with a guessable key", err)
 	}
 	return b
 }
@@ -187,7 +199,14 @@ func (b *Bootstrap) ValidateToken(tokenStr string) (userID string, err error) {
 }
 
 func (b *Bootstrap) RevokeSession(ctx context.Context, tokenStr string) error {
+	// Same signing-method check as ValidateToken. Not exploitable today — the
+	// library refuses "none" without an opt-in and an HMAC byte key is not a usable
+	// RSA key — but two validators in one file disagreeing about what they accept is
+	// exactly what makes a library upgrade dangerous (P2-28).
 	t, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
 		return b.jwtKey, nil
 	})
 	if err != nil {

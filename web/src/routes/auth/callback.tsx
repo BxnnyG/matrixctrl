@@ -9,15 +9,38 @@ function OIDCCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const error = params.get("error");
-    if (token) {
-      localStorage.setItem("matrixctrl_token", token);
-      window.location.replace("/");
-    } else {
+    // The code arrives in the URL **fragment**, which browsers never send to a
+    // server — so it appears in no access log and no Referer. It used to be the
+    // session JWT in a query parameter, which chi's request logger wrote out in
+    // full (P0-5). The code is single-use and expires in a minute.
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const code = hash.get("code");
+    const error = new URLSearchParams(window.location.search).get("error");
+
+    if (!code) {
       window.location.replace(error ? `/auth/login?error=${encodeURIComponent(error)}` : "/auth/login");
+      return;
     }
+
+    // Clear the fragment before anything else can read it, and without adding a
+    // history entry that still contains it.
+    window.history.replaceState(null, "", window.location.pathname);
+
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/auth/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Anmeldung fehlgeschlagen");
+        const { token } = await res.json();
+        localStorage.setItem("matrixctrl_token", token);
+        window.location.replace("/");
+      } catch (e) {
+        window.location.replace(`/auth/login?error=${encodeURIComponent((e as Error).message)}`);
+      }
+    })();
   }, [navigate]);
 
   return (

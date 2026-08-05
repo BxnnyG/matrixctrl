@@ -25,11 +25,47 @@ spec:
       # NOTE: no wait-for-postgres initContainer — Postgres is a sidecar in this
       # same pod and cannot start until initContainers finish (would deadlock).
       # The matrixctrl container retries the DB connection on startup instead.
+      #
+      # This one is different: it terminates immediately, so it does not deadlock.
+      # It exists because the container stopped running as root (P2-27) and the
+      # config repo on the PVC was written by earlier root-owned versions —
+      # `-rw-r--r-- root root`, which UID 65532 can read and cannot rewrite. Saving
+      # config would have failed on every existing installation, which is exactly
+      # S11 check #2. fsGroup would be the usual answer and is unavailable here: it
+      # would also apply to the Postgres volume, and Postgres refuses to start when
+      # its data directory is group-accessible.
+      initContainers:
+        - name: fix-ownership
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 65532:65532 /data/config-repo || true"]
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+          volumeMounts:
+            - name: config-repo
+              mountPath: /data/config-repo
       containers:
         # ── MatrixCtrl ─────────────────────────────────────────────────────
         - name: matrixctrl
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Applied per container rather than to the pod: the Postgres sidecar
+          # alongside this one drops to its own user and needs a writable data
+          # directory, so a pod-wide runAsUser would break it. This is the container
+          # running MatrixCtrl's own code, which is the surface that matters (P2-27).
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http
               containerPort: 8080
@@ -89,6 +125,11 @@ spec:
           volumeMounts:
             - name: config-repo
               mountPath: /data/config-repo
+            # readOnlyRootFilesystem leaves nothing writable, and go-git writes
+            # temporary files. An emptyDir keeps the root read-only without the
+            # config repo losing its persistence.
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /api/v1/auth/oidc/available
@@ -105,6 +146,11 @@ spec:
             {{- toYaml .Values.resources.matrixctrl | nindent 12 }}
 
         # ── Postgres sidecar ───────────────────────────────────────────────
+        # No securityContext here on purpose. The official Postgres image starts as
+        # root and drops to the postgres user itself, which needs CAP_SETUID and
+        # CAP_SETGID; dropping all capabilities would stop it booting. Hardening it
+        # means replacing the image or moving it out of this pod, which is a bigger
+        # change than the finding asked for (P2-27).
         - name: postgres
           image: postgres:16-alpine
           ports:
@@ -147,3 +193,5 @@ spec:
         - name: config-repo
           persistentVolumeClaim:
             claimName: matrixctrl-config
+        - name: tmp
+          emptyDir: {}

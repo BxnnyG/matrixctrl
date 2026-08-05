@@ -714,3 +714,55 @@ place a meaning can live, which is why the endpoints are verb-in-path —
 `/grant-admin` and `/revoke-admin` rather than one `/set-admin` taking a boolean. An
 audit line reading "set-admin" without saying which way cannot answer the question
 the audit trail exists for. Affects S10, S13.
+
+### §4.27 — Answering a security review, and what a review is worth (2026-08-04, operator + agent)
+**Question:** an external static review arrived with seven findings. What is the
+right way to consume one?
+
+**Decision:** every finding was re-verified against the code before being written
+into the backlog, and the ones that could be checked against the running system were.
+One turned out to be **worse** than reported, and one live measurement decided a
+priority. What the review found *clean* was recorded too.
+
+**Rationale:** a review is a set of claims, and claims are cheap. Two of the seven
+needed a measurement, not a reading:
+
+- The JWT-in-URL finding is severe only if the URL is retained somewhere. chi's
+  request logger is enabled and writes the full URL — **400 of the last 400 log
+  lines** carry one. So the token is written to the application log by the very
+  request that delivers it, which moved this from "bad practice" to "leaking now".
+- The weak-fallback-key finding named `NewBootstrap`, where the fallback is
+  ephemeral. `randomKey()` is also called from `getOrCreateJWTSecret`, whose result
+  is **persisted** as the instance's signing key. A failed `crypto/rand` at first
+  boot therefore writes `matrixctrl-fallback-<unix-nanos>` into the database forever,
+  derivable from the pod start time that Kubernetes publishes.
+
+**Decision detail — the token:** a one-time code carried in the URL **fragment**.
+Both properties are load-bearing: the fragment is never sent to a server, so there is
+nothing to log and no Referer leak; and the code is single-use with a one-minute life,
+so the copy in browser history is spent. Redemption is `DELETE … RETURNING`, the same
+atomic consume the OIDC state already uses. `?token=` now survives only on a genuine
+WebSocket upgrade, tested from the request's own headers rather than a path list — a
+path list has to be kept in step with the router, and the day it is not, the fallback
+quietly returns for a route that never wanted it.
+
+**Decision detail — the non-root switch nearly broke config saving.** The config repo
+on the PVC was written by earlier root-owned versions: `-rw-r--r-- root root`, which
+UID 65532 can read and cannot rewrite. Caught by looking before deploying, not after.
+`fsGroup` is the usual answer and is unavailable here, because it would also apply to
+the Postgres sidecar's volume and Postgres refuses to start when its data directory
+is group-accessible. So a one-shot `chown` initContainer, which terminates and
+therefore does not deadlock against the sidecar.
+
+**Decision detail — the throttle's own bug.** The backoff shifted `1 << (failures-5)`
+without a bound. Past ~62 failures the multiplication overflows and the delay wraps
+to **zero**, so the attacker who had failed the most would wait the least — and it is
+reachable, because the counter keeps growing after a lockout window expires. Found by
+a test written for the shape of the curve, not by review.
+
+**Consequences:** P0-4 — the ClusterRole being cluster-admin in all but name — is
+deliberately **not** in this etappe. It is the review's top finding and the one most
+able to break the product: an enumeration that misses a resource type the ESS chart
+creates fails the next upgrade, at the moment someone is trying to fix something
+else. It needs a real upgrade against a live release to prove, which is its own
+etappe. Affects S1, S8.

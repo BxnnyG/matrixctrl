@@ -60,6 +60,46 @@ strangers depends on a code path nobody has ever run.
 
 ## 1. P0 — urgent
 
+### Security review, 2026-08-04
+
+An external static review of the Go backend, the Helm chart and the auth flow.
+**All seven findings were re-verified against the code before being written down
+here**, and one turned out to be worse than reported. What the review found clean is
+recorded too, because a review that only lists faults cannot be used to judge
+coverage: no `exec.Command` with user input, config slice names validated against a
+fixed manifest (no path traversal), bcrypt for passwords, session revocation
+implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-safe), and
+`RequireAdmin` defaulting to true.
+
+- **P0-4 · The ClusterRole is cluster-admin in all but name.** `apiGroups: ["*"]`,
+  `resources: ["*"]`, `verbs: ["*"]` plus `nonResourceURLs: ["*"]`, bound cluster-wide
+  to the `matrixctrl` ServiceAccount. Verified verbatim in
+  `deploy/helm/matrixctrl/templates/clusterrole.yaml`.
+  The comment in the file argues Helm needs breadth to install releases containing
+  CRDs and ClusterRoles. That is true and does not justify *every* apiGroup: this
+  product manages one known chart.
+  **Why it is the top entry:** it converts *any* defect in the app — an auth bypass,
+  an SSRF, a dependency RCE — from "the ESS deployment is compromised" into "the
+  cluster is compromised". Every other finding below is amplified by this one.
+  *Fix:* enumerate what the ESS chart actually creates and scope to those groups;
+  drop `nonResourceURLs` entirely; use a namespaced `Role` where the resource is
+  namespaced. Needs a real upgrade run against a live release to prove nothing broke,
+  which is why it is its own etappe rather than a quick edit.
+
+- **P0-5 · The session JWT travels in a URL.** `internal/api/handlers/auth.go:185`
+  redirects to `/auth/callback?token=<jwt>`, and `extractToken`
+  (`internal/api/middleware/auth.go`) accepts `?token=` on **every** route, not only
+  the WebSocket one.
+  **Verified live:** chi's `middleware.Logger` is enabled (`router.go:36`) and writes
+  the full request URL including the query string — 400 of the last 400 log lines
+  carry one. So the token is written to the application log by the very request that
+  delivers it, and from there to anything that collects logs. Browser history and
+  `Referer` are the same exposure by other routes.
+  *Fix:* a one-time, short-lived exchange code in the redirect, swapped for the JWT
+  over a POST whose body is never logged; and the `?token=` fallback restricted to the
+  WebSocket route, which is the only place a browser cannot set a header.
+
+
 - ~~**P0-1 · Git history exposes the internal cluster hostname.**~~ **Done
   2026-08-01** (§4.14). The scope was larger than this entry claimed: besides the
   author of 39 commits, 30 commits carried the hostname **and the node's private
@@ -187,6 +227,24 @@ strangers depends on a code path nobody has ever run.
 
 ## 2. P1 — must-have
 
+- **P1-16 · A failed `crypto/rand` writes a guessable JWT key to the database
+  (S1).** From the 2026-08-04 review, and **worse than reported**. The review noted
+  the fallback in `NewBootstrap`, which is ephemeral. But `randomKey()` is also
+  called on the **normal** path, in `getOrCreateJWTSecret`
+  (`internal/auth/bootstrap.go:57`): the generated value is base64-encoded and
+  `INSERT`ed as the instance's permanent JWT secret. If `crypto/rand.Read` fails at
+  first boot, the persisted signing key becomes
+  `matrixctrl-fallback-<unix-nanos>` — derivable by anyone who can see roughly when
+  the pod started, which Kubernetes events publish. It survives every restart
+  thereafter, and nothing logs that it happened on this path.
+  *Fix:* fail hard. A process that cannot obtain a secure signing key must not start.
+
+- **P1-17 · No rate limiting on the bootstrap login (S1).** From the 2026-08-04
+  review; verified — there is no throttle, backoff or lockout anywhere in the router
+  or the login handler. bcrypt makes each attempt slow, which is a cost, not a limit.
+  *Fix:* per-IP and per-user limiting with progressive backoff.
+
+
 - ~~**P1-1 · CI (S9).**~~ **Done 2026-07-31** — `.github/workflows/ci.yml` runs
   `go vet`, `go test ./...`, typecheck, unit tests and the build on push and PR.
 - **P1-2 · Greenfield end-to-end test (S6) — deploy proven, connect-OIDC still open.**
@@ -282,6 +340,31 @@ strangers depends on a code path nobody has ever run.
   </details>
 
 ## 3. P2 — worth doing
+
+- **P2-26 · CORS is a wildcard on every route (S1).** From the 2026-08-04 review;
+  verified at `internal/api/router.go:158`. Auth is a bearer token rather than a
+  cookie, so this is not directly exploitable — but the frontend is **served by this
+  same binary on the same origin**, so nothing needs the wildcard at all.
+  *Fix:* scope to the configured ingress host, or drop the middleware.
+
+- **P2-27 · The container runs as root with no securityContext (S8).** From the
+  2026-08-04 review; verified — no `USER` in the `Dockerfile`, no `securityContext`
+  anywhere in the chart templates. Meanwhile the ESS chart it manages sets
+  `runAsNonRoot`, `readOnlyRootFilesystem` and drops all capabilities on its own
+  workloads. The admin panel holds itself to a lower standard than the thing it
+  administers.
+  *Fix:* non-root `USER` in the image; `runAsNonRoot`, `allowPrivilegeEscalation:
+  false`, `capabilities.drop: [ALL]` and a read-only root filesystem where the
+  Postgres sidecar allows it.
+
+- **P2-28 · `RevokeSession` does not check the signing method (S1).** From the
+  2026-08-04 review; verified at `internal/auth/bootstrap.go:190` — its keyfunc
+  returns the key unconditionally, while `ValidateToken` in the same file checks for
+  `*jwt.SigningMethodHMAC`. Not exploitable today: the library refuses `none` without
+  an explicit opt-in and an HMAC byte key is not a usable RSA key. It is on the list
+  because the inconsistency is the kind that becomes real on a library upgrade
+  nobody reads the changelog for.
+
 
 - **P2-1 · There is no audit trail at all (S10).** This entry used to read "the
   table and the middleware writes exist; nothing reads them back. Cheap." That was

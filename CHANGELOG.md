@@ -15,6 +15,51 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-08-04
+
+Answers six of the seven findings from an external security review. The seventh —
+the ClusterRole being cluster-admin in all but name — is deliberately separate: it
+is the most likely to break upgrades and needs its own verification.
+
+### Security
+
+- **The session JWT no longer travels in a URL.** The OIDC callback handed it over
+  as `/auth/callback?token=<jwt>`, and chi's request logger writes the full URL —
+  400 of the last 400 log lines carried one, so the token was written to the
+  application log by the very request that delivered it. It is now a **one-time code
+  in the URL fragment**: fragments are never sent to a server, so there is nothing to
+  log and no Referer leak, and the code is single-use with a one-minute life, so the
+  copy left in browser history is spent.
+- **`?token=` is accepted only on a genuine WebSocket upgrade**, judged from the
+  request's own headers. It used to work on every route, which made any log line or
+  link carrying one a usable session.
+- **A failed `crypto/rand` now stops the process.** It used to fall back to a
+  time-seeded string — and that fallback was reachable from the path that
+  *persists* the JWT secret, so a bad first boot would have written
+  `matrixctrl-fallback-<unix-nanos>` into the database as the permanent signing key,
+  derivable from the pod start time Kubernetes publishes.
+- **Login throttling** with per-IP and per-user counters, progressive backoff and a
+  lockout. Counted in Postgres, because an in-memory counter would make "restart the
+  pod and try again" the attack.
+- **The container runs as non-root** (65532) with a read-only root filesystem, no
+  capabilities and no privilege escalation. The ESS chart it manages already held
+  its own workloads to this standard.
+- **The CORS wildcard is gone.** The frontend is served by this same binary on the
+  same origin, so nothing needed it.
+- `RevokeSession` now checks the signing method, matching `ValidateToken` in the
+  same file.
+
+### Fixed
+
+- The login backoff shifted without a bound: past ~62 failures the delay overflowed
+  to **zero**, so the most persistent attacker would have waited the least. Reachable,
+  because the counter keeps growing after a lockout expires. Found by a test.
+- The switch to non-root would have broken config saving on every existing install —
+  the config repo was owned by root from earlier versions. A one-shot `chown`
+  initContainer fixes ownership; `fsGroup` was unavailable because it would also
+  apply to the Postgres sidecar's volume, and Postgres refuses to start when its data
+  directory is group-accessible.
+
 ## [0.1.29] — 2026-08-04
 
 ### Added

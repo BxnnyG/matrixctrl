@@ -42,3 +42,8 @@ RUN apk add --no-cache ca-certificates tzdata
 COPY --from=backend /matrixctrl /usr/local/bin/matrixctrl
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/matrixctrl"]
+
+# The ESS chart this panel manages sets runAsNonRoot, readOnlyRootFilesystem and
+# drops all capabilities on its own workloads. Running the admin panel as root held
+# it to a lower standard than the thing it administers (P2-27).
+USER 65532:65532
