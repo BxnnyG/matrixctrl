@@ -855,3 +855,42 @@ that with the operator. It reports only tags that are *older*: one ahead of the 
 is a deliberate choice, and anything not confidently orderable (a digest, a branch, a
 date) is left alone. A wrong "you are behind" costs an upgrade nobody needed, and the
 check has to be believed to be worth having. Affects S2, S4.
+
+### §4.30 — The changelog is the other half of the pin warning (2026-08-05, operator + agent)
+**Question:** the operator asked for release notes on the update tab, and for the
+version to carry from the list into the upgrade dialog. Both read as convenience.
+Are they?
+
+**Decision:** build both, and place the notes on the **upgrade page** rather than the
+list — beside the button that starts the upgrade.
+
+**Rationale:** the second ask is convenience. The first is not. ESS 26.8.0's notes
+say, in their own body, *"Upgrade Element Web to v1.12.25"* and *"Upgrade Synapse to
+v1.158.0"* — precisely the two upgrades the operator's pinned image tags were
+silently preventing (§4.29). One screen now carries both halves: the notes say what
+the version brings, and the pin warning says what a pin will stop it bringing. Either
+alone is half a sentence.
+
+**Decision detail — no opt-in, unlike §4.24.** The reachability check needed consent
+because it discloses the deployment's public address to a third party. This is a
+public GET for a public version's notes and carries no address, hostname or identity;
+`ListVersions` already fetches from ghcr.io on the same page, so outbound traffic here
+is established rather than new. What it does need is to fail quietly: an air-gapped
+install must read "could not be fetched", which is a different conclusion from "this
+version has no notes", and the two are kept apart.
+
+**Decision detail — cached per version, and bounded.** Published notes do not change,
+and GitHub's unauthenticated limit is 60 requests an hour: a page refetching on every
+render would exhaust it and then show nothing at all. Failures are cached too, or a
+polling page would hammer a rate-limited API to stay equally empty.
+
+**Decision detail — a markdown subset, not a dependency.** Headings, list items,
+links and inline code, in about forty lines. Release notes have a fixed shape, and a
+markdown library for four constructs is a lot of bundle for a little text — the same
+reasoning that keeps Monaco behind a lazy boundary (§4.10). Links render only for
+`http(s)`: a `javascript:` URL in third-party text must not become clickable in an
+admin panel, and anything unrecognised renders as plain text rather than as markup.
+
+**Consequences:** the version string reaches the backend as a URL path segment, so it
+is validated against a strict pattern and **refused** rather than escaped — refusing
+is simpler to be certain of than escaping. Affects S4.

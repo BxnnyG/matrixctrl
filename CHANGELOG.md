@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.33] — 2026-08-05
+
+### Added
+
+- **Release notes for the version you are about to install**, shown on the upgrade
+  page beside the button that starts it. Not decoration: 26.8.0's notes say "Upgrade
+  Element Web to v1.12.25" and "Upgrade Synapse to v1.158.0" — exactly the upgrades
+  the pinned image tags were silently preventing. The screen now says both what the
+  version brings and, from the pin warning, what a pin will stop it bringing.
+- **"Upgrade auf X" arrives with X selected.** The version travels from the list as a
+  search parameter instead of being picked twice.
+- Notes are cached per version and the cache is bounded — published notes do not
+  change, and GitHub's unauthenticated limit is 60 requests an hour.
+- "Could not be fetched" and "no notes published" are different messages, because
+  they lead to different conclusions.
+
+### Security
+
+- The version becomes a URL path segment and is validated against a strict pattern,
+  refused rather than escaped.
+- Rendered markdown links only follow `http(s)`. A `javascript:` URL in third-party
+  text must not become clickable in an admin panel.
+
 ## [0.1.32] — 2026-08-05
 
 ### Added

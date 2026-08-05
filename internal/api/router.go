@@ -142,6 +142,7 @@ func NewRouter(deps Deps) http.Handler {
 
 		r.Route("/api/v1/helm", func(r chi.Router) {
 			r.Get("/versions", deps.Helm.ListVersions)
+			r.Get("/versions/{version}/notes", deps.Helm.ReleaseNotes)
 			r.Get("/releases/{name}", deps.Helm.GetRelease)
 			r.Get("/releases/{name}/history", deps.Helm.GetHistory)
 			r.Post("/releases/{name}/upgrade", deps.Helm.Upgrade)

@@ -190,6 +190,21 @@ func (h *HelmHandler) Rollback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ReleaseNotes answers GET /api/v1/helm/versions/{version}/notes.
+//
+// Always 200 when the version is well-formed: a page that shows the notes should
+// still render when they cannot be fetched, and "not available, because …" is a
+// different thing to tell the operator than an error box.
+func (h *HelmHandler) ReleaseNotes(w http.ResponseWriter, r *http.Request) {
+	version := chi.URLParam(r, "version")
+	notes, err := helm.FetchReleaseNotes(r.Context(), version)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "ungültige Version")
+		return
+	}
+	JSON(w, http.StatusOK, notes)
+}
+
 func (h *HelmHandler) ListVersions(w http.ResponseWriter, r *http.Request) {
 	versions, err := helm.ListVersions(r.Context())
 	if err != nil {

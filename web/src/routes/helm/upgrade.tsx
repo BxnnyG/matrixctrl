@@ -7,7 +7,24 @@ import { Card, Icon, Badge, Button, SectionTitle, Spinner } from "@/components/m
 
 export const Route = createFileRoute("/helm/upgrade")({
   component: UpgradeWizard,
+  // The version travels from the list page so "Upgrade auf 26.8.0" arrives with
+  // 26.8.0 selected, instead of asking the operator to pick it a second time (E32).
+  validateSearch: (search: Record<string, unknown>): { version?: string } => ({
+    version: typeof search.version === "string" ? search.version : undefined,
+  }),
 });
+
+interface ReleaseNotes {
+  version: string;
+  available: boolean;
+  title?: string;
+  published_at?: string;
+  body?: string;
+  url?: string;
+  /** Why it is unavailable. "could not be fetched" and "none published" lead to
+   *  different conclusions, so they are not collapsed into one empty state. */
+  reason?: string;
+}
 
 interface HelmRelease { chart_version: string; revision: number }
 interface ESSVersion { version: string }
@@ -15,10 +32,116 @@ interface UpgradeResponse { upgrade_id: string }
 
 const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
 
+/** The release notes for the version about to be installed.
+ *
+ *  Not decoration: 26.8.0's notes say "Upgrade Element Web to v1.12.25" and
+ *  "Upgrade Synapse to v1.158.0" — exactly the upgrades the operator's pinned image
+ *  tags were silently preventing. This screen now carries both halves: what the
+ *  version brings, and (from the upgrade log) what a pin will stop it bringing. */
+function NotesPanel({ notes, loading, version }: { notes?: ReleaseNotes; loading: boolean; version: string }) {
+  if (loading && !notes) {
+    return <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> Lade Release Notes…</div>;
+  }
+  if (!notes?.available) {
+    return (
+      <div style={{ fontSize: 12.5, color: "var(--text-faint)", padding: "10px 12px", borderRadius: "var(--radius-sm)", background: "var(--surface-2)" }}>
+        {notes?.reason ?? "Keine Release Notes verfügbar."}
+      </div>
+    );
+  }
+  return (
+    <div style={{ borderRadius: "var(--radius-sm)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+        <Icon name="file" size={15} style={{ color: "var(--text-dim)" }} />
+        <span style={{ fontSize: 13, fontWeight: 650, color: "var(--text)" }}>{notes.title || version}</span>
+        {notes.published_at && (
+          <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+            {new Date(notes.published_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+          </span>
+        )}
+        {notes.url && (
+          <a href={notes.url} target="_blank" rel="noreferrer noopener"
+            style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--accent)", textDecoration: "none" }}>
+            auf GitHub ↗
+          </a>
+        )}
+      </div>
+      <div className="mc-scroll" style={{ maxHeight: 320, overflowY: "auto", padding: "12px 14px" }}>
+        <Markdown text={notes.body ?? ""} />
+      </div>
+    </div>
+  );
+}
+
+/** A deliberately small markdown subset: headings, list items, links and inline
+ *  code. Release notes have a fixed shape, and a markdown library for four
+ *  constructs is a lot of bundle for a little text — the same reasoning that keeps
+ *  Monaco behind a lazy boundary. */
+function Markdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
+      {lines.map((raw, i) => {
+        const line = raw.trimEnd();
+        if (line.trim() === "") return <div key={i} style={{ height: 6 }} />;
+
+        const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+        if (heading) {
+          const level = heading[1].length;
+          return (
+            <div key={i} style={{ fontSize: level <= 2 ? 13.5 : 13, fontWeight: 650, color: "var(--text)", marginTop: i === 0 ? 0 : 12, marginBottom: 4 }}>
+              {inline(heading[2])}
+            </div>
+          );
+        }
+
+        const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
+        if (bullet) {
+          return (
+            <div key={i} style={{ display: "flex", gap: 8, paddingLeft: bullet[1].length * 6 }}>
+              <span style={{ color: "var(--text-faint)" }}>•</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{inline(bullet[2])}</span>
+            </div>
+          );
+        }
+
+        return <div key={i} style={{ paddingLeft: /^\s+/.test(raw) ? 14 : 0 }}>{inline(line.trim())}</div>;
+      })}
+    </div>
+  );
+}
+
+/** Inline links and code. Everything else is rendered as text — an unrecognised
+ *  construct should look plain, never be interpreted as markup. */
+function inline(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+
+  while ((m = pattern.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m[1] !== undefined && /^https?:\/\//.test(m[2])) {
+      // Only http(s). A javascript: or data: URL in third-party text must not
+      // become a clickable link in an admin panel.
+      out.push(<a key={key++} href={m[2]} target="_blank" rel="noreferrer noopener" style={{ color: "var(--accent)", textDecoration: "none" }}>{m[1]}</a>);
+    } else if (m[1] !== undefined) {
+      out.push(m[1]);
+    } else {
+      out.push(<code key={key++} style={{ fontFamily: "var(--mono)", fontSize: 11.5, background: "var(--surface)", padding: "1px 4px", borderRadius: 3 }}>{m[3]}</code>);
+    }
+    last = pattern.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function UpgradeWizard() {
   const navigate = useNavigate();
   const logRef = useRef<HTMLDivElement>(null);
-  const [selectedVersion, setSelectedVersion] = useState("");
+  const preselected = Route.useSearch().version;
+  const [selectedVersion, setSelectedVersion] = useState(preselected ?? "");
   const [upgradeId, setUpgradeId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
@@ -31,6 +154,15 @@ function UpgradeWizard() {
   const { data: versions } = useQuery({
     queryKey: ["helm", "versions"],
     queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions"),
+  });
+
+  const { data: notes, isFetching: notesLoading } = useQuery({
+    queryKey: ["helm", "notes", selectedVersion],
+    queryFn: () => api.get<ReleaseNotes>(`/api/v1/helm/versions/${encodeURIComponent(selectedVersion)}/notes`),
+    enabled: selectedVersion !== "",
+    // Published notes do not change, and GitHub's unauthenticated limit is 60
+    // requests an hour — refetching on every render would exhaust it.
+    staleTime: Infinity,
   });
 
   const upgrade = useMutation({
@@ -92,6 +224,10 @@ function UpgradeWizard() {
               ))}
             </select>
           </div>
+          {selectedVersion && (
+            <NotesPanel notes={notes} loading={notesLoading} version={essVersion(selectedVersion)} />
+          )}
+
           <div>
             <Button variant="primary" icon="upload" disabled={!selectedVersion || upgrade.isPending} onClick={() => upgrade.mutate(selectedVersion)}>
               {upgrade.isPending ? <><Spinner size={14} /> Starte…</> : "Upgrade starten"}

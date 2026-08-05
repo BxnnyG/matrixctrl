@@ -92,7 +92,7 @@ function HelmPage() {
               {behind.length} Release{behind.length > 1 ? "s" : ""} dazwischen
             </span>
             <div style={{ flex: 1 }} />
-            <Button variant="soft" size="sm" icon="rocket" onClick={() => navigate({ to: "/helm/upgrade" })}>Auf {latest.version} upgraden</Button>
+            <Button variant="soft" size="sm" icon="rocket" onClick={() => navigate({ to: "/helm/upgrade", search: { version: latest.version } })}>Auf {latest.version} upgraden</Button>
           </div>
         )}
       </Card>
@@ -121,7 +121,7 @@ function HelmPage() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                     {v.published_at && <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{new Date(v.published_at).toLocaleDateString("de-DE")}</span>}
-                    {isNewer && <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/helm/upgrade" })}>Upgrade</Button>}
+                    {isNewer && <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/helm/upgrade", search: { version: v.version } })}>Upgrade</Button>}
                   </div>
                 </div>
               );
