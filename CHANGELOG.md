@@ -15,6 +15,30 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.31] — 2026-08-05
+
+### Fixed
+
+- **MAS asked "Continue to &lt;ULID&gt;?" instead of "Continue to MatrixCtrl?"** on the
+  consent screen. The generator already writes `client_name`; instances registered by
+  an earlier version do not have it, and there was no way to add it through the
+  product.
+- **Registration is now reconcilable rather than one-shot.** Connecting OIDC used to
+  answer `409 Conflict` for ever after the first time, so any field the generator
+  learned to write later could only reach fresh installs — every existing one was
+  stranded with hand-edited YAML as the only route. The setup page now reports what
+  the stored client is missing and offers to complete it.
+- The reconcile never regenerates the client ID or secret, never overwrites a value
+  that is already set, and refuses a fragment it cannot parse rather than replacing
+  it.
+
+### Changed
+
+- A code comment claiming `client_name` was undocumented and might not render is
+  replaced by the verification: MAS 1.15's published config schema lists
+  `ClientConfig.client_name`. Config is also the only durable place for it — a
+  database edit does not survive `mas-cli config sync`.
+
 ## [0.1.30] — 2026-08-04
 
 Answers six of the seven findings from an external security review. The seventh —

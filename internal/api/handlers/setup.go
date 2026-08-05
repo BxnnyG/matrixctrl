@@ -43,6 +43,7 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 
 	sections := 0
 	masHost := ""
+	var clientMissing []string
 	if h.store != nil {
 		if slices, err := h.store.List(r.Context()); err == nil {
 			sections = len(slices)
@@ -57,11 +58,23 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
+				// Which fields the registered client is missing. Reported so the
+				// product can offer the repair instead of expecting the operator
+				// to know one is needed — an instance connected by an older
+				// version is missing client_name, which MAS renders as
+				// "Continue to <ULID>?" on the consent screen (E30).
+				clientMissing = missingMASClientFields(merged)
 			}
 		}
 	}
 	resp["config_sections"] = sections
 	resp["mas_host"] = masHost
+	// Always a list, never null: a frontend checking `.length` on null is a crash
+	// on the page whose job is to tell the operator what is wrong.
+	if clientMissing == nil {
+		clientMissing = []string{}
+	}
+	resp["oidc_client_missing"] = clientMissing
 
 	JSON(w, http.StatusOK, resp)
 }

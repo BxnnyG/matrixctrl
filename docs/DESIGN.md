@@ -766,3 +766,46 @@ able to break the product: an enumeration that misses a resource type the ESS ch
 creates fails the next upgrade, at the moment someone is trying to fix something
 else. It needs a real upgrade against a live release to prove, which is its own
 etappe. Affects S1, S8.
+
+### §4.28 — Registration has to be reconcilable, not one-shot (2026-08-05, operator + agent)
+**Question:** the operator logged in and MAS asked *"Continue to
+01KSPV9ZMR7NB4B2BBWMPYSD1P?"* — a ULID where the application name belongs, at the
+moment someone decides whether to trust this thing with their homeserver. The
+generator already emits `client_name`. Why is it missing?
+
+**Decision:** `ConnectOIDC` stops answering `409 Conflict` when a client already
+exists and **reconciles** instead: fields the current generator writes and the
+stored fragment lacks are added, everything else is left alone. `/setup/status`
+reports what is missing, so the page can offer the repair rather than expecting the
+operator to know one is needed.
+
+**Rationale:** the missing field was the symptom; the defect is that registration was
+one-shot. Any field the generator learns to write later can only ever reach fresh
+installs, and every existing one is stranded with no path through the product —
+which leaves hand-editing YAML, the activity this product exists to remove. That is a
+shape of bug, not a one-off: it will recur for the next field.
+
+**Decision detail:** the reconcile never regenerates the client ID or secret.
+Re-running "connect" on a working instance must not invalidate the credential that
+instance is authenticating with, which would log the operator out of the panel they
+ran the repair from. It also never overwrites a value that is present — an operator
+who chose their own display name keeps it. A fragment that cannot be parsed is
+**refused rather than replaced**: it may have been hand-edited, and overwriting it
+would destroy that edit while reporting success.
+
+**Decision detail:** the check and the fix are the same function, run as a dry run
+for the check. Two implementations of "is this complete?" would eventually disagree,
+and the disagreement would show up as a button that does nothing or one that never
+appears.
+
+**Two things this corrected:**
+
+- A comment in `helm_setup.go` claimed `client_name` "is not in MAS's documented
+  field list" and might not render. MAS 1.15's own published config schema lists
+  `ClientConfig.client_name` beside `client_id` and `redirect_uris`. The comment
+  hedged about something checkable and was wrong; hedging ages into folklore.
+- A note in this project's memory said the display name had been set directly in the
+  MAS database and that the static-client sync would leave it alone. The live row
+  read `client_name = NULL, is_static = t`, and `mas-cli` has a `config sync`
+  subcommand that rewrites static clients from the config file. The database edit did
+  not survive. Config is the only durable place for it. Affects S6.

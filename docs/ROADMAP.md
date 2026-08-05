@@ -49,6 +49,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 18 | First impression — screenshots, maturity + German-UI disclosure, CHANGELOG, dependabot, `helm.go` split | ✅ 2026-08-01 · [plan](plans/etappe-18-first-impression.md) |
 | 17 | Audit trail — the writes that were documented for two months but never existed | ✅ 2026-08-01 · `v0.1.18` · [plan](plans/etappe-17-audit-trail.md) |
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
+| 30 | "Continue to &lt;ULID&gt;?" — MAS client registration made reconcilable instead of one-shot, so an existing install can gain fields the generator learned later | ✅ 2026-08-05 · `v0.1.31` · [plan](plans/etappe-30-oidc-client-name.md) |
 | 29 | Security review — JWT out of the URL, non-root container, login throttling, weak-key fallback removed (RBAC scoping deliberately separate) | ✅ 2026-08-04 · `v0.1.30` · [plan](plans/etappe-29-security-review.md) |
 | 28 | User write actions — every dialog states what the verb actually does, self-lockout refused, deactivation never erases | ✅ 2026-08-04 · `v0.1.29` · [plan](plans/etappe-28-user-actions.md) |
 | 27 | Phase 2 beginnt — user list from MAS, read-only: shared admin client, cursor paging, locked ≠ deactivated | ✅ 2026-08-04 · `v0.1.28` · [plan](plans/etappe-27-users.md) |

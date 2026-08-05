@@ -19,6 +19,9 @@ interface SetupStatus {
   bootstrap_active: boolean;
   config_sections: number;
   mas_host?: string;
+  /** Fields the registered MAS client lacks that the current version writes.
+   *  Empty when complete, absent on an older backend (E30). */
+  oidc_client_missing?: string[];
 }
 interface ESSVersion { version: string }
 interface DeployResponse { upgrade_id: string }
@@ -90,10 +93,11 @@ function Setup() {
       ) : !data.oidc_configured ? (
         <ConnectCard masHost={data.mas_host} onDone={invalidate} />
       ) : (
-        <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
-          <Icon name="check" size={20} style={{ color: "var(--status-ok)" }} />
-          <span style={{ fontSize: 13, color: "var(--text)" }}>Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment.</span>
-        </Card>
+        <ConnectedCard
+          missing={data.oidc_client_missing ?? []}
+          masHost={data.mas_host}
+          onDone={invalidate}
+        />
       )}
 
       <Card pad={false}>
@@ -134,6 +138,59 @@ function AdoptCard({ release, version, onDone }: { release: string; version?: st
         </div>
       </div>
     </WizardCard>
+  );
+}
+
+/** Shown once OIDC is connected.
+ *
+ *  It also offers to complete the registration when the stored MAS client is
+ *  missing a field the current version writes. Without this the repair would be
+ *  unreachable: the connect card is replaced the moment OIDC is on, and the
+ *  operator would be left hand-editing YAML to stop MAS asking
+ *  "Continue to <ULID>?" — the exact task this product exists to remove (E30).
+ */
+function ConnectedCard({ missing, masHost, onDone }: { missing: string[]; masHost?: string; onDone: () => void }) {
+  const [message, setMessage] = useState<string | null>(null);
+
+  const repair = useMutation({
+    mutationFn: () => api.post<{ changed: string[]; message: string }>("/api/v1/setup/connect-oidc", {
+      issuer: masHost ? `https://${masHost}` : window.location.origin,
+      public_url: window.location.origin,
+    }),
+    onSuccess: (res) => { setMessage(res.message); onDone(); },
+  });
+
+  if (missing.length === 0) {
+    return (
+      <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
+        <Icon name="check" size={20} style={{ color: "var(--status-ok)" }} />
+        <span style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
+          {message ?? "Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment."}
+        </span>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-warn) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
+      <Icon name="alert" size={20} style={{ color: "var(--status-warn)", marginTop: 1 }} />
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 13, color: "var(--text)" }}>
+          <strong>Die MAS-Registrierung ist unvollständig.</strong>{" "}
+          Es fehlt: <code style={{ fontFamily: "var(--mono)" }}>{missing.join(", ")}</code>.
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4, lineHeight: 1.55 }}>
+          Ohne <code style={{ fontFamily: "var(--mono)" }}>client_name</code> fragt MAS beim Anmelden
+          „Continue to &lt;ID&gt;?“ statt nach MatrixCtrl. Ergänzen ändert nur das fehlende Feld —
+          Client-ID und Secret bleiben unangetastet.
+        </div>
+        {message && <div style={{ fontSize: 12, color: "var(--status-ok)", marginTop: 8 }}>{message}</div>}
+        {repair.isError && <div style={{ fontSize: 12, color: "var(--status-err)", marginTop: 8 }}>{(repair.error as Error).message}</div>}
+      </div>
+      <Button variant="soft" size="sm" icon={repair.isPending ? undefined : "key"} disabled={repair.isPending} onClick={() => repair.mutate()}>
+        {repair.isPending ? <><Spinner size={13} /> Ergänze…</> : "Registrierung vervollständigen"}
+      </Button>
+    </Card>
   );
 }
 

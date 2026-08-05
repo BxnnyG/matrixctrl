@@ -143,11 +143,24 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Idempotency guard: refuse if a MatrixCtrl client is already registered.
+	// A client that is already registered is reconciled, not refused.
+	//
+	// This used to answer 409 and stop. That made registration all-or-nothing: an
+	// instance connected by an older version could never gain a field the generator
+	// learned to write later, and the operator had to hand-edit YAML — the activity
+	// this product exists to remove. It surfaced as MAS asking "Continue to <ULID>?"
+	// on the consent screen (E30).
 	if contents, err := h.configStore.MergedContent(r.Context()); err == nil {
 		if merged, err := config.MergeToMap(contents); err == nil {
+			if existing, _ := nestedGet(merged, "matrixAuthenticationService", "additional", "0-matrixctrl-client", "config").(string); existing != "" {
+				h.reconcileMASClient(w, r, existing, userID)
+				return
+			}
+			// Present but unreadable — an entry exists in a shape this cannot
+			// interpret. Refusing is right: registering a second client would leave
+			// two, and rewriting blind would destroy whatever is there.
 			if nestedGet(merged, "matrixAuthenticationService", "additional", "0-matrixctrl-client") != nil {
-				Error(w, http.StatusConflict, "a MatrixCtrl OIDC client is already registered in MAS config")
+				Error(w, http.StatusConflict, "a MatrixCtrl OIDC client is already registered in MAS config, in a shape MatrixCtrl cannot read")
 				return
 			}
 		}
@@ -241,16 +254,24 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 // asked to "Continue to 01KSPV9ZMR7NB4B2BBWMPYSD1P?" — a ULID, which looks like
 // something is wrong rather than like their own admin tool.
 //
-// It is not in MAS's documented field list, and MAS ignores unknown keys in this
-// section (verified against 1.15.0: a deliberately bogus field also passes
-// `mas-cli config check`). So this cannot break MAS startup — but whether it
-// actually renders depends on the MAS version. Upstream issue #4415 reports the
-// field existing for static clients yet not being synced to the database; it is
-// closed, so recent versions should honour it. Harmless if they do not.
+// It **is** documented: MAS 1.15's own config schema lists
+// `ClientConfig.client_name` beside client_id, client_secret and redirect_uris
+// (verified 2026-08-05 against the published config.schema.json). An earlier
+// comment here hedged that it was undocumented and might not render; that was
+// never checked, and it is wrong.
+//
+// Config is also the only durable place for it. A note in this project'"'"'s memory
+// claimed the name had been set directly in the MAS database and would survive,
+// but the live row read `client_name = NULL, is_static = t` — `mas-cli config sync`
+// rewrites static clients from the config file, so a database edit does not last.
+// masClientDisplayName is what MAS shows on the consent screen. One constant, two
+// callers: the initial registration and the reconcile.
+const masClientDisplayName = "MatrixCtrl"
+
 func buildMASClientConfig(clientID, secret, redirect string) string {
 	return fmt.Sprintf(`clients:
   - client_id: "%s"
-    client_name: "MatrixCtrl"
+    client_name: "%s"
     client_auth_method: client_secret_basic
     client_secret: "%s"
     redirect_uris:
@@ -259,7 +280,50 @@ policy:
   data:
     admin_clients:
       - "%s"
-`, clientID, secret, redirect, clientID)
+`, clientID, masClientDisplayName, secret, redirect, clientID)
+}
+
+// reconcileMASClient fills in fields the current generator writes and the stored
+// fragment lacks, and touches nothing else.
+//
+// It never regenerates the client ID or secret: re-running "connect" on a working
+// instance must not invalidate the credential that instance authenticates with,
+// which would log the operator out of the panel they ran the repair from.
+func (h *HelmHandler) reconcileMASClient(w http.ResponseWriter, r *http.Request, existing, userID string) {
+	repair, err := repairMASClientConfig(existing, masClientDisplayName)
+	if err != nil {
+		Error(w, http.StatusConflict, "the registered MAS client config could not be read, so it was left untouched: "+err.Error())
+		return
+	}
+
+	if len(repair.Changed) == 0 {
+		JSON(w, http.StatusOK, map[string]any{
+			"already_registered": true,
+			"changed":            []string{},
+			"message":            "Der MatrixCtrl-Client ist bereits vollständig registriert.",
+		})
+		return
+	}
+
+	changes := map[string]interface{}{
+		"matrixAuthenticationService.additional.0-matrixctrl-client.config": repair.Config,
+	}
+	if err := h.configStore.SetSectionValues(r.Context(), changes, nil); err != nil {
+		Error(w, http.StatusInternalServerError, "write MAS client config: "+err.Error())
+		return
+	}
+	if _, err := h.configStore.Commit(r.Context(), "config: complete the MatrixCtrl OIDC client registration", userID); err != nil {
+		_ = err // non-fatal, same as the registration path
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"already_registered": true,
+		"changed":            repair.Changed,
+		// Said plainly, because a config edit that silently waits for an unrelated
+		// future upgrade is worse than no edit: the operator would believe it done.
+		"message": "Ergänzt: " + strings.Join(repair.Changed, ", ") +
+			". Damit MAS die Änderung sieht, muss ESS noch deployt werden.",
+	})
 }
 
 // greenfieldHostnames maps a server name to the values the deploy wizard seeds.
