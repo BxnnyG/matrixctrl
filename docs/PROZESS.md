@@ -81,12 +81,20 @@ cd web && ./node_modules/.bin/tsc --noEmit && npm run build
 make docker VERSION=<next>         # build the image
 docker save ghcr.io/bxnnyg/matrixctrl:<next> -o /tmp/mc.tar
 k3s ctr images import /tmp/mc.tar  # no registry pull; chart uses IfNotPresent
-# bump image.tag in deploy/helm/matrixctrl/values.bxnny.yaml
 helm upgrade matrixctrl deploy/helm/matrixctrl -n matrixctrl \
-  -f deploy/helm/matrixctrl/values.bxnny.yaml
+  -f deploy/helm/matrixctrl/values.bxnny.yaml \
+  --set image.tag=<next>
 kubectl -n matrixctrl rollout status deploy/matrixctrl --timeout=180s
 ```
 
+> **`--set image.tag` is not optional.** The chart's committed default is
+> `tag: "latest"`, and CI rewrites it to the exact version only when it *packages a
+> released chart* (`release.yml`). A local deploy from the working tree therefore
+> renders `:latest` — whatever stale build containerd happens to hold under that
+> name. On 2026-08-05 this deployed a **0.1.32** image while `helm list` reported
+> `APP VERSION 0.1.33` and `rollout status` reported success. Neither was lying about
+> its own subject; neither was answering the question "what code is running?".
+>
 > **`rollout status` is not proof that anything changed.** If the upgrade never
 > applied — a bad `-f` path, a values error — the deployment is untouched, and
 > `kubectl rollout status` cheerfully reports the *old* one as successfully rolled
@@ -97,7 +105,14 @@ kubectl -n matrixctrl rollout status deploy/matrixctrl --timeout=180s
 > helm list -n matrixctrl   # CHART/APP VERSION must be the new one
 > kubectl get deploy matrixctrl -n matrixctrl \
 >   -o jsonpath='{.spec.template.spec.containers[0].image}'
+> # The one that settles it — the binary names its own version and commit:
+> kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl | grep starting
+> # → "MatrixCtrl 0.1.33 (2f671ca) starting"
 > ```
+>
+> The log line is the only one of the three that reads the *artefact* rather than a
+> declaration about it. A tag can point anywhere; `helm list` reports the chart's
+> `appVersion`, which is a string in a file. The commit hash cannot be wrong.
 
 Then verify the **running** result, not the build output:
 

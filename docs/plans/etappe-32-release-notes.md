@@ -76,25 +76,42 @@ available", not an error.
 - A version string cannot escape the URL path
 - S11 green **after** the deploy
 
-## Status (2026-08-05)
+## Outcome (2026-08-05)
 
-**Built and committed, not deployed.** Go tests and the frontend typecheck pass; the
-build-and-deploy step was stopped by the operator, so the running image is still
-`0.1.32` while `Chart.yaml` reads `0.1.33`.
+Shipped in `0.1.33` (Helm revision 36, `MatrixCtrl 0.1.33 (2f671ca) starting`, zero
+restarts). Both previously-unverifiable items now check out against the running
+deployment:
 
-Nothing is tagged: the project's rule is deploy → verify → ship, and tagging an
-unverified version would put a release on GHCR that nobody has watched start. The
-tag waits for the deploy.
+- The served chunk `helm-B6WwRb0n.js` carries
+  `onClick:()=>e({to:`/helm/upgrade`,search:{version:T.version}})` — both
+  version-carrying buttons pass the version, the bare "Upgrade" button correctly does
+  not. The receiving side reads `useSearch().version` into `useState(r ?? "")`.
+- The served chunk `upgrade-DwqPUUGh.js` contains the notes panel and all three of
+  its states.
+- `GET /api/v1/helm/versions/26.8.0/notes` answers `401` inside the pod — registered,
+  not missing — and the pod does reach `api.github.com`.
 
-### Verified without a deploy
+The payoff held up. 26.8.0's live notes say, in their own body:
 
-- Version validation refuses `../`, spaces, query strings and over-long strings
-- A second request for the same version is served from cache
-- The cache clears rather than growing past its bound
-- An unreachable API yields `available: false` with a reason, not an error
-- `tsc --noEmit` clean, `go test ./internal/...` clean
+```
+- Upgrade Element Web to v1.12.25.
+- Upgrade Synapse to v1.158.0.
+```
 
-### Still unverified
+Those are exactly the two upgrades E31's pin warning reports as blocked. The screen
+now carries both halves.
 
-That the panel renders the notes, and that "Upgrade auf X" really arrives with X
-selected. Both are one deploy away and neither is provable from here.
+### What the deploy caught
+
+The first `helm upgrade` **did not deploy this code**, and said it had. The chart's
+committed default is `image.tag: "latest"`; CI rewrites it to the exact version only
+when packaging a released chart. A local deploy therefore rendered `:latest`, which
+in containerd was a stale build. `helm list` reported `APP VERSION 0.1.33`,
+`rollout status` reported success, and the running binary printed
+`MatrixCtrl 0.1.32`.
+
+Both tools were honest about their own subject and neither answered "what code is
+running?". Fixed in [PROZESS §4](../PROZESS.md#4-verify--ship): the deploy command
+now carries `--set image.tag`, and the read-back list now ends with the container's
+own startup line, which is the only one of the three that reads the artefact instead
+of a declaration about it.

@@ -38,6 +38,17 @@ matching image, so a version identifies one exact pair
 - Rendered markdown links only follow `http(s)`. A `javascript:` URL in third-party
   text must not become clickable in an admin panel.
 
+### Fixed
+
+- **The documented local deploy shipped the wrong image.** The chart's committed
+  default is `image.tag: "latest"` — CI rewrites it to the exact version only when it
+  packages a *released* chart — so a deploy from the working tree rendered `:latest`
+  and ran whatever stale build containerd held. The first attempt at this release
+  deployed `0.1.32` while `helm list` said `APP VERSION 0.1.33` and `rollout status`
+  said success. [PROZESS §4](docs/PROZESS.md#4-verify--ship) now passes
+  `--set image.tag` and ends the read-back with the container's own startup line,
+  which reads the artefact rather than a declaration about it.
+
 ## [0.1.32] — 2026-08-05
 
 ### Added
