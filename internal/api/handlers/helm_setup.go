@@ -212,7 +212,7 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 		merged, _ := config.MergeToMap(contents)
 
 		stream.emit("Upgrading ESS so MAS loads the new client (this restarts MAS)…")
-		stopProgress := stream.startProgress("Waiting for Helm rollout", upgradeProgressInterval)
+		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
 		_, upgradeErr := h.helm.Upgrade(ctx, h.essRelease, rel.Version, merged)
 		stopProgress()
 		if err := upgradeErr; err != nil {

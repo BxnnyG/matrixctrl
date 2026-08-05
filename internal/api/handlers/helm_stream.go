@@ -114,7 +114,27 @@ func (s *upgradeStream) snapshot() (logs []string, done bool, status string) {
 // assertion "no further lines after stop" failed roughly one run in twenty, and
 // only under parallel load, which is exactly the shape of a race that reaches
 // production as "the log order is sometimes weird".
+// probeFunc returns a line describing what the rollout is currently waiting for,
+// or "" when there is nothing to add beyond the elapsed time.
+type probeFunc func() string
+
 func (s *upgradeStream) startProgress(label string, interval time.Duration) (stop func()) {
+	return s.startProgressWithProbe(label, interval, nil)
+}
+
+// startProgressWithProbe is startProgress that can also say *what* it is waiting
+// for.
+//
+// The plain version is a clock: it emits "(30s elapsed)" and never looks at the
+// cluster. On 2026-08-05 an operator watched seven minutes of that while one pod sat
+// in Init:CrashLoopBackOff with the explanation in its logs — all of it available to
+// the process printing the elapsed time (E31).
+//
+// The probe is strictly additive. It runs on the ticker's goroutine, its failures
+// are invisible, and the elapsed line is emitted whether or not it has anything to
+// say: a diagnostic that can degrade a running upgrade is worse than one that is
+// sometimes silent.
+func (s *upgradeStream) startProgressWithProbe(label string, interval time.Duration, probe probeFunc) (stop func()) {
 	done := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {
@@ -122,12 +142,24 @@ func (s *upgradeStream) startProgress(label string, interval time.Duration) (sto
 		started := time.Now()
 		t := time.NewTicker(interval)
 		defer t.Stop()
+		var last string
 		for {
 			select {
 			case <-done:
 				return
 			case <-t.C:
 				s.emit(fmt.Sprintf("%s… (%s elapsed)", label, formatElapsed(time.Since(started))))
+				if probe == nil {
+					continue
+				}
+				detail := probe()
+				// Repeating an unchanged diagnosis every tick turns the one useful
+				// line into the same wallpaper the elapsed counter already was.
+				if detail == "" || detail == last {
+					continue
+				}
+				last = detail
+				s.emit("  ↳ " + detail)
 			}
 		}
 	}()

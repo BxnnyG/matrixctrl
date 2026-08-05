@@ -166,7 +166,7 @@ func main() {
 	driftHandler := handlers.NewDriftHandler(pool, k8sClient, essNS)
 	usersHandler := handlers.NewUsersHandler(authHandler.MAS)
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
-	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore)
+	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion)

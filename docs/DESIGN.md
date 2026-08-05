@@ -809,3 +809,49 @@ appears.
   read `client_name = NULL, is_static = t`, and `mas-cli` has a `config sync`
   subcommand that rewrites static clients from the config file. The database edit did
   not survive. Config is the only durable place for it. Affects S6.
+
+### §4.29 — A progress bar that never looked at the cluster (2026-08-05, operator + agent)
+**Question:** an upgrade to ESS 26.8.0 printed `Waiting for Helm rollout… (30s
+elapsed)` fifteen times and then failed. The operator asked *"kein Balken oder was
+passiert da genau?"* — what **is** happening?
+
+**Decision:** the progress ticker gets an optional probe. On each tick it lists the
+namespace's pods, separates the ones that are failing from the ones that are merely
+starting, and prints the failing container's own error text.
+
+**Rationale:** the honest answer to the question was that `startProgress` is a
+**clock**. It could not say what it was waiting for because it never asked. One pod
+sat in `Init:CrashLoopBackOff` the entire time with the explanation in its logs:
+`password authentication failed for user "…"`. Every byte of that was available to
+the process printing the elapsed time.
+
+**Decision detail:** the probe is strictly additive and cannot degrade an upgrade.
+It runs on the ticker's goroutine with a five-second timeout, reads at most three
+container logs per tick, and every failure path returns no information rather than
+an error. A diagnostic that can abort a deploy is a worse defect than the one it
+reports. It also stays quiet when nothing is wrong: pods that are merely young are
+counted, not narrated, and an unchanged diagnosis is not repeated — otherwise the one
+useful line becomes the same wallpaper the elapsed counter already was. An unknown
+waiting reason counts as *starting*, so a new Kubernetes state does not turn every
+rollout into an alarm.
+
+**The root cause underneath, which is the second half:** the credentials were
+correct — verified against the live database from a pod. Chart 26.8.0 renders the MAS
+config with `database.password_file`, which needs MAS ≥ 1.22, and the config **pinned**
+`matrixAuthenticationService.image.tag: "1.15.0"`. MAS 1.15 received a field it does
+not know, ignored it, connected with no password, and Postgres refused it.
+
+The pin was not a one-off. Measured against chart 26.8.0, the config was behind on
+four components — MAS 1.15.0 vs 1.22.0, Synapse v1.151 vs v1.158, Element Web
+v1.12.14 vs v1.12.25, Element Admin 0.1.11 vs 0.1.12. The config migration froze
+every image tag at the moment it ran, so each chart upgrade since had been upgrading
+templates while keeping old images: **partially inert, and nobody was told.** 26.8.0
+was simply the first version where the mismatch turned fatal instead of stale.
+
+**Decision detail:** `internal/imagepin` reports this before the rollout starts, and
+**does not fix it**. Unpinning is an upgrade decision with consequences — here a
+seven-minor-version MAS jump carrying database migrations — and CLAUDE.md rule 6 puts
+that with the operator. It reports only tags that are *older*: one ahead of the chart
+is a deliberate choice, and anything not confidently orderable (a digest, a branch, a
+date) is left alone. A wrong "you are behind" costs an upgrade nobody needed, and the
+check has to be believed to be worth having. Affects S2, S4.

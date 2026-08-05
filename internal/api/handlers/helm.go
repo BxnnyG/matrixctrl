@@ -15,6 +15,11 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
+	"github.com/bxnnyg/matrixctrl/internal/imagepin"
+	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/rollout"
+
+	"gopkg.in/yaml.v3"
 )
 
 type HelmHandler struct {
@@ -23,6 +28,11 @@ type HelmHandler struct {
 	engine      *hooks.Engine
 	essRelease  string
 	configStore *config.Store
+	// k8s and essNS let the progress ticker say *what* a rollout is waiting for
+	// rather than only how long it has been waiting (E31). Both may be zero: the
+	// probe is additive and its absence costs detail, not correctness.
+	k8s   *k8s.Client
+	essNS string
 	// oidcReloader hot-reloads the auth service after connect-OIDC (set in main).
 	oidcReloader func(context.Context) error
 	// In-memory log streams for WebSocket consumers
@@ -34,14 +44,68 @@ type HelmHandler struct {
 // MatrixCtrl to OIDC without a restart.
 func (h *HelmHandler) SetOIDCReloader(fn func(context.Context) error) { h.oidcReloader = fn }
 
-func NewHelmHandler(helmClient *helm.Client, db *pgxpool.Pool, engine *hooks.Engine, essRelease string, cfgStore *config.Store) *HelmHandler {
+func NewHelmHandler(helmClient *helm.Client, db *pgxpool.Pool, engine *hooks.Engine, essRelease string, cfgStore *config.Store, k8sClient *k8s.Client, essNS string) *HelmHandler {
 	return &HelmHandler{
 		helm:        helmClient,
 		db:          db,
 		engine:      engine,
 		essRelease:  essRelease,
 		configStore: cfgStore,
+		k8s:         k8sClient,
+		essNS:       essNS,
 		streams:     make(map[string]*upgradeStream),
+	}
+}
+
+// pinnedTagWarning compares the image tags the config holds against the ones the
+// target chart ships, and returns a line when the config is behind.
+//
+// Silent on every failure. This runs on the path of a live upgrade, and a
+// diagnostic that can stop a deploy — because a chart could not be pulled, or a
+// values map had an unexpected shape — is a worse defect than the one it reports.
+func (h *HelmHandler) pinnedTagWarning(ctx context.Context, toVersion string, values map[string]interface{}) string {
+	if h.helm == nil || toVersion == "" || len(values) == 0 {
+		return ""
+	}
+
+	raw, err := h.helm.DefaultChartValues(toVersion)
+	if err != nil {
+		return ""
+	}
+	var chartValues map[string]interface{}
+	if err := yaml.Unmarshal([]byte(raw), &chartValues); err != nil {
+		return ""
+	}
+
+	return imagepin.Describe(imagepin.Compare(
+		imagepin.ExtractTags(values),
+		imagepin.ExtractTags(chartValues),
+	))
+}
+
+// rolloutProbe builds the function the progress ticker calls to describe what the
+// rollout is stuck on. Returns nil when there is no cluster connection, which the
+// ticker treats as "no extra detail" rather than as an error.
+func (h *HelmHandler) rolloutProbe(ctx context.Context) probeFunc {
+	if h.k8s == nil || h.essNS == "" {
+		return nil
+	}
+	return func() string {
+		pods := h.k8s.RolloutState(ctx, h.essNS)
+		states := make([]rollout.PodState, 0, len(pods))
+		for _, p := range pods {
+			cs := make([]rollout.ContainerState, 0, len(p.Containers))
+			for _, c := range p.Containers {
+				cs = append(cs, rollout.ContainerState{
+					Name: c.Name, Init: c.Init, Waiting: c.Waiting,
+					LastExitCode: c.LastExitCode, Terminated: c.Terminated, Message: c.Message,
+				})
+			}
+			states = append(states, rollout.PodState{
+				Name: p.Name, Ready: p.Ready, Phase: p.Phase, Containers: cs,
+			})
+		}
+		return rollout.Describe(rollout.Assess(states))
 	}
 }
 

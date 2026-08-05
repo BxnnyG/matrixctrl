@@ -74,7 +74,15 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		stopProgress := stream.startProgress("Waiting for Helm rollout", upgradeProgressInterval)
+		// Reported before the rollout starts, so the operator sees it while there is
+		// still something to decide. Not blocking and not auto-fixed: unpinning is an
+		// upgrade decision with consequences — here a seven-minor-version MAS jump
+		// with database migrations — and that belongs to the operator (E31).
+		if line := h.pinnedTagWarning(ctx, req.ToVersion, values); line != "" {
+			stream.emit("WARNUNG: " + line)
+		}
+
+		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
 		result, err := h.helm.Upgrade(ctx, name, req.ToVersion, values)
 		stopProgress()
 		if err != nil {
@@ -190,7 +198,7 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
-		stopProgress := stream.startProgress("Waiting for Helm rollout", upgradeProgressInterval)
+		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
 		result, err := h.helm.Upgrade(ctx, name, currentVersion, values)
 		stopProgress()
 		if err != nil {

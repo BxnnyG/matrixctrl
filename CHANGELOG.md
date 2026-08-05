@@ -15,6 +15,34 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.32] — 2026-08-05
+
+### Added
+
+- **The upgrade log says what the rollout is waiting for.** It used to be a clock:
+  `Waiting for Helm rollout… (30s elapsed)`, fifteen times, while one pod sat in
+  `Init:CrashLoopBackOff` with the explanation in its own logs. Now each tick names
+  the failing pod, its container, the reason, and the container's error text.
+- Pods that are merely starting are counted rather than narrated, and an unchanged
+  diagnosis is not repeated — the useful line must not become wallpaper.
+- **Image tags pinned behind the chart are reported before the rollout starts.** On
+  the instance this was built for, four components were behind: MAS 1.15.0 against
+  1.22.0, Synapse v1.151 against v1.158, Element Web v1.12.14 against v1.12.25,
+  Element Admin 0.1.11 against 0.1.12. Chart upgrades had been updating templates
+  while keeping old images, and nothing said so.
+- The MAS pin is what made the 26.8.0 upgrade fail: chart 26.8.0 writes
+  `database.password_file`, MAS 1.15 does not know the field, so it connected with no
+  password at all.
+
+### Deliberately not done
+
+- Pins are **reported, not fixed**. Unpinning is an upgrade decision with
+  consequences — a seven-minor-version MAS jump with database migrations — and it
+  belongs to the operator.
+- Only tags *older* than the chart's are reported. Running ahead is a choice, and
+  anything not confidently orderable is left alone: a wrong "you are behind" costs an
+  upgrade nobody needed.
+
 ## [0.1.31] — 2026-08-05
 
 ### Fixed
