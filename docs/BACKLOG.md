@@ -319,6 +319,15 @@ strangers depends on a code path nobody has ever run.
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P2-25 · GDPR erasure on deactivation is not offered (S13).** MAS's `deactivate`
+  defaults to `skip_erase: false`, i.e. it asks the homeserver to erase the account.
+  E28 always sends `skip_erase: true`, so MatrixCtrl currently cannot erase at all.
+  *Why it was left out:* a one-click irreversible erasure is the wrong default for a
+  panel, and it sits oddly beside a `reactivate` that cannot bring the data back. But
+  an operator with a real erasure request now has to leave the panel for it.
+  *Shape:* a separate, explicitly-worded action — not a checkbox on deactivate —
+  with its own audit line and wording that names what cannot be undone.
+
 - **P1-14 · MatrixCtrl should be able to install and manage a TURN relay (S14).**
   Requested by the operator 2026-08-04, immediately after P1-12's finding landed:
   "kannste das adden ... als one click install ... verwaltbar für den user".

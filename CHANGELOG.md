@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-08-04
+
+### Added
+
+- **User write actions**: lock, unlock, deactivate, reactivate, grant/revoke admin,
+  set password — each behind a confirmation that states what it actually does.
+- **The dialogs carry the consequence, not "are you sure?"**, because every one of
+  these verbs is narrower than it sounds: locking does **not** end existing sessions,
+  unlock does not reactivate, reactivate does not unlock, and revoking admin leaves
+  existing admin sessions intact. An operator locking a compromised account needs to
+  know the attacker is still connected.
+- Only the actions that fit the account's actual state are offered — no "unlock" on
+  an account that is not locked.
+- **Self-lockout is refused.** MatrixCtrl admits only MAS admins, so locking or
+  deactivating yourself, or revoking your own admin, would close the door you need to
+  reopen it. Refused too when the acting identity cannot be resolved: not being able
+  to tell is not permission.
+- `ConfirmDialog` moved into the shared primitives from the one route that had it
+  inline, and now closes on Escape.
+
+### Security
+
+- **Deactivation never erases.** MAS defaults to asking the homeserver to GDPR-erase
+  the account; MatrixCtrl always sends `skip_erase: true` and says so in the dialog.
+- Passwords cannot reach the audit table — the audit middleware records no request
+  bodies. Because of that the endpoints are verb-in-path (`/grant-admin`,
+  `/revoke-admin`), so the trail says which way the change went without logging
+  anything that must not be logged.
+
 ## [0.1.28] — 2026-08-04
 
 ### Added

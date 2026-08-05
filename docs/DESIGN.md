@@ -670,3 +670,47 @@ set-admin, set-password — are deliberately not in this etappe: each is destruc
 a different way and needs confirmation plus audit entries, and shipping the dangerous
 half alongside the subsystem that introduces it is how the dangerous half goes
 untested. Affects S13.
+
+### §4.26 — The confirmation must carry the consequence (2026-08-04, operator + agent)
+**Question:** E27 shipped the user list and deliberately left the writes out. Lock,
+unlock, deactivate, reactivate, set-admin and set-password are one POST each — what
+is there to decide?
+
+**Decision:** every dialog states what the action actually does, taken from MAS's own
+API description, and three actions are refused against the acting user's own account.
+
+**Rationale:** each of these verbs does something narrower than it sounds, and in the
+direction that matters:
+
+- **lock** does **not** invalidate existing sessions. Locking a compromised account
+  does not eject the attacker — the classic reason for pressing that button.
+- **unlock** does not reactivate; **reactivate** does not unlock.
+- **set-admin** leaves existing sessions with the access they already have.
+
+A dialog asking "are you sure?" asks the operator to confirm they pressed the button
+they pressed. It does not tell them the incident they believe they just handled is
+still running. So the consequence *is* the dialog's content, and the generic question
+is not asked at all.
+
+**Decision detail — erasure:** MAS's `deactivate` defaults to `skip_erase: false`,
+i.e. it asks the homeserver to GDPR-erase the account. MatrixCtrl always sends
+`skip_erase: true` and says so in the dialog. A one-click irreversible erasure is the
+wrong default for a panel, and it sits oddly beside a `reactivate` that cannot bring
+the data back. Erasure gets its own decision or it does not ship (P2-25).
+
+**Decision detail — self-lockout:** MatrixCtrl admits only MAS admins, so locking
+yourself, deactivating yourself or revoking your own admin closes the door you would
+need in order to reopen it. Those three are refused. The complication is that the
+session stores whatever the OIDC exchange returned — `matrix_user_id` when userinfo
+provides it, the ULID `sub` otherwise — so a direct comparison would protect in one
+deployment and silently not in the next. The acting identity is resolved through MAS
+in whichever form it arrives, and **if resolution fails the action is refused**: "I
+could not tell whether this is you" is not permission. A rail that gives way when
+unsure is worse than none, because it is trusted.
+
+**Decision detail — audit:** the audit middleware records no request body by design,
+so a password can never reach the audit table. That also means the path is the only
+place a meaning can live, which is why the endpoints are verb-in-path —
+`/grant-admin` and `/revoke-admin` rather than one `/set-admin` taking a boolean. An
+audit line reading "set-admin" without saying which way cannot answer the question
+the audit trail exists for. Affects S10, S13.

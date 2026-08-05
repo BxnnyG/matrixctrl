@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { Card, Icon, Badge, Button, Spinner, EmptyState } from "@/components/mc";
+import { Card, Icon, Badge, Button, Spinner, EmptyState , ConfirmDialog } from "@/components/mc";
 import { DiffView } from "@/components/config/DiffView";
 
 export const Route = createFileRoute("/config/history")({
@@ -92,29 +92,19 @@ function ConfigHistory() {
         })}
       </div>
 
-      {/* Rollback confirmation modal */}
-      {confirmSha && (
-        <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, backdropFilter: "blur(2px)" }} onClick={() => setConfirmSha(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: 24, maxWidth: 440, width: "calc(100% - 32px)", boxShadow: "0 24px 60px -12px oklch(0 0 0 / 0.6)" }}>
-            <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
-              <Icon name="alert" size={20} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
-              <div>
-                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 650, color: "var(--text)" }}>Rollback bestätigen</h2>
-                <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55 }}>
-                  Der Working-Tree wird auf Commit <code style={{ fontFamily: "var(--mono)", color: "var(--accent)" }}>{confirmSha.slice(0, 10)}</code> zurückgesetzt. Alle ungespeicherten Änderungen gehen verloren.
-                </p>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmSha(null)}>Abbrechen</Button>
-              <Button variant="danger" size="sm" icon={rollingBack === confirmSha ? undefined : "rotate"} disabled={rollingBack === confirmSha} onClick={() => rollback.mutate(confirmSha)}>
-                {rollingBack === confirmSha ? <><Spinner size={13} /> Setze zurück…</> : "Jetzt zurücksetzen"}
-              </Button>
-            </div>
-            {rollback.isError && <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--status-err)" }}>{(rollback.error as Error).message}</p>}
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmSha !== null}
+        title="Rollback bestätigen"
+        confirmLabel="Jetzt zurücksetzen"
+        confirmIcon="rotate"
+        busy={rollingBack === confirmSha}
+        error={rollback.isError ? (rollback.error as Error).message : null}
+        onCancel={() => setConfirmSha(null)}
+        onConfirm={() => confirmSha && rollback.mutate(confirmSha)}
+      >
+        Der Working-Tree wird auf Commit <code style={{ fontFamily: "var(--mono)", color: "var(--accent)" }}>{confirmSha?.slice(0, 10)}</code> zurückgesetzt.
+        Alle ungespeicherten Änderungen gehen verloren.
+      </ConfirmDialog>
     </div>
   );
 }

@@ -256,6 +256,12 @@ func (c *Client) UserByID(ctx context.Context, id string) (*User, error) {
 		return nil, fmt.Errorf("mas admin API returned %d", status)
 	}
 
+	return singleUser(raw)
+}
+
+// singleUser flattens the one-resource envelope. Shared with the by-username
+// lookup: two copies of the same envelope would drift the day MAS adds a field.
+func singleUser(raw []byte) (*User, error) {
 	var doc struct {
 		Data struct {
 			ID         string `json:"id"`

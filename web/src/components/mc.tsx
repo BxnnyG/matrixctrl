@@ -1,7 +1,7 @@
 // mc.tsx — MatrixCtrl design-system primitives, ported from the Claude Design
 // prototype. Inline styles on the CSS-var tokens (index.css) so the 3 directions
 // re-theme everything live. Use these instead of ad-hoc Tailwind for the new look.
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 /* ── Icons (24x24 line set) ── */
 export const ICONS: Record<string, string> = {
@@ -221,4 +221,67 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function Spinner({ size = 16 }: { size?: number }) {
   return <span style={{ display: "inline-block", width: size, height: size, border: "2px solid var(--border-strong)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "mc-spin .7s linear infinite" }} />;
+}
+
+/** Confirmation for an action that cannot be casually undone.
+ *
+ *  The body is a slot rather than a string because "are you sure?" only asks the
+ *  operator to confirm they pressed the button they pressed. What they need is the
+ *  consequence — and for the MAS user actions the consequence is routinely *not*
+ *  what the verb implies (locking does not end sessions; revoking admin does not
+ *  end an admin session). That text is the whole point of the dialog, so it gets
+ *  room rather than a fixed one-liner.
+ *
+ *  Extracted from config/history.tsx when a second caller appeared (CLAUDE.md rule 3).
+ */
+export function ConfirmDialog({ open, title, children, confirmLabel, confirmIcon, confirmDisabled, tone = "danger", busy, error, onConfirm, onCancel }: {
+  open: boolean;
+  title: string;
+  children?: ReactNode;
+  confirmLabel: string;
+  confirmIcon?: string;
+  /** Blocks confirmation while the dialog's own input is incomplete — an empty
+   *  password field should not be able to reach the server at all. */
+  confirmDisabled?: boolean;
+  tone?: "danger" | "primary";
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  // Escape closes. A modal that can only be dismissed by finding the right pixel is
+  // one people click through to get rid of, which defeats a confirmation.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, backdropFilter: "blur(2px)", padding: 16 }}
+      onClick={() => { if (!busy) onCancel(); }}
+    >
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: 24, maxWidth: 480, width: "100%", boxShadow: "0 24px 60px -12px oklch(0 0 0 / 0.6)" }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
+          <Icon name={tone === "danger" ? "alert" : "info"} size={20} style={{ color: tone === "danger" ? "var(--status-warn)" : "var(--text-dim)", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 650, color: "var(--text)" }}>{title}</h2>
+            <div style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>{children}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>Abbrechen</Button>
+          <Button variant={tone === "danger" ? "danger" : "primary"} size="sm" icon={busy ? undefined : confirmIcon} disabled={busy || confirmDisabled} onClick={onConfirm}>
+            {busy ? <><Spinner size={13} /> Läuft…</> : confirmLabel}
+          </Button>
+        </div>
+        {error && <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--status-err)" }}>{error}</p>}
+      </div>
+    </div>
+  );
 }

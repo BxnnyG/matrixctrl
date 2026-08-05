@@ -98,6 +98,12 @@ func NewRouter(deps Deps) http.Handler {
 
 		// Replacing the SFU pod is the fix for an announced address that went stale
 		// overnight. POST so it lands in the audit log like every other mutation.
+		// Verb-in-path on purpose: the audit middleware records no request body, so
+		// the path is the only place the meaning of the change can live.
+		for _, action := range []string{"lock", "unlock", "deactivate", "reactivate", "grant-admin", "revoke-admin", "set-password"} {
+			r.Post("/api/v1/users/{id}/"+action, deps.Users.Act(action))
+		}
+
 		r.Post("/api/v1/rtc/restart-sfu", deps.RTC.RestartSFU)
 		// POST because it discloses the deployment's public address to a third
 		// party — see handlers.Reachability. Never reachable by a page load.
