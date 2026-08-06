@@ -15,6 +15,37 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.34] — 2026-08-06
+
+### Fixed
+
+- **A slow-starting MAS no longer locks you out of your own panel.** The container was
+  OOMKilled and restarted before MAS was serving; discovery returned a proxy error
+  page, the single OIDC init attempt failed, and the panel showed a username/password
+  box for eleven hours while MAS was healthy seconds later. OIDC now retries in the
+  background with capped backoff and never gives up on its own — giving up after N
+  attempts is the same lockout on a delay.
+- The retry rebuilds from the **effective startup config**, not from the database.
+  Reusing `ReloadOIDC` would have been a silent no-op here: it reads the DB, startup
+  prefers env, and this deployment is env-configured. The logs would have claimed a
+  recovery was running while nothing changed.
+- The connect-OIDC setup flow wins over an in-flight retry — a person acting
+  deliberately outranks a background loop.
+
+### Added
+
+- `/api/v1/auth/oidc/available` reports `retrying` alongside `enabled`. "This install
+  uses local login" and "Matrix login exists but its issuer is down" look identical on
+  screen and lead to opposite actions. The login page shows the distinction and polls
+  until it can switch back on its own, with no reload.
+
+### Security
+
+- A transient IdP failure used to re-open the local password login on a public URL
+  indefinitely, because bootstrap login is only disabled while OIDC is configured.
+  That window now closes by itself. The endpoint reports only that a retry is running,
+  never the discovery error — it is unauthenticated by necessity.
+
 ## [0.1.33] — 2026-08-05
 
 ### Added

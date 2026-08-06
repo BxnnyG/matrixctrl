@@ -894,3 +894,43 @@ admin panel, and anything unrecognised renders as plain text rather than as mark
 **Consequences:** the version string reaches the backend as a URL path segment, so it
 is validated against a strict pattern and **refused** rather than escaped — refusing
 is simpler to be certain of than escaping. Affects S4.
+
+### §4.31 — A dependency that is slow to start must not lock the operator out (2026-08-06, operator + agent)
+
+**Context:** the container was OOMKilled at 21:43 and restarted before MAS was
+serving. Discovery answered with a proxy error page instead of JSON — the `'o'` in
+`invalid character 'o' in literal null` is the second character of `no healthy
+upstream`. `NewOIDCService` failed once, `oidcSvc` stayed `nil` for the life of the
+process, and the panel presented a username/password box for eleven hours while MAS
+was healthy seconds after the failure. The operator wrote *"idk jetzt ist login mit
+username password statt mit mas"* and could only get back in because someone else had
+cluster access.
+
+**Decision:** a failed OIDC init retries in the background with capped backoff, and
+never gives up on its own. Giving up after N attempts restores the same lockout on a
+delay, and an issuer down for an hour differs from one down for a minute mainly in
+how likely the operator is to be asleep for it.
+
+**The trap, which is the real content of this section:** `AuthHandler.ReloadOIDC`
+already loads config, builds the service and swaps it under a lock, and is documented
+"safe to call repeatedly". Retrying by calling it in a loop is the obvious move — and
+on this deployment it would have done nothing at all, silently. `ReloadOIDC` reads the
+**DB**; startup prefers **env** ("env always wins"), and this instance is
+env-configured with no OIDC row in the DB. `LoadOIDCConfig` would return `ok == false`,
+`ReloadOIDC` would return `nil` — success — and OIDC would stay off forever while the
+log claimed a recovery was under way. A silent no-op is worse than the bug it
+replaces, because it removes the symptom that would have prompted a second look. The
+retry therefore rebuilds from the **effective startup config**, and `ReloadOIDC` keeps
+its DB-first behaviour, because applying newly persisted config is the setup flow's
+entire job.
+
+**Also decided:** the setup flow beats an in-flight retry — a person acting
+deliberately outranks a background loop. And `/auth/oidc/available` now reports
+`retrying` alongside `enabled`, because "this install uses local login" and "Matrix
+login exists but its issuer is unreachable" look identical on screen and lead to
+opposite actions: wait, versus go find your password. It carries no error detail; the
+endpoint is unauthenticated by necessity, so the reason stays in the log.
+
+**Consequences:** a transient IdP failure no longer re-opens the local password login
+on a public URL for an indefinite period — the window now closes by itself. The login
+page polls while a retry runs and switches over without a reload. Affects S3, S4.

@@ -22,6 +22,7 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+  const [oidcRetrying, setOidcRetrying] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
@@ -30,8 +31,26 @@ function Login() {
     if (err) { setError(decodeURIComponent(err)); window.history.replaceState({}, "", "/auth/login"); }
   }, []);
 
+  // While the backend is retrying a failed OIDC init (E33), keep asking. Without this
+  // the operator sits on a password box until they think to reload — which is what
+  // being locked out felt like the first time, even though recovery was seconds away.
   useEffect(() => {
-    api.get<{ enabled: boolean }>("/api/v1/auth/oidc/available").then((r) => setOidcEnabled(r.enabled)).catch(() => setOidcEnabled(false));
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const poll = () => {
+      api.get<{ enabled: boolean; retrying?: boolean }>("/api/v1/auth/oidc/available")
+        .then((r) => {
+          if (cancelled) return;
+          setOidcEnabled(r.enabled);
+          setOidcRetrying(!!r.retrying);
+          if (!r.enabled && r.retrying) timer = setTimeout(poll, 5000);
+        })
+        .catch(() => { if (!cancelled) setOidcEnabled(false); });
+    };
+    poll();
+
+    return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -91,6 +110,19 @@ function Login() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: "var(--text-faint)" }}>
                 <Icon name="shield" size={14} /> Nur für Administratoren
               </div>
+            </div>
+          )}
+
+          {/* An unreachable issuer and an install that simply uses local login look
+              identical on screen, and lead to opposite actions: wait, versus go find
+              your password. Say which one this is. */}
+          {oidcEnabled === false && oidcRetrying && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--status-warn)", background: "color-mix(in oklch, var(--status-warn) 10%, var(--surface))", border: "1px solid color-mix(in oklch, var(--status-warn) 30%, var(--border))", borderRadius: "var(--radius-sm)", padding: "10px 12px", marginBottom: 20 }}>
+              <Spinner size={15} />
+              <span>
+                <strong style={{ fontWeight: 650 }}>Matrix-Login vorübergehend nicht erreichbar.</strong>{" "}
+                Die Verbindung wird im Hintergrund wiederhergestellt — diese Seite schaltet automatisch um.
+              </span>
             </div>
           )}
 

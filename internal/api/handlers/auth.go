@@ -37,6 +37,10 @@ type AuthHandler struct {
 
 	mu   sync.RWMutex
 	oidc *auth.OIDCService
+	// retry is the state of the background OIDC recovery loop, or nil when OIDC was
+	// never configured. Read by the login page so a password box that appears because
+	// the IdP is down does not look like the normal way in (E33).
+	retry *auth.RetryState
 }
 
 func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Pool, jwtKey []byte) *AuthHandler {
@@ -57,6 +61,22 @@ func (h *AuthHandler) OIDCConfigured() bool {
 	o := h.getOIDC()
 	return o != nil && o.Enabled()
 }
+
+// InstallOIDC publishes a service built elsewhere — today, by the background retry
+// after a failed start (E33). It writes under the same lock ReloadOIDC uses, so a
+// swap mid-request hands back a consistent service rather than a torn read.
+//
+// Bootstrap login closes the moment this lands: BootstrapLogin refuses to run while
+// OIDC is configured, and it reads through the same lock.
+func (h *AuthHandler) InstallOIDC(svc *auth.OIDCService) {
+	h.mu.Lock()
+	h.oidc = svc
+	h.mu.Unlock()
+}
+
+// SetRetryState hands the handler the loop's observable state. Set once at startup,
+// before the server serves.
+func (h *AuthHandler) SetRetryState(s *auth.RetryState) { h.retry = s }
 
 // ReloadOIDC rebuilds the OIDC service from the DB-persisted config and swaps it
 // in atomically. Used by the connect-OIDC flow to switch from bootstrap to OIDC at
@@ -183,9 +203,20 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /api/v1/auth/oidc/available — lets the frontend know if OIDC is configured.
+// GET /api/v1/auth/oidc/available — unauthenticated; the login page calls it before
+// anyone has a session.
+//
+// `retrying` distinguishes "this install uses local login" from "Matrix login exists
+// but its issuer is unreachable right now". Those look identical on screen and lead to
+// opposite actions: wait, versus go find your password. It carries no error detail —
+// the endpoint is public, and the reason is in the log, which already needs access.
 func (h *AuthHandler) OIDCAvailable(w http.ResponseWriter, r *http.Request) {
 	o := h.getOIDC()
-	JSON(w, http.StatusOK, map[string]bool{"enabled": o != nil && o.Enabled()})
+	enabled := o != nil && o.Enabled()
+	JSON(w, http.StatusOK, map[string]bool{
+		"enabled":  enabled,
+		"retrying": !enabled && h.retry.Active(),
+	})
 }
 
 // GET /api/v1/auth/oidc/redirect — generates a state and redirects the browser to MAS.

@@ -85,12 +85,17 @@ func main() {
 		}
 	}
 	var oidcSvc *auth.OIDCService
+	// oidcRetry is non-nil only when the first attempt failed and a recovery loop is
+	// worth starting. Wired to the auth handler further down so the login page can
+	// tell "local login by design" from "Matrix login, issuer temporarily down".
+	var oidcRetry *auth.RetryState
 	if oidcCfg.ClientID != "" {
 		// Non-fatal: if MAS isn't reachable yet (e.g. just deployed), start in
-		// bootstrap mode and hot-reload OIDC later via the setup flow.
+		// bootstrap mode — but keep trying, and hot-reload via the setup flow too.
 		svc, err := auth.NewOIDCService(oidcCfg, pool, bootstrapAuth.JWTKey())
 		if err != nil {
-			log.Printf("WARNING: OIDC init failed (%v) — staying in bootstrap mode; reconnect via Setup", err)
+			log.Printf("WARNING: OIDC init failed (%v) — bootstrap mode for now, retrying in the background", err)
+			oidcRetry = auth.NewRetryState()
 		} else {
 			oidcSvc = svc
 			log.Printf("OIDC enabled: issuer=%s client_id=%s", oidcCfg.Issuer, oidcCfg.ClientID)
@@ -168,6 +173,25 @@ func main() {
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
+
+	// Recover from a failed OIDC start without a restart (E33).
+	//
+	// It rebuilds from `oidcCfg` — the *effective* startup config — rather than
+	// calling ReloadOIDC. ReloadOIDC reads the DB only, and env wins over the DB at
+	// startup, so on an env-configured instance (this one) it would find nothing,
+	// return success, and leave OIDC off forever while the logs claimed a recovery
+	// was under way. A silent no-op would be worse than the bug it replaces.
+	if oidcRetry != nil {
+		authHandler.SetRetryState(oidcRetry)
+		go auth.RetryOIDC(ctx, oidcRetry, auth.RetryTarget{
+			Build: func(context.Context) (*auth.OIDCService, error) {
+				return auth.NewOIDCService(oidcCfg, pool, bootstrapAuth.JWTKey())
+			},
+			Installed: authHandler.OIDCConfigured, // the setup flow may have won
+			Install:   authHandler.InstallOIDC,
+			Wait:      auth.SleepOrDone,
+		})
+	}
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion)
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
