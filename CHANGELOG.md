@@ -15,6 +15,32 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.35] — 2026-08-06
+
+### Changed
+
+- **The pod is now Guaranteed QoS**, so the panel is no longer among the first
+  processes killed when the node runs out of memory. `requests` now equal `limits` for
+  both containers, which moves `oom_score_adj` from 997 to -997.
+
+  This came out of measuring 0.1.34's trigger instead of assuming it. MatrixCtrl was
+  killed while holding **14 MB** against a 512Mi limit: the kernel logged
+  `constraint=CONSTRAINT_NONE, global_oom`, meaning the whole node was exhausted — by
+  an unrelated 18 GB process — not the container. There was no memory problem to fix.
+  What the log did show is that kubelet derives the kill order from the memory
+  *request*, so a 128Mi request against a 512Mi limit put the admin panel near the
+  front of the queue.
+
+  It creates no memory; it changes who is killed instead. The reservation is about 2%
+  of the node, and the request/limit gap was buying nothing at 81Mi steady state.
+
+  Note that QoS is a **pod** property: both containers need `requests == limits` or
+  the class stays Burstable.
+
+- Memory and CPU **limits are unchanged**. Lowering the 512Mi ceiling to match real
+  usage was rejected — the peak during a Helm render has never been measured, and that
+  would trade a rare collateral kill for a self-inflicted one.
+
 ## [0.1.34] — 2026-08-06
 
 ### Fixed

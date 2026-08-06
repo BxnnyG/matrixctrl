@@ -6,19 +6,36 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
-# Resource limits
+# Resource limits.
+#
+# requests == limits on purpose: that makes the pod QoS class **Guaranteed**
+# (oom_score_adj -997) instead of Burstable. Under node-wide memory pressure the
+# kubelet derives the kill order from the memory *request* — with the old 128Mi
+# request against a 512Mi limit this pod scored 997 and was among the first killed.
+#
+# It happened: on 2026-08-05 an unrelated 18 GB process exhausted the node and the
+# kernel killed matrixctrl while it held 14 MB. An admin panel that dies first under
+# node pressure is useless exactly when it is needed (etappe 34, DESIGN §4.32).
+#
+# QoS is a *pod* property: both containers must have requests == limits, for CPU and
+# memory, or the class stays Burstable. Changing only one has no effect at all.
+#
+# The limits themselves are unchanged — steady-state usage is ~81Mi, and nothing has
+# ever approached the ceiling. Lowering it was tempting and rejected: the peak during
+# a Helm render has never been measured, and a smaller ceiling would trade a rare
+# collateral kill for a self-inflicted one.
 resources:
   matrixctrl:
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 500m
+      memory: 512Mi
     limits:
       cpu: 500m
       memory: 512Mi
   postgres:
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: 250m
+      memory: 256Mi
     limits:
       cpu: 250m
       memory: 256Mi

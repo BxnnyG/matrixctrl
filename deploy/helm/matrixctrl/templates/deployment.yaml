@@ -38,6 +38,20 @@ spec:
         - name: fix-ownership
           image: busybox:1.36
           command: ["sh", "-c", "chown -R 65532:65532 /data/config-repo || true"]
+          # Init containers count towards the pod's QoS class. Without equal
+          # requests and limits here the pod is Burstable no matter what the two
+          # real containers declare — which is exactly what happened on the first
+          # attempt at etappe 34: both containers were correct and the class stayed
+          # Burstable. A non-sidecar init container does not add to the pod's
+          # effective request (that is max(init), not sum), so these values cost
+          # nothing.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
           securityContext:
             runAsUser: 0
             allowPrivilegeEscalation: false

@@ -934,3 +934,47 @@ endpoint is unauthenticated by necessity, so the reason stays in the log.
 **Consequences:** a transient IdP failure no longer re-opens the local password login
 on a public URL for an indefinite period — the window now closes by itself. The login
 page polls while a retry runs and switches over without a reload. Affects S3, S4.
+
+### §4.32 — Being first in the kill order (2026-08-06, agent, from measuring §4.31's cause)
+
+**Context:** §4.31 shipped with a stated next step — *"something spikes; measure before
+raising the limit"* — and named the Helm render as the likely culprit. That guess was
+wrong, and the measurement is worth more than the guess was.
+
+```
+Out of memory: Killed process (matrixctrl) anon-rss:14084kB oom_score_adj:997
+oom-kill:constraint=CONSTRAINT_NONE, global_oom
+```
+
+**14 MB resident against a 512Mi limit.** `CONSTRAINT_NONE` with `global_oom` is a
+node-wide exhaustion, not a container hitting its cgroup ceiling. MatrixCtrl has no
+memory problem, and raising its limit would have been the careful repair of something
+that was never broken. The process that exhausted the node appears three lines later:
+`node`, 18.2 GB, in a user session scope, right after `claude invoked oom-killer` —
+the agent's own tooling, outside the product entirely.
+
+**What the log does prove:** the kill order is derived, not arbitrary. kubelet computes
+`oom_score_adj = 1000 − 1000 × memoryRequest / nodeCapacity`; 128Mi against 35 GiB gives
+≈996, and the kernel logged 997. The small request — not the limit — put the panel near
+the top of the list. The cascade killed, in order, `nginx`, `postgres`,
+`postgres_exporter`, `matrixctrl` (14 MB), `livekit-server` (20 MB), and only last the
+18 GB process that caused it. Every victim was tiny; the cause was reached last.
+
+**Decision:** `requests == limits` for both containers, making the pod **Guaranteed**
+(`oom_score_adj -997`). QoS is a *pod* property — setting it on one container of the two
+leaves the class Burstable and achieves nothing, which is the way this change is easy to
+get half-right.
+
+**Stated plainly, because it is a trade and not a free win:** this creates no memory. It
+changes who is killed instead. It is defensible here because the reservation is ~2% of
+the node, and because the gap between a 128Mi request and a 512Mi limit was buying
+nothing — steady state is 81Mi — while costing the kill order.
+
+**Limits deliberately unchanged.** Lowering the 512Mi ceiling to match real usage was
+tempting and rejected: the peak during a Helm render has never been measured, and that
+would trade a rare collateral kill for a self-inflicted one.
+
+**Consequences:** the same failure shape as §4.31 — a component that removes itself at
+the worst possible moment — closed from the other side. The ESS pods killed in the same
+cascade are Burstable for the same reason, but they belong to the ESS chart and stay the
+operator's decision. Affects S8.
