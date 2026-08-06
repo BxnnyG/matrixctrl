@@ -33,7 +33,10 @@ func NewRouter(deps Deps) http.Handler {
 
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
+	// Our own logger, not chi's: chi's writes the full URL, which put a valid session
+	// JWT into the container log once per WebSocket connection (E35). This one
+	// redacts credential-bearing query values and keeps the rest.
+	r.Use(authmw.Logger)
 	r.Use(middleware.Recoverer)
 	// No CORS middleware. The frontend is served by this same binary on the same
 	// origin, so nothing needs it — and a wildcard Access-Control-Allow-Origin on an
@@ -53,7 +56,7 @@ func NewRouter(deps Deps) http.Handler {
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.RequireAuth(deps.Auth.ValidateToken))
+		r.Use(authmw.RequireAuthWithTickets(deps.Auth.ValidateToken, deps.Auth.RedeemWSTicket))
 
 		// After RequireAuth, so the record carries the authenticated user, and
 		// wrapping the whole group rather than each route: a new handler must
@@ -62,6 +65,10 @@ func NewRouter(deps Deps) http.Handler {
 
 		r.Post("/api/v1/auth/logout", deps.Auth.Logout)
 		r.Get("/api/v1/auth/me", deps.Auth.Me)
+		// A single-use credential for one WebSocket handshake. POST because it
+		// mints something, and inside the protected group because only an already
+		// authenticated session may ask for one (E35).
+		r.Post("/api/v1/auth/ws-ticket", deps.Auth.WSTicket)
 
 		if deps.Audit != nil {
 			r.Get("/api/v1/audit", deps.Audit.List)

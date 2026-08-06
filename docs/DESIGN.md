@@ -978,3 +978,54 @@ would trade a rare collateral kill for a self-inflicted one.
 the worst possible moment — closed from the other side. The ESS pods killed in the same
 cascade are Burstable for the same reason, but they belong to the ESS chart and stay the
 operator's decision. Affects S8.
+
+### §4.33 — Narrowing where a credential may appear is not the same as not logging it (2026-08-06, agent, from the operator's deploy log)
+
+**Context:** while watching an ESS upgrade, the operator's own deploy wrote this:
+
+```
+"GET .../upgrade/<id>/logs?token=eyJhbGciOiJIUzI1NiIs… HTTP/1.1"
+```
+
+A valid session JWT in plaintext, one line per WebSocket connection. Anyone able to
+run `kubectl logs -n matrixctrl` could take the session until it expired.
+
+**What makes it interesting is that it was already understood.** §4.27/E29 removed the
+same token from the OIDC callback URL and wrote the reason down in
+`internal/auth/authcode.go` — *"chi's request logger writes the full URL, so the token
+was written to the application log by the very request that delivered it."* It then
+narrowed `?token=` from every route to WebSocket upgrades only, with a comment naming
+the same logger. The hole was documented twice and left open once, because that route
+genuinely could not set an `Authorization` header.
+
+The lesson is the section title: restricting *where* a credential may travel in a URL
+does not stop it being logged. It only reduces how often.
+
+**Decision, in two halves, because either alone is insufficient:**
+
+1. **The logger stops writing credential values.** A replacement for chi's `Logger`
+   redacts a fixed key set (`token`, `ticket`, `code`, `client_secret`, `password`, …)
+   and keeps everything else, so `?container=postgres` still helps a reader.
+   The value is replaced rather than dropped: *"ticket=[redacted]"* and no ticket at
+   all are different facts when reading back a failed handshake. It parses the raw
+   query by hand rather than with `url.ParseQuery`, which drops pairs it cannot parse
+   — a token in a malformed query would otherwise vanish from the sanitiser's view and
+   reappear in the log.
+2. **The handshake carries a single-use ticket, not the session.** Redaction only
+   fixes *our* log; the URL still passes the ingress, the tunnel and any proxy in
+   between. A ticket is spent by the connection it opens, so the copies left in those
+   logs are inert. `extractToken` now has no query fallback on any route.
+
+**Deliberately not reusing `AuthCodes`**, despite being the same shape (random,
+single-use, atomic redemption): those codes are redeemable at `/auth/exchange` for a
+full session, so a shared store would let a leaked ticket be traded for one — turning
+a read-only log stream into a complete session. The separation is the security
+property, and worth the small duplication. In-memory rather than Postgres, because a
+WebSocket connects to the process that issued its ticket and a restart voiding
+outstanding tickets is correct rather than a limitation.
+
+**Consequences:** the reconnect path (§4.14) must fetch a *new* ticket per attempt —
+the previous one was consumed by the connection that just dropped. Two E29 tests
+asserted the old contract and were rewritten rather than deleted: one now proves a
+query token is refused even on a handshake, the other tests `isWebSocketUpgrade`
+directly instead of through the token path it no longer feeds. Affects S3.

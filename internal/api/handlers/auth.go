@@ -34,6 +34,9 @@ type AuthHandler struct {
 	// throttle limits failed password attempts, counted in Postgres so a restart
 	// does not reset them (P1-17).
 	throttle *auth.Throttle
+	// tickets are the single-use credentials the WebSocket handshake uses instead of
+	// the session token, which used to be logged verbatim (E35).
+	tickets *auth.WSTickets
 
 	mu   sync.RWMutex
 	oidc *auth.OIDCService
@@ -48,6 +51,7 @@ func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Poo
 		svc: svc, oidc: oidcSvc, db: db, jwtKey: jwtKey,
 		codes:    auth.NewAuthCodes(db),
 		throttle: auth.NewThrottle(db),
+		tickets:  auth.NewWSTickets(),
 	}
 }
 
@@ -77,6 +81,35 @@ func (h *AuthHandler) InstallOIDC(svc *auth.OIDCService) {
 // SetRetryState hands the handler the loop's observable state. Set once at startup,
 // before the server serves.
 func (h *AuthHandler) SetRetryState(s *auth.RetryState) { h.retry = s }
+
+// POST /api/v1/auth/ws-ticket — a single-use ticket for one WebSocket handshake.
+//
+// A browser cannot set an Authorization header on a WebSocket, so something has to
+// travel in the URL, and URLs are logged — by us, by the ingress, by the tunnel. This
+// hands out something that is worth nothing after one use, so a ticket in any of
+// those logs opens nothing (E35).
+func (h *AuthHandler) WSTicket(w http.ResponseWriter, r *http.Request) {
+	userID := authmw.UserIDFromContext(r.Context())
+	if userID == "" {
+		// Should be unreachable behind the auth middleware. If it is ever reached,
+		// issuing a ticket would be issuing one to nobody.
+		Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	ticket, err := h.tickets.Issue(userID)
+	if err != nil {
+		Error(w, http.StatusServiceUnavailable, "could not issue a ticket")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"ticket": ticket})
+}
+
+// RedeemWSTicket spends a ticket. Wired into the auth middleware so the WebSocket
+// handshake authenticates without carrying the session token.
+func (h *AuthHandler) RedeemWSTicket(ticket string) (string, bool) {
+	return h.tickets.Redeem(ticket)
+}
 
 // ReloadOIDC rebuilds the OIDC service from the DB-persisted config and swaps it
 // in atomically. Used by the connect-OIDC flow to switch from bootstrap to OIDC at

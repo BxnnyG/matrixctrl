@@ -12,9 +12,35 @@ const UserIDKey contextKey = "user_id"
 
 type TokenValidator func(token string) (userID string, err error)
 
+// TicketRedeemer spends a single-use WebSocket ticket, returning the user it was
+// issued to. Nil in tests and anywhere tickets are not wired up.
+type TicketRedeemer func(ticket string) (userID string, ok bool)
+
 func RequireAuth(validate TokenValidator) func(http.Handler) http.Handler {
+	return RequireAuthWithTickets(validate, nil)
+}
+
+// RequireAuthWithTickets authenticates ordinary requests by bearer token and
+// WebSocket handshakes by single-use ticket.
+//
+// The split exists because a browser cannot set an Authorization header on a
+// WebSocket, so that one route has to put something in the URL — and URLs are logged,
+// by this process and by every proxy on the way. A ticket is spent by the handshake
+// it opens, so the copy left in those logs is inert (E35).
+func RequireAuthWithTickets(validate TokenValidator, redeem TicketRedeemer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isWebSocketUpgrade(r) && redeem != nil {
+				userID, ok := redeem(r.URL.Query().Get("ticket"))
+				if !ok {
+					http.Error(w, `{"error":"invalid ticket"}`, http.StatusUnauthorized)
+					return
+				}
+				ctx := context.WithValue(r.Context(), UserIDKey, userID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			token := extractToken(r)
 			if token == "" {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -39,13 +65,14 @@ func extractToken(r *http.Request) string {
 	if after, ok := strings.CutPrefix(auth, "Bearer "); ok {
 		return strings.TrimSpace(after)
 	}
-	// ?token=… is accepted only where a browser cannot set a header, which is the
-	// WebSocket handshake and nothing else. It used to be accepted on every route,
-	// so any link, log line or Referer carrying one was a usable session — and
-	// chi's request logger writes the full URL (P0-5).
-	if isWebSocketUpgrade(r) {
-		return r.URL.Query().Get("token")
-	}
+	// No query-parameter fallback, on any route, including WebSocket upgrades.
+	//
+	// E29 narrowed `?token=` from every route to the WebSocket handshake, because a
+	// session token in a URL ends up in links, Referer headers and log lines. The
+	// narrowing was not enough: on 2026-08-06 a deploy wrote a valid session JWT to
+	// the container log, from the one route still allowed to carry one. WebSocket
+	// handshakes now authenticate with a single-use ticket instead
+	// (RequireAuthWithTickets), so nothing needs a token in a URL any more (E35).
 	return ""
 }
 

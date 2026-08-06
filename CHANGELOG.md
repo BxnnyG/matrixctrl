@@ -15,6 +15,33 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.36] — 2026-08-06
+
+### Security
+
+- **The session token no longer appears in the log.** Watching an ESS upgrade, the
+  operator's own deploy wrote a valid session JWT in plaintext — one line per
+  WebSocket connection — because the upgrade-log stream carried `?token=<jwt>` and
+  chi's logger writes full URLs. Anyone who could read the log could take the session.
+- **WebSocket handshakes now use a single-use ticket**, requested from an
+  authenticated endpoint and spent by the connection it opens. Redaction alone would
+  only fix *our* log; the URL still passes the ingress, the tunnel and any proxy in
+  between. A spent ticket in any of those logs opens nothing.
+- **`?token=` is no longer accepted on any route**, including WebSocket upgrades.
+  0.1.30 narrowed it to handshakes for the good reason that a browser cannot set a
+  header there. Narrowing where a credential may appear in a URL is not the same as
+  stopping it from being logged.
+- The request logger redacts credential-bearing query values (`token`, `ticket`,
+  `code`, `client_secret`, `password`, …) and keeps the rest, so `?container=postgres`
+  still helps debugging. It parses the raw query itself rather than using
+  `url.ParseQuery`, which drops pairs it cannot parse — a token in a malformed query
+  would otherwise have slipped through the sanitiser into the log.
+
+### Fixed
+
+- The stream's reconnect path fetches a fresh ticket per attempt. Reusing the previous
+  one would fail every reconnect, since it was consumed by the connection that dropped.
+
 ## [0.1.35] — 2026-08-06
 
 ### Changed

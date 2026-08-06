@@ -54,18 +54,48 @@ export function useUpgradeStream(
 
     const gate = createLogGate();
 
+    // One backoff for both reasons a connection can fail to establish: the socket
+    // closed, or the ticket request did not come back. Returns false when the
+    // attempts are used up, so the caller decides what to tell the operator.
+    const scheduleRetry = (): boolean => {
+      if (attempt >= RECONNECT_DELAYS_MS.length) return false;
+      const delay = RECONNECT_DELAYS_MS[attempt];
+      attempt++;
+      retryTimer = setTimeout(connect, delay);
+      return true;
+    };
+
     const finish = (status: string) => {
       if (finished) return;
       finished = true;
       opts.onDone(status);
     };
 
-    const connect = () => {
+    // A browser cannot set an Authorization header on a WebSocket, so something has
+    // to go in the URL — and URLs are logged, by the server and by every proxy in
+    // between. This used to be the session token, which duly appeared in the
+    // container log once per upgrade. It is now a single-use ticket, so the copy left
+    // in those logs is spent by the time anyone reads it (E35).
+    //
+    // Fetched per attempt, never cached: a reconnect needs a fresh ticket because the
+    // previous one was consumed by the connection that just dropped.
+    const connect = async () => {
       if (cancelled || finished) return;
 
-      const token = localStorage.getItem("matrixctrl_token");
+      let ticket: string;
+      try {
+        const res = await api.post<{ ticket: string }>("/api/v1/auth/ws-ticket", {});
+        ticket = res.ticket;
+      } catch {
+        // Treat like a failed connection rather than a fatal error: the retry path
+        // below already handles a backend that is briefly unreachable.
+        scheduleRetry();
+        return;
+      }
+      if (cancelled || finished) return;
+
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      const url = `${proto}://${window.location.host}/api/v1/helm/releases/ess/upgrade/${upgradeId}/logs?token=${token}`;
+      const url = `${proto}://${window.location.host}/api/v1/helm/releases/ess/upgrade/${upgradeId}/logs?ticket=${encodeURIComponent(ticket)}`;
 
       gate.reset();
       ws = new WebSocket(url);
@@ -131,17 +161,12 @@ export function useUpgradeStream(
         // fall through and try to reconnect.
       }
 
-      if (attempt >= RECONNECT_DELAYS_MS.length) {
+      if (!scheduleRetry()) {
         opts.onLog(
           "[Verbindung verloren — der Vorgang läuft im Hintergrund weiter. " +
             "Seite neu laden, um den aktuellen Stand zu sehen.]",
         );
-        return;
       }
-
-      const delay = RECONNECT_DELAYS_MS[attempt];
-      attempt++;
-      retryTimer = setTimeout(connect, delay);
     };
 
     connect();
