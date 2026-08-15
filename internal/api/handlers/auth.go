@@ -37,6 +37,9 @@ type AuthHandler struct {
 	// tickets are the single-use credentials the WebSocket handshake uses instead of
 	// the session token, which used to be logged verbatim (E35).
 	tickets *auth.WSTickets
+	// matrixTokens holds each operator's Synapse-admin session, in memory only, for
+	// rooms and moderation. Nil when the feature is not wired up (E36).
+	matrixTokens *auth.MatrixTokens
 
 	mu   sync.RWMutex
 	oidc *auth.OIDCService
@@ -81,6 +84,9 @@ func (h *AuthHandler) InstallOIDC(svc *auth.OIDCService) {
 // SetRetryState hands the handler the loop's observable state. Set once at startup,
 // before the server serves.
 func (h *AuthHandler) SetRetryState(s *auth.RetryState) { h.retry = s }
+
+// SetMatrixTokens wires the in-memory store of operators' Synapse-admin sessions.
+func (h *AuthHandler) SetMatrixTokens(m *auth.MatrixTokens) { h.matrixTokens = m }
 
 // POST /api/v1/auth/ws-ticket — a single-use ticket for one WebSocket handshake.
 //
@@ -227,6 +233,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		token = token[7:]
 	}
 	_ = h.svc.RevokeSession(r.Context(), token)
+
+	// Signing out drops the operator's Matrix session too. Leaving it behind would
+	// mean a refresh token that outlived the login it came with, still able to mint
+	// Synapse-admin tokens for someone who has left (E36).
+	if h.matrixTokens != nil {
+		h.matrixTokens.Forget(authmw.UserIDFromContext(r.Context()))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -287,7 +300,22 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/login?error=OIDC+not+configured", http.StatusFound)
 		return
 	}
-	userID, err := o.ExchangeCode(r.Context(), code, state)
+	// Both authorizations come back here, because MAS validates redirect_uris strictly
+	// and the static client is registered with exactly one. Which flow this is comes
+	// from the database row the state consumed, never from anything the browser
+	// carried (E36).
+	purpose, err := o.StatePurpose(r.Context(), state)
+	if err != nil {
+		log.Printf("OIDC callback error: %v", err)
+		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	if purpose == auth.PurposeSynapseAdmin {
+		h.finishSynapseAdmin(w, r, o, code)
+		return
+	}
+
+	userID, err := o.LoginWithCode(r.Context(), code)
 	if err != nil {
 		log.Printf("OIDC callback error: %v", err)
 		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
@@ -349,4 +377,53 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// finishSynapseAdmin completes the separate authorization that grants the panel the
+// operator's Synapse admin authority (E36).
+//
+// It resolves *which* operator from the token rather than from the session, because
+// this callback is a public route with no auth middleware in front of it — the browser
+// arriving here carries no MatrixCtrl credential. The identity is derived exactly as
+// the login path derives it, so the Matrix session is filed under the key that later
+// requests actually look up.
+//
+// The refresh token goes into memory and nowhere else. Nothing here logs any of it.
+func (h *AuthHandler) finishSynapseAdmin(w http.ResponseWriter, r *http.Request, o *auth.OIDCService, code string) {
+	fail := func(msg string) {
+		http.Redirect(w, r, "/rooms?error="+url.QueryEscape(msg), http.StatusFound)
+	}
+
+	access, refresh, expiresIn, err := o.SynapseAdminTokens(r.Context(), code)
+	if err != nil {
+		// Deliberately not echoed to the browser: the error can carry an OAuth
+		// description that names internals, and the operator can act on the short
+		// version alone.
+		log.Printf("synapse admin authorization failed: %v", err)
+		fail("Der Matrix-Admin-Zugriff wurde nicht erteilt.")
+		return
+	}
+
+	userID, err := o.UserID(r.Context(), access)
+	if err != nil {
+		log.Printf("synapse admin authorization: could not resolve the user: %v", err)
+		fail("Der Zugriff konnte keinem Konto zugeordnet werden.")
+		return
+	}
+	if h.matrixTokens == nil {
+		fail("Räume sind auf dieser Installation nicht verfügbar.")
+		return
+	}
+
+	h.matrixTokens.Put(userID, access, refresh, expiresIn)
+	http.Redirect(w, r, "/rooms", http.StatusFound)
+}
+
+// OIDC returns the current OIDC service, or nil in bootstrap mode.
+//
+// Read through the same lock the swap writes under, so callers that resolve it per
+// request — the rooms authorization, the token refresh — see whatever connect-OIDC or
+// the E33 retry most recently installed rather than a copy captured at startup.
+func (h *AuthHandler) OIDC() *auth.OIDCService {
+	return h.getOIDC()
 }

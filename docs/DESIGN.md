@@ -1029,3 +1029,60 @@ the previous one was consumed by the connection that just dropped. Two E29 tests
 asserted the old contract and were rewritten rather than deleted: one now proves a
 query token is refused even on a handshake, the other tests `isWebSocketUpgrade`
 directly instead of through the token path it no longer feeds. Affects S3.
+
+### §4.34 — Borrowing the operator's authority instead of holding your own (2026-08-06, operator + agent)
+
+**Context:** Phase 2 continues with rooms, which live in **Synapse** — a system
+MatrixCtrl had never spoken to. MAS owns authentication here, so the first question was
+not "what does the UI look like" but "what authenticates against Synapse's admin API at
+all". Two answers existed:
+
+- **A service token.** MAS 1.21 exposes `POST /api/admin/v1/personal-sessions`, minting
+  a token that acts on behalf of a user, with the schema noting *"If not set, the token
+  won't expire."* Standing power to act as somebody, with no human present.
+- **The operator's own authority**, via one extra scope. Chosen.
+
+**What the live system said, none of which was assumable:** MAS advertises only
+`openid` and `email` in its discovery document, but the session table shows real
+clients holding `urn:matrix:org.matrix.msc2967.client:api:*` — the discovery list is
+incomplete, and believing it would have ended the etappe before it began. No session
+has ever carried `urn:synapse:admin:*`, and no row in Synapse's `users` table has
+`admin = 1`: Synapse admin authority did not exist here in any form. Two MAS accounts
+have `can_request_admin`.
+
+That last fact is the design: **MAS enforces the privilege check, not MatrixCtrl.** An
+account without `can_request_admin` cannot obtain the scope, so the boundary sits
+upstream of any code here.
+
+**Decided: the scope is requested in its own authorization, not added to login.**
+Putting it on the login path would make every sign-in request a scope MAS has never
+granted on this deployment; if MAS rejects such an authorization rather than omitting
+the scope, nobody can sign in — S11 check 3, and untestable from the server side. The
+separate flow means a wrong guess costs the rooms page instead of the panel. Both flows
+return to the same callback, because MAS validates `redirect_uris` strictly and the
+static client is registered with exactly one; which flow a request belongs to is read
+from the state's database row, never from anything the browser carried.
+
+**Decided: the refresh token lives in memory and is never written down.** Measured, not
+assumed: every access token MAS has issued here has a TTL of exactly **300 seconds**,
+so a page opened ten minutes after signing in needs a refresh token — a credential that
+can keep minting Synapse-admin tokens for the life of the MAS session. Persisting it
+would leave that at rest in Postgres, per operator, to save a sign-in. In memory, a
+restart costs one login and costs an attacker with database access nothing.
+
+**Two defects this found in existing code**, both of which would have shipped silently:
+
+- `api.ts` threw a bare `Error`, so every frontend branch on a status code was dead.
+  The rooms page's "this account is not an admin" explanation could never have
+  appeared. Fixed with an `ApiError` carrying `status`.
+- `api.ts` ends the session on **any** 401. The rooms endpoint answering 401 for an
+  expired *Matrix* token would therefore have signed the operator out of MatrixCtrl
+  every five minutes. Downstream credential failures now answer **409**; 401 keeps its
+  single meaning.
+
+**Consequences:** signing out drops the Matrix session too, or a refresh token would
+outlive the login it came from. The refresher is resolved per call rather than captured
+at startup, because connect-OIDC and the §4.31 retry both replace the OIDC service at
+runtime. Synapse is reached in-cluster, not through the public hostname: a bearer token
+for a call between two pods in one namespace should not cross the ingress and the
+tunnel, which is three more places to be logged after §4.33 removed one. Affects S3, S13.

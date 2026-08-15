@@ -15,6 +15,43 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.37] — 2026-08-06
+
+### Added
+
+- **Rooms.** A list of every room on the homeserver, with search and paging, read from
+  Synapse's admin API. Read-only: deleting, purging and blocking a room are each
+  destructive in a different way and get their own etappe, as user writes did.
+- Rooms use **the operator's own Synapse-admin authority**, not a service token. MAS
+  grants the scope only to accounts with `can_request_admin`, so the privilege check
+  happens in MAS rather than in this code. The panel can do what the person signed into
+  it can do, while they are signed in.
+- The authority is granted in **its own authorization**, deliberately not folded into
+  login: a login that asks for a scope MAS might refuse could lock everyone out, and
+  that cannot be tested from the server side.
+
+### Security
+
+- The Matrix refresh token is held **in memory only and never written to disk**. MAS
+  access tokens live 300 seconds (measured, not assumed), so keeping a refresh token is
+  unavoidable — but persisting it would leave a Synapse-admin-capable credential at
+  rest in Postgres to save a sign-in. A restart costs one login instead.
+- Signing out drops the Matrix session too, so a refresh token cannot outlive the login
+  it came with.
+- Synapse is reached in-cluster rather than through the public hostname, so an admin
+  bearer token stops crossing the ingress and the tunnel for a call between two pods in
+  the same namespace.
+
+### Fixed
+
+- **API errors now carry their status code.** The client threw a bare `Error`, so every
+  frontend branch on a status was dead code — including a "this account is not an
+  admin" explanation that could never have rendered.
+- **A downstream credential expiring no longer signs you out.** The client ends the
+  session on any 401, which is right for its own session and wrong for anything behind
+  it; an expired Matrix token would have logged the operator out of MatrixCtrl every
+  five minutes. Those cases answer 409 now.
+
 ## [0.1.36] — 2026-08-06
 
 ### Security

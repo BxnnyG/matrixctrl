@@ -13,6 +13,7 @@ import { Route as UsersRouteImport } from './routes/users'
 import { Route as SystemRouteImport } from './routes/system'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RtcRouteImport } from './routes/rtc'
+import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HooksIndexRouteImport } from './routes/hooks/index'
@@ -44,6 +45,11 @@ const SetupRoute = SetupRouteImport.update({
 const RtcRoute = RtcRouteImport.update({
   id: '/rtc',
   path: '/rtc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomsRoute = RoomsRouteImport.update({
+  id: '/rooms',
+  path: '/rooms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuditRoute = AuditRouteImport.update({
@@ -110,6 +116,7 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rooms': typeof RoomsRoute
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rooms': typeof RoomsRoute
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/rooms': typeof RoomsRoute
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/audit'
+    | '/rooms'
     | '/rtc'
     | '/setup'
     | '/system'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/audit'
+    | '/rooms'
     | '/rtc'
     | '/setup'
     | '/system'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/audit'
+    | '/rooms'
     | '/rtc'
     | '/setup'
     | '/system'
@@ -222,6 +234,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
+  RoomsRoute: typeof RoomsRoute
   RtcRoute: typeof RtcRoute
   SetupRoute: typeof SetupRoute
   SystemRoute: typeof SystemRoute
@@ -266,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/rtc'
       fullPath: '/rtc'
       preLoaderRoute: typeof RtcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rooms': {
+      id: '/rooms'
+      path: '/rooms'
+      fullPath: '/rooms'
+      preLoaderRoute: typeof RoomsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audit': {
@@ -358,6 +378,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
+  RoomsRoute: RoomsRoute,
   RtcRoute: RtcRoute,
   SetupRoute: SetupRoute,
   SystemRoute: SystemRoute,

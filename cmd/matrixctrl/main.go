@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
+	"github.com/bxnnyg/matrixctrl/internal/synapse"
 	"github.com/bxnnyg/matrixctrl/internal/version"
 )
 
@@ -174,6 +176,40 @@ func main() {
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
 
+	// Rooms (E36). Synapse is reached in-cluster rather than through the public
+	// hostname: the admin API would otherwise leave the cluster, cross the ingress and
+	// the tunnel, and come back — three more places for a bearer token to be logged,
+	// for a call between two pods in the same namespace.
+	synapseURL := env("MATRIXCTRL_SYNAPSE_URL",
+		fmt.Sprintf("http://%s-synapse-main.%s.svc.cluster.local:8008", essRelease, essNS))
+	matrixTokens := auth.NewMatrixTokens(func(ctx context.Context, refreshToken string) (string, string, int, error) {
+		// Resolved per call rather than captured: connect-OIDC and the E33 retry can
+		// both replace the OIDC service at runtime, and a captured one would keep
+		// refreshing against the configuration that has since been replaced.
+		o := authHandler.OIDC()
+		if o == nil {
+			return "", "", 0, fmt.Errorf("OIDC is not configured")
+		}
+		return o.RefreshSynapseAdmin(ctx, refreshToken)
+	})
+	authHandler.SetMatrixTokens(matrixTokens)
+
+	roomsHandler := handlers.NewRoomsHandler(
+		func(userID string) *synapse.Client {
+			return synapse.New(synapseURL, func(ctx context.Context) (string, error) {
+				return matrixTokens.Get(ctx, userID)
+			})
+		},
+		matrixTokens.Has,
+		func(ctx context.Context) (string, error) {
+			o := authHandler.OIDC()
+			if o == nil {
+				return "", fmt.Errorf("OIDC is not configured")
+			}
+			return o.SynapseAdminAuthURL(ctx)
+		},
+	)
+
 	// Recover from a failed OIDC start without a restart (E33).
 	//
 	// It rebuilds from `oidcCfg` — the *effective* startup config — rather than
@@ -208,6 +244,7 @@ func main() {
 		Audit:  handlers.NewAuditHandler(auditStore),
 		RTC:    rtcHandler,
 		Users:  usersHandler,
+		Rooms:  roomsHandler,
 
 		AuditSink: auditStore,
 	})

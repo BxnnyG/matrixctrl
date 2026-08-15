@@ -25,13 +25,14 @@ const NAV: NavGroup[] = [
     { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
     { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
   ] },
-  // Users is real as of E27; rooms and moderation are still roadmap entries.
+  // Users is real as of E27, rooms as of E36; moderation is still a roadmap entry.
   { group: "Verwaltung", items: [
     { id: "users", label: "Benutzer", icon: "users", to: "/users" },
+    { id: "rooms", label: "Räume", icon: "room", to: "/rooms" },
   ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
   { group: "Verwaltung · geplant", phase: "2", items: [
-    { id: "rooms", label: "Räume", icon: "room" }, { id: "moderation", label: "Moderation", icon: "shield" },
+    { id: "moderation", label: "Moderation", icon: "shield" },
   ] },
   { group: "Betrieb · Day-2", phase: "3", items: [
     { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
@@ -55,6 +56,7 @@ const TITLES: Record<string, [string, string]> = {
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
+  "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
   "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 

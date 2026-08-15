@@ -22,6 +22,7 @@ type Deps struct {
 	RTC    *handlers.RTCHandler
 	Drift  *handlers.DriftHandler
 	Users  *handlers.UsersHandler
+	Rooms  *handlers.RoomsHandler
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -69,6 +70,14 @@ func NewRouter(deps Deps) http.Handler {
 		// mints something, and inside the protected group because only an already
 		// authenticated session may ask for one (E35).
 		r.Post("/api/v1/auth/ws-ticket", deps.Auth.WSTicket)
+
+		// Rooms read Synapse with the operator's own authority, granted by a separate
+		// authorization so a wrong guess about MAS cannot break signing in (E36).
+		if deps.Rooms != nil {
+			r.Get("/api/v1/rooms/state", deps.Rooms.State)
+			r.Post("/api/v1/rooms/connect", deps.Rooms.Connect)
+			r.Get("/api/v1/rooms", deps.Rooms.List)
+		}
 
 		if deps.Audit != nil {
 			r.Get("/api/v1/audit", deps.Audit.List)
