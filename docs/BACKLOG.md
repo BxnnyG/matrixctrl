@@ -794,7 +794,22 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   using it, and slow exactly when you arrive. Worth a background refresh that keeps
   the cache warm, or a stale-while-revalidate read so the page renders old numbers
   immediately.
-- **P2-22 · `/helm/history` still decodes every revision (S2).** `ListHistory` uses
+- ~~**P2-22 · `/helm/history` still decodes every revision (S2).**~~ **Done
+  2026-08-15 (E39, `v0.1.40`, DESIGN §4.37).** Measured first, since the entry
+  itself noted it never had been: **3.2–4.6 s on every load**, 14 revisions, against
+  56 ms for a metadata-only list of the same secrets. Now **cold 4.7 s once per
+  process, then 25 ms.**
+  The entry proposed memoising per revision, and that is broadly what shipped — but
+  the two obvious ways to build it are both wrong and were rejected by measurement,
+  not review: 14 × `Releases.Get` costs 7.3 s against `History`'s 5.3 s, so the cold
+  fill has to stay one bulk call; and the `modifiedAt` label is not a per-revision
+  timestamp, so reusing E20's label trick for the "deployed at" column would have
+  displayed confidently wrong dates.
+  **A second defect the measurement exposed:** `ListHistory(name, max)` took a `max`
+  that **Helm ignores** — `History.Run` never reads `h.Max` — so asking for 10
+  returned 14 and cost the same as asking for 30. It is honoured now, and bounds the
+  work as well as the result. Original entry:
+  `ListHistory` uses
   `action.NewHistory`, which has exactly the bottleneck E20 removed from
   `GetRelease` — on the production release that is 11 decodes for one page load.
   The label trick does not transfer unchanged, because the history table shows each

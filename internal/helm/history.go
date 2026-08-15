@@ -2,6 +2,7 @@ package helm
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
@@ -45,8 +46,25 @@ func (c *Client) getReleaseUncached(name string) (*ReleaseInfo, error) {
 	return toReleaseInfo(rel), nil
 }
 
+// ListHistory returns the newest `max` revisions of a release, newest first.
+//
+// See history_read.go for why this reads labels first and decodes as little as it
+// can: the straightforward call costs 3.2–4.6 s on the production release and is
+// paid on every visit to the page an operator opens when something has gone wrong.
 func (c *Client) ListHistory(name string, max int) ([]RevisionEntry, error) {
+	if entries, err := c.listHistoryFast(name, max); err == nil {
+		return entries, nil
+	}
+	return c.listHistoryUncached(name, max)
+}
+
+// listHistoryUncached is the original implementation, kept as the fallback for
+// every way the fast path can fail — the same shape as getReleaseUncached, and for
+// the same reason: the worst case should be the old latency, not a wrong answer.
+func (c *Client) listHistoryUncached(name string, max int) ([]RevisionEntry, error) {
 	hist := action.NewHistory(c.cfg)
+	// Set for the record, though Helm never reads it: History.Run calls
+	// Releases.History(name) and returns everything. Truncation below is ours.
 	hist.Max = max
 	releases, err := hist.Run(name)
 	if err != nil {
@@ -62,7 +80,23 @@ func (c *Client) ListHistory(name string, max int) ([]RevisionEntry, error) {
 			DeployedAt: r.Info.LastDeployed.Time,
 		})
 	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Revision > entries[j].Revision })
+	if max > 0 && len(entries) > max {
+		entries = entries[:max]
+	}
 	return entries, nil
+}
+
+// factsOf extracts the fields that never change again once a revision is written.
+func factsOf(r *release.Release) revisionFacts {
+	f := revisionFacts{}
+	if r.Chart != nil && r.Chart.Metadata != nil {
+		f.Chart = r.Chart.Metadata.Name + "-" + r.Chart.Metadata.Version
+	}
+	if r.Info != nil {
+		f.DeployedAt = r.Info.LastDeployed.Time
+	}
+	return f
 }
 
 func toReleaseInfo(r *release.Release) *ReleaseInfo {

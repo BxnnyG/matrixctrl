@@ -78,3 +78,61 @@ func (c *Client) InvalidateRelease(name string) {
 	defer c.relMu.Unlock()
 	delete(c.relCache, name)
 }
+
+// Per-revision facts for the history page (etappe 39).
+//
+// Keyed by (release, revision) and never invalidated, because the two fields it
+// holds — chart version and deployment time — are fixed when Helm writes the
+// revision and are never rewritten. A rollback does not edit an old revision; it
+// appends a new highest one. So this is not a cache with a staleness window, it is
+// a record of something that already happened.
+//
+// The mutable field, status, is deliberately absent: it is read from the secret's
+// labels on every call, which costs nothing extra because the label list is
+// already being made.
+
+func (c *Client) revisionFacts(name string, rev int) (revisionFacts, bool) {
+	c.relMu.Lock()
+	defer c.relMu.Unlock()
+
+	byRev, ok := c.revCache[name]
+	if !ok {
+		return revisionFacts{}, false
+	}
+	f, ok := byRev[rev]
+	return f, ok
+}
+
+func (c *Client) storeRevisionFacts(name string, rev int, f revisionFacts) {
+	c.relMu.Lock()
+	defer c.relMu.Unlock()
+
+	if c.revCache == nil {
+		c.revCache = map[string]map[int]revisionFacts{}
+	}
+	if c.revCache[name] == nil {
+		c.revCache[name] = map[int]revisionFacts{}
+	}
+	c.revCache[name][rev] = f
+}
+
+// pruneRevisionFacts drops revisions the cluster no longer reports.
+//
+// Helm keeps only `--history-max` revisions and deletes the rest, so without this
+// a long-running process would hold facts about revisions that stopped existing
+// months ago. Bounded either way, but unbounded-looking growth invites someone to
+// add an eviction policy that is not needed.
+func (c *Client) pruneRevisionFacts(name string, live map[int]bool) {
+	c.relMu.Lock()
+	defer c.relMu.Unlock()
+
+	byRev, ok := c.revCache[name]
+	if !ok {
+		return
+	}
+	for rev := range byRev {
+		if !live[rev] {
+			delete(byRev, rev)
+		}
+	}
+}

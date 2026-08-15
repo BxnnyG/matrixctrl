@@ -23,6 +23,9 @@ type Client struct {
 	// Memoised release info — see cache.go for what keys it.
 	relMu    sync.Mutex
 	relCache map[string]memoisedRelease
+	// revCache holds the immutable per-revision facts the history page needs,
+	// keyed release → revision. Guarded by relMu (etappe 39).
+	revCache map[string]map[int]revisionFacts
 }
 
 func New(namespace string) (*Client, error) {

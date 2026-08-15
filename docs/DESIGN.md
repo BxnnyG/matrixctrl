@@ -1190,3 +1190,52 @@ a record of it being fixed. And a claim in this file that describes code is now
 something to re-run, not re-read: `P1-11` was marked done in its body while its
 heading still read as open, which is how eight of them survived a reader who was
 looking directly at them. Affects S9, S12.
+
+### §4.37 — Two plausible optimisations the measurement rejected (2026-08-15, agent, P2-22)
+
+The history page cost **3.2–4.6 s on every load**, measured on the production
+release's 14 revisions. `action.NewHistory` fetches and decodes every revision to
+fill a four-column table. It is the page an operator opens *because something went
+wrong*, so the latency arrives exactly when patience is shortest.
+
+§4.20 solved the same shape for `/status` by reading the release secret's labels
+instead of decoding payloads. Applying it one page over looked like a transcription
+job. It was not — **both** obvious moves are wrong, and each would have shipped
+looking correct:
+
+**"Decode each revision individually and cache it."** Measured on the same 14:
+
+```
+14 × Releases.Get     →  7.328 s
+ 1 × Releases.History →  5.270 s
+```
+
+Per-revision fetching is **40 % slower** than the call it replaces, because each is
+its own round trip. The refinement that sounds strictly better makes the cold path
+worse. It wins only for the incremental case — one new revision after an upgrade —
+so the code chooses by count, with the crossover taken from that measurement rather
+than from taste.
+
+**"The `modifiedAt` label can supply the timestamp."** §4.20 already reads it, so
+reusing it looks free. It is not per-revision: nine revisions spanning ten weeks
+share one value, while their real `LastDeployed` times all differ. §4.20 uses it
+correctly — as a cache-invalidation key for the newest revision, never as a
+displayed time — and copying it into a "deployed at" column would have put
+confidently wrong dates in front of the operator. **A field that is correct in one
+role is not thereby correct in another.**
+
+What survives is the part that is arithmetic rather than a trade: a revision's
+chart and deployment time are fixed when Helm writes it, and only its *status*
+changes afterwards. So the immutable two are cached forever and the mutable one is
+read from the labels every time. That is not a staleness window; there is nothing
+to go stale.
+
+**Consequences:** cold 4.7 s once per process, then **25 ms**. `ListHistory`'s
+`max` parameter now does something — Helm's own `History` action accepts a `Max`
+and never reads it, so asking for ten returned fourteen and cost the same as
+thirty. Two defects were caught by measuring rather than by review: pruning the
+cache against the *truncated* list made a small page destructive (2.958 s where 40
+ms was expected), and storing the timestamp as Unix seconds made the fast path
+disagree with the fallback by up to a second — found only because the live test
+compares the two paths row by row, which is the single thing that makes a fast path
+safe to add. Affects S2, S4.

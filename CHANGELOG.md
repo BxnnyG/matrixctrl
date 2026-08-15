@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.40] — 2026-08-15
+
+### Performance
+
+- **The upgrade-history page went from 3.2–4.6 s to 25 ms.** It decoded every
+  revision of the release — 14 on the production instance — to fill a table of four
+  columns, on every single visit. Two of those columns are in the release secret's
+  labels and free to read; the other two are fixed when Helm writes a revision and
+  never change again, so they are decoded once and kept.
+
+  Cold cost after a restart is one full read (~4.7 s), then 25 ms for every load
+  after it. The old code path remains as the fallback for every way the fast path
+  can fail, so the worst case is the previous latency rather than a wrong answer —
+  and a live test compares the two paths row by row.
+
+### Fixed
+
+- **`max` on the history read did nothing.** Helm's `History` action accepts a
+  `Max` and never reads it, so asking for 10 revisions returned 14 and cost the same
+  as asking for 30. It now bounds both the result and the work done to produce it.
+
 ## [0.1.39] — 2026-08-15
 
 ### Fixed
