@@ -18,6 +18,10 @@ type StatusHandler struct {
 	essNS      string
 	essRelease string
 	frontendFS http.Handler
+	// selfNS is the namespace this process runs in, resolved once at construction.
+	// Empty outside the cluster, which the diagnostics page treats as "one
+	// namespace to report instead of two" rather than as an error (etappe 40).
+	selfNS string
 }
 
 func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, essRelease string, frontendFS http.Handler) *StatusHandler {
@@ -27,6 +31,7 @@ func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, ess
 		essNS:      essNS,
 		essRelease: essRelease,
 		frontendFS: frontendFS,
+		selfNS:     k8s.CurrentNamespace(),
 	}
 }
 
@@ -231,15 +236,33 @@ func (h *StatusHandler) SysInfo(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	conditions, _ := h.k8s.NodeConditions(ctx)
-	pvcs, _ := h.k8s.ListPVCs(ctx, "")
 	nodes, _ := h.k8s.NodeInfo(ctx)
 
-	// Pod counts per namespace
+	// The namespaces this panel administers, and only those (etappe 40).
+	//
+	// Both loops below used to reach further. `ListPVCs(ctx, "")` listed persistent
+	// volume claims in *every* namespace, and the pod count included `kube-system`.
+	// Each was one number on a diagnostics page, and each cost a cluster-wide grant
+	// that had to be held permanently — for kube-system, a RoleBinding written into
+	// the cluster's most sensitive namespace.
+	//
+	// The storage panel now shows the storage belonging to the thing this panel
+	// manages, which is what a reader of that page already assumes it means.
+	scopes := []string{h.essNS}
+	if h.selfNS != "" && h.selfNS != h.essNS {
+		scopes = append(scopes, h.selfNS)
+	}
+
+	var pvcs []k8s.PVCInfo
 	podCounts := map[string]int{}
-	for _, ns := range []string{h.essNS, "matrixctrl", "kube-system"} {
-		pods, err := h.k8s.ListNamespacePods(ctx, ns)
-		if err == nil {
+	for _, ns := range scopes {
+		if pods, err := h.k8s.ListNamespacePods(ctx, ns); err == nil {
 			podCounts[ns] = len(pods)
+		}
+		// Partial results are kept on purpose: a namespace we cannot read costs its
+		// own row, not the whole panel. The same trade ListOwnership makes.
+		if found, err := h.k8s.ListPVCs(ctx, ns); err == nil {
+			pvcs = append(pvcs, found...)
 		}
 	}
 

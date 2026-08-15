@@ -4,151 +4,49 @@ metadata:
   name: matrixctrl
   labels:
     {{- include "matrixctrl.labels" . | nindent 4 }}
-# Scoped by resource type and verb (etappe 37, DESIGN §4.35).
+# What genuinely cannot be namespaced (etappe 40, DESIGN §4.38).
 #
-# This used to be `apiGroups: ["*"] resources: ["*"] verbs: ["*"]` plus
-# `nonResourceURLs: ["*"]` — cluster-admin spelled differently. The comment defending
-# it claimed a tighter scope "would break upgrades of releases that contain CRDs,
-# ClusterRoles, etc." Measured against the actual chart, that is false: matrix-stack
-# renders 13 kinds across 7 groups, creates **no** CRDs and **no** ClusterRoles, and
-# its three Roles are namespaced.
+# E37 scoped this role by resource type and verb, which removed the escalation
+# paths — no `escalate`, no `impersonate`, no CRDs, no `pods/exec`. It left the role
+# bound cluster-wide, so its *namespaced* rules still applied in every namespace and
+# `kubectl auth can-i list secrets -n kube-system` answered **yes**.
 #
-# Still bound cluster-wide rather than namespaced, deliberately. MatrixCtrl creates
-# the ESS namespace itself on a greenfield deploy (`install.CreateNamespace = true`),
-# and a RoleBinding cannot be pre-created in a namespace that does not exist yet —
-# granting `bind`/`escalate` so it could create its own would re-open exactly what
-# this closes. The containment here is therefore by *what*, not by *where*.
-#
-# Every rule below is derived from a call site or from a kind the chart renders.
-# `internal/k8s/permissions.go` holds the same list as data, and its test asks the
-# API server whether this role actually covers it.
+# Everything that can live in one namespace now does, in role.yaml. What is left
+# here is cluster-scoped in Kubernetes' own terms: you cannot ask for a node in a
+# namespace.
 rules:
-  # --- What MatrixCtrl reads and patches itself -----------------------------------
-
-  # Pods: the drill-down, restart causes, rollout progress, and two deletes —
-  # restart-a-pod, and cleaning up Evicted pods (k8s/node.go, k8s/pods.go).
-  # Helm's `--wait` also watches pods for readiness.
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
-
-  # Events carry the *reason* a pod is unhealthy; without them the drill-down can
-  # only say that it is.
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch"]
-
-  # Nodes are cluster-scoped and genuinely needed: dashboard capacity, and mapping
-  # pods to the node they run on (k8s/node.go:22, k8s/pods.go:285).
+  # Dashboard capacity, and mapping a pod to the node it runs on
+  # (k8s/node.go:22, k8s/pods.go:285). Nodes are not namespaced objects.
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list"]
 
-  # Live CPU/memory. Reached via AbsPath("/apis/metrics.k8s.io/v1beta1/nodes"), which
-  # is a *resource* URL despite looking like a raw path — so it needs a resource rule,
-  # not a nonResourceURL one. Absent metrics-server this simply returns nothing;
-  # k8s/node.go already treats that as "no data", not as an error.
+  # Live CPU/memory. Reached via AbsPath("/apis/metrics.k8s.io/v1beta1/nodes"),
+  # which is a *resource* URL despite looking like a raw path. Without
+  # metrics-server this returns nothing and k8s/node.go already treats that as
+  # "no data" rather than as an error.
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]
 
-  # Greenfield: MatrixCtrl creates the namespace it is about to install ESS into.
-  # No delete — removing a namespace is not something this product should be able
-  # to do by accident, and nothing in the code asks for it.
+  # Greenfield: MatrixCtrl installs ESS into a namespace that may not exist yet
+  # (`install.CreateNamespace = true`). No delete — nothing in the product asks to
+  # remove a namespace, and it is not a power worth holding by accident.
+  #
+  # Creating a namespace grants nothing *inside* it. If the operator repoints
+  # MATRIXCTRL_ESS_NAMESPACE at a namespace this chart never bound a Role in,
+  # MatrixCtrl can create it and then do nothing there — which the permission
+  # matrix in internal/k8s/permissions.go reports rather than leaving to be
+  # discovered halfway through an install.
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "create"]
 
-  # --- What Helm needs to install, upgrade and roll back the chart ----------------
-  #
-  # The verb set is the same everywhere: Helm creates, reads back, three-way-merge
-  # patches, and deletes on rollback. Splitting it per kind would suggest a precision
-  # that does not exist — Helm decides at apply time which verb each object gets.
-
-  # Release storage lives in Secrets, and the chart renders Secrets of its own.
-  # This is the widest-reaching rule left, which is why cross-namespace discovery
-  # is opt-in below rather than assumed.
-  - apiGroups: [""]
-    resources: ["secrets", "configmaps", "services", "serviceaccounts",
-                "persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # ReplicaSets are read-only here, and the chart never renders one. They are needed
-  # anyway because `--wait` is on for install, upgrade and rollback: Helm's readiness
-  # check for a Deployment calls GetNewReplicaSet, which **lists** ReplicaSets in the
-  # namespace (helm/internal/.../deploymentutil.go:120).
-  #
-  # This rule was missing from the first draft of the scoped role, and nothing in the
-  # chart or in MatrixCtrl's own code would have revealed it — it lives in Helm's
-  # internals. With seven Deployments in ESS, every upgrade would have applied
-  # successfully and then failed while waiting, which is the half-applied state this
-  # install has already had to be recovered from once.
-  - apiGroups: ["apps"]
-    resources: ["replicasets"]
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Helm hooks: init-secrets, deployment-markers (pre/post), synapse-check-config.
-  # These never appear in `helm get manifest`, which is why reading only the live
-  # release would have produced a role that fails on the next upgrade instead of now.
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # The chart's three namespaced Roles grant secrets create/get/update, configmaps
-  # create/get/update, pods list and statefulsets list/get/update — all of which the
-  # rules above already hold, so Kubernetes' escalation prevention is satisfied
-  # without `escalate` or `bind`. That was the load-bearing question for this etappe
-  # and the answer is why it works.
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["roles", "rolebindings"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Conditional kinds: rendered only when the cluster has the corresponding operator.
-  # Granted unconditionally because a missing CRD makes the rule inert, while a
-  # missing rule makes the upgrade fail halfway — and a half-applied release is the
-  # state this project has already had to recover from once.
-  - apiGroups: ["monitoring.coreos.com"]
-    resources: ["servicemonitors", "podmonitors"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["cert-manager.io"]
-    resources: ["certificates", "issuers"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # --- Discovery -------------------------------------------------------------------
-
   # Read-only discovery for Helm's RESTMapper. Kubernetes already grants these to
-  # every authenticated account via the built-in `system:discovery` ClusterRole, so
-  # this is redundant on a conformant cluster — stated explicitly anyway so the chart
-  # does not depend on a default it does not control. What is *not* restated is the
-  # old `nonResourceURLs: ["*"] verbs: ["*"]`, which also permitted POST to arbitrary
-  # non-resource paths.
+  # every authenticated account through the built-in `system:discovery` role, so
+  # this is redundant on a conformant cluster — stated anyway so the chart does not
+  # depend on a default it does not control. What is deliberately *not* restated is
+  # the old `nonResourceURLs: ["*"] verbs: ["*"]`, which also permitted POST to
+  # arbitrary non-resource paths.
   - nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/version", "/openapi", "/openapi/*"]
     verbs: ["get"]
-
-  # --- What this role still over-grants, stated plainly ----------------------------
-  #
-  # A ClusterRole bound by a ClusterRoleBinding applies its namespaced rules in
-  # *every* namespace. So the `secrets` rule above is, in effect, read/write on every
-  # Secret in the cluster — `kubectl auth can-i list secrets -n kube-system` against
-  # this role answers **yes**.
-  #
-  # An earlier draft of this etappe gated cluster-wide discovery behind a
-  # `rbac.discovery.allNamespaces` value and told the operator that leaving it off
-  # withheld that access. Measured, it withheld nothing: the base rule already
-  # granted it. The flag was removed rather than documented, because a security
-  # control that does not control anything is worse than none — it is believed.
-  #
-  # Containing this needs a Role + RoleBinding in the managed namespace instead, which
-  # in turn needs the namespace to exist before MatrixCtrl installs into it. That is
-  # the top remaining item in BACKLOG.md, not a thing this file can fix.

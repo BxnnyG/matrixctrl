@@ -89,39 +89,61 @@ func TestForbiddenPowersLive(t *testing.T) {
 	}
 }
 
-// TestKnownOverGrantsLive records what the role permits beyond its purpose, aimed at
-// a namespace MatrixCtrl has no business in.
+// TestNamespaceConfinementLive is etappe 40's proof.
 //
-// It does not fail on them: they are the documented limit of etappe 37, which scoped
-// the role by resource type and verb but left it bound cluster-wide. It fails if one
-// *disappears* without the list being updated — that means the namespaced Role
-// landed, and the honest paragraphs in clusterrole.yaml and BACKLOG.md are now
-// describing a problem that no longer exists.
-func TestKnownOverGrantsLive(t *testing.T) {
+// The required-permission test shows the role is wide enough and the forbidden test
+// shows it is not wide in the dangerous *kinds*. Neither can see the third axis:
+// until E40 the role was a ClusterRole bound cluster-wide, so every rule written for
+// the managed namespace applied in all of them, and `list secrets -n kube-system`
+// answered yes.
+//
+// Its predecessor, TestKnownOverGrantsLive, asserted the opposite — that those
+// grants were still present — specifically so that closing the gap would break a
+// test rather than pass silently. It did, and this replaced it.
+func TestNamespaceConfinementLive(t *testing.T) {
 	if os.Getenv("RUN_LIVE") == "" {
 		t.Skip("set RUN_LIVE=1 to run against a live cluster")
 	}
 
 	const unrelated = "kube-system"
+	if unrelated == essNamespace() {
+		t.Fatalf("the confinement check needs a namespace MatrixCtrl does not manage")
+	}
 
 	c, err := New()
 	if err != nil {
 		t.Fatalf("k8s client: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	checks, err := c.Check(ctx, unrelated, KnownOverGrants)
+	// Denied outside the managed namespace…
+	outside, err := c.Check(ctx, unrelated, ConfinedToNamespace)
 	if err != nil {
-		t.Fatalf("check: %v", err)
+		t.Fatalf("check outside: %v", err)
 	}
-	for _, ch := range checks {
+	for _, ch := range outside {
 		if ch.Allowed {
-			t.Logf("over-granted in %s (known): %s — %s", unrelated, ch.Permission, ch.Why)
-			continue
+			t.Errorf("still permitted in %s: %s — %s", unrelated, ch.Permission, ch.Why)
 		}
-		t.Errorf("no longer over-granted in %s: %s — namespace containment has landed; "+
-			"update KnownOverGrants, clusterrole.yaml and BACKLOG.md", unrelated, ch.Permission)
+	}
+
+	// …and still granted inside it. Without this half the test would pass just as
+	// well against a role that grants nothing at all, which would be a panel that
+	// cannot do its job rather than a secure one.
+	inside, err := c.Check(ctx, essNamespace(), ConfinedToNamespace)
+	if err != nil {
+		t.Fatalf("check inside: %v", err)
+	}
+	for _, ch := range inside {
+		if !ch.Allowed {
+			t.Errorf("confinement went too far: %s is denied in the managed namespace %s",
+				ch.Permission, essNamespace())
+		}
+	}
+
+	if len(KnownOverGrants) != 0 {
+		t.Errorf("KnownOverGrants should be empty after E40, has %d", len(KnownOverGrants))
 	}
 }
 
@@ -136,7 +158,11 @@ func essNamespace() string {
 // etappe 37 removed. A `*` here would make every check pass against a cluster-admin
 // binding and prove nothing.
 func TestNoWildcardsInRequired(t *testing.T) {
-	for _, p := range append(append([]Permission{}, RequiredPermissions...), OptionalPermissions...) {
+	all := append([]Permission{}, RequiredPermissions...)
+	all = append(all, OptionalPermissions...)
+	all = append(all, ForbiddenAlways...)
+	all = append(all, ConfinedToNamespace...)
+	for _, p := range all {
 		if p.Group == "*" || p.Resource == "*" || p.Verb == "*" {
 			t.Errorf("wildcard in permission list: %s", p)
 		}

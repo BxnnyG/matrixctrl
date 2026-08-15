@@ -1239,3 +1239,56 @@ ms was expected), and storing the timestamp as Unix seconds made the fast path
 disagree with the fallback by up to a second — found only because the live test
 compares the two paths row by row, which is the single thing that makes a fast path
 safe to add. Affects S2, S4.
+
+### §4.38 — A blocker I recorded without testing (2026-08-16, agent, closes P0-4a)
+
+E37 scoped the ClusterRole by resource type and verb and stated plainly that it had
+not scoped it by namespace: `kubectl auth can-i list secrets -n kube-system`
+answered **yes**, because a ClusterRole bound by a ClusterRoleBinding applies its
+namespaced rules everywhere. Helm's release storage needs `secrets` in the managed
+namespace; the binding turned that into read and write on every secret in the
+cluster.
+
+E37's plan explained why that could not be fixed:
+
+> a RoleBinding cannot be created in a namespace that is not there … so the chart
+> has to create the namespace — which conflicts with Helm ownership when adopting
+> an ESS whose namespace already exists. **That trade is the whole etappe.**
+
+There was no trade. Helm's `lookup` answers exactly that question against the live
+cluster at install time:
+
+| | `ess` (exists) | a name that does not |
+|---|---|---|
+| `helm template` | `no` | `no` |
+| `helm upgrade --dry-run=server` | **`yes`** | `no` |
+
+So the chart renders the Namespace only when it is genuinely absent: greenfield gets
+one created, an adopted install never sees the object, and there is no ownership
+conflict to have. One `lookup` call, tested in ten minutes, against a paragraph of
+confident reasoning that cost the fix a day of not existing.
+
+**The lesson is not "use lookup".** It is that the sentence *"that trade is the whole
+etappe"* was written in the same pass as measurements that were real, and inherited
+their authority without earning it. §4.35 records two assumptions that measurement
+overturned and §4.37 records two more; this is the third instance in three etappes,
+and in this one the untested claim was the reason for **not** doing the work.
+
+**Consequences:** `helm.sh/resource-policy: keep` on that Namespace is load-bearing
+twice, and both failures are severe. Without it, `helm uninstall matrixctrl` deletes
+the ESS namespace and everything in it — removing the admin panel would remove the
+homeserver. And because a later upgrade's `lookup` finds the namespace and renders
+nothing, Helm would delete an object present in the old manifest and absent from the
+new one, which is the same disaster on the second upgrade instead of at uninstall.
+
+Two grants were removed rather than relocated, because each was a diagnostics number
+paying rent in permissions: `ListPVCs(ctx, "")` listed claims in every namespace, and
+`SysInfo` counted pods in `kube-system` — keeping that would have meant the chart
+writing a RoleBinding into the cluster's most sensitive namespace so one figure could
+appear on a page.
+
+Proven before applying, on a probe identity: **90/90** required granted in the
+managed namespace, **7/7** forbidden powers denied, and the eight confined
+permissions denied in `kube-system` while still granted in `ess`. That last pair is
+the point — checking only the denial would pass equally well against a role that
+grants nothing, which is a broken panel rather than a safe one. Affects S9, S13.

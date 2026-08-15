@@ -71,8 +71,26 @@ fixed manifest (no path traversal), bcrypt for passwords, session revocation
 implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-safe), and
 `RequireAdmin` defaulting to true.
 
-- **P0-4a · The ClusterRole is bound cluster-wide, so its namespaced rules reach
-  every namespace.** What is left after E37 scoped the role by resource type and
+- ~~**P0-4a · The ClusterRole is bound cluster-wide, so its namespaced rules reach
+  every namespace.**~~ **Done 2026-08-16** (E40, `v0.1.41`, DESIGN §4.38). Every
+  namespaced rule moved into a `Role` in the managed namespace. The `can-i` output
+  that opened this entry is now reversed:
+
+  ```
+  kubectl auth can-i list secrets -n kube-system  →  no
+  kubectl auth can-i list secrets -n ess          →  yes
+  ```
+
+  **The blocker recorded below was never tested, and was wrong.** Helm's `lookup`
+  answers "does this namespace already exist" against the live cluster at install
+  time, so the chart creates it only when absent — greenfield gets one, an adopted
+  install never renders the object, and the ownership conflict this entry called
+  "the whole etappe" does not arise. Ten minutes of testing against a paragraph of
+  confident reasoning that cost the fix a day.
+  Also removed rather than relocated: a cluster-wide PVC list and a `kube-system`
+  pod count, each one number on a diagnostics page, the second of which would have
+  required writing RBAC into kube-system permanently.
+  Original entry: What is left after E37 scoped the role by resource type and
   verb. Helm's release storage needs `secrets` in the managed namespace, and a
   ClusterRoleBinding turns that into `secrets` everywhere. Measured, not inferred:
 

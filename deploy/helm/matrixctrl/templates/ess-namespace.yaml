@@ -1,0 +1,40 @@
+{{/*
+The managed namespace, created only when it is not already there (etappe 40).
+
+A RoleBinding has to live in an existing namespace, and on a greenfield install the
+ESS namespace does not exist yet — MatrixCtrl creates it later, at deploy time. E37
+recorded that as the blocker that made namespace-scoped RBAC impossible. It is not:
+`lookup` runs against the live cluster during install and upgrade, so the chart can
+ask.
+
+Verified rather than assumed, because `lookup` behaves differently depending on how
+the chart is rendered:
+
+	helm template                 → absent (no API calls are made)
+	helm upgrade --dry-run=server → present
+	helm install / upgrade        → present
+
+So `helm template` output will always contain this Namespace, and a real install
+will contain it only when it is genuinely missing. That is the intended asymmetry,
+not a bug in the template.
+
+`resource-policy: keep` is load-bearing twice over, and both cases are severe:
+
+ 1. Without it, `helm uninstall matrixctrl` deletes this Namespace **and every
+    object in it** — the entire Matrix deployment, including Postgres. Removing the
+    admin panel must never remove the thing it administers.
+ 2. After a greenfield install the namespace exists, so the *next* upgrade's lookup
+    renders nothing here. Helm deletes resources that were in the previous manifest
+    and are absent from the new one, which would be the same disaster on the second
+    upgrade rather than at uninstall. `keep` stops that too.
+*/}}
+{{- if not (lookup "v1" "Namespace" "" .Values.ess.namespace) }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.ess.namespace }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+{{- end }}

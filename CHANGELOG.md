@@ -15,6 +15,41 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.41] — 2026-08-16
+
+### Security
+
+- **The panel can no longer read or write secrets outside the namespace it
+  manages.** E37 scoped the ClusterRole by resource type and verb but left it bound
+  cluster-wide, so every rule written for the managed namespace applied in all of
+  them — `kubectl auth can-i list secrets -n kube-system` answered **yes**. Those
+  rules now live in a `Role` in the managed namespace, and what stays cluster-scoped
+  is only what Kubernetes cannot namespace: nodes, node metrics, namespace
+  get/list/create, and read-only discovery.
+
+  E37 recorded this as blocked — a RoleBinding needs an existing namespace, and on a
+  greenfield install the ESS namespace does not exist yet. That was written without
+  testing it. Helm's `lookup` answers the question against the live cluster, so the
+  chart creates the namespace only when it is genuinely absent, and an adopted
+  install never renders the object at all.
+
+  Proven before being applied, on a throwaway identity: 90/90 required permissions
+  granted in the managed namespace, 7/7 forbidden powers denied, and eight confined
+  permissions denied in `kube-system` while still granted in `ess`.
+
+- **Two cluster-wide grants removed rather than relocated.** `SysInfo` listed
+  persistent volume claims in every namespace and counted pods in `kube-system`.
+  Each was one number on a diagnostics page; the second would have required the
+  chart to write a RoleBinding into the cluster's most sensitive namespace,
+  permanently. The storage panel now reports the storage of the deployment this
+  panel manages.
+
+### Changed
+
+- Uninstalling MatrixCtrl can never remove the ESS namespace: the namespace the
+  chart may create carries `helm.sh/resource-policy: keep`. Removing the admin panel
+  must not remove the homeserver it administers.
+
 ## [0.1.40] — 2026-08-15
 
 ### Performance

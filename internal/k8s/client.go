@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -76,4 +77,28 @@ func config() (*rest.Config, error) {
 		kubeconfig = os.Getenv("HOME") + "/.kube/config"
 	}
 	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+}
+
+// serviceAccountNamespaceFile is where the kubelet projects the pod's own
+// namespace. Every pod with a ServiceAccount has it, and this process already
+// depends on that mount for its in-cluster credentials — so reading the namespace
+// from it adds no new requirement.
+const serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+// CurrentNamespace returns the namespace this process runs in, or "" when that
+// cannot be determined.
+//
+// Empty is a supported answer, not a failure: outside the cluster there is no
+// "own namespace" to speak of, and the one caller (the diagnostics page, etappe
+// 40) simply reports one namespace instead of two. An env var overrides it so a
+// developer can point a local run at something specific.
+func CurrentNamespace() string {
+	if ns := strings.TrimSpace(os.Getenv("MATRIXCTRL_NAMESPACE")); ns != "" {
+		return ns
+	}
+	b, err := os.ReadFile(serviceAccountNamespaceFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

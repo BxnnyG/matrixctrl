@@ -135,24 +135,20 @@ var OptionalPermissions = []Permission{
 	{Group: "", Resource: "secrets", Verb: "list", Why: "cluster-wide ESS discovery in the setup wizard"},
 }
 
-// KnownOverGrants are things the role permits that MatrixCtrl does not need.
+// KnownOverGrants is empty since etappe 40, and the empty list is the point.
 //
-// They exist because the role is a ClusterRole bound by a ClusterRoleBinding, so
-// every rule written for the managed namespace applies in *all* of them. Etappe 37
-// scoped the role by resource type and verb; it did not scope it by namespace, and
-// this list is the difference between those two claims.
+// E37 scoped the role by resource type and verb but left it bound cluster-wide, so
+// its namespaced rules still applied everywhere: `kubectl auth can-i list secrets
+// -n kube-system` answered **yes**. That gap was recorded here as three assertions
+// rather than as a paragraph, with a test written to *fail* when they disappeared —
+// so that closing it would announce itself instead of leaving three files
+// describing a problem that no longer existed.
 //
-// Written down and tested rather than described in prose for one reason: when the
-// namespaced Role lands, these flip from allowed to denied, and the test says so.
-// A limitation that is only a paragraph gets fixed and nobody notices; one that is
-// an assertion announces its own repair.
-// Namespaced is true so that Check aims them at whichever namespace it is given —
-// the test deliberately passes one MatrixCtrl has no business in.
-var KnownOverGrants = []Permission{
-	{Group: "", Resource: "secrets", Verb: "list", Namespaced: true, Why: "every Secret in the cluster, not only the managed namespace"},
-	{Group: "", Resource: "secrets", Verb: "delete", Namespaced: true, Why: "every Secret in the cluster, not only the managed namespace"},
-	{Group: "apps", Resource: "deployments", Verb: "delete", Namespaced: true, Why: "every Deployment in the cluster, not only the managed namespace"},
-}
+// E40 moved every namespaced rule into a Role in the managed namespace, the
+// assertions flipped, and the test failed exactly as designed. The entries moved to
+// ForbiddenAlways below. This slice stays, empty, because the next person to widen
+// the role should have somewhere obvious to write down what they widened it by.
+var KnownOverGrants = []Permission{}
 
 // ForbiddenAlways are the powers etappe 37 removed. Unlike the over-grants, these
 // must stay denied — if any becomes allowed, the wildcard has grown back, whether
@@ -165,6 +161,28 @@ var ForbiddenAlways = []Permission{
 	{Group: "", Resource: "pods", Subresource: "exec", Verb: "create", Namespaced: true, Why: "shell into any managed pod"},
 	{Group: "", Resource: "namespaces", Verb: "delete", Why: "nothing in the product asks for it"},
 	{Group: "", Resource: "users", Verb: "impersonate", Why: "impersonation"},
+}
+
+// ConfinedToNamespace must be denied *outside* the managed namespace, and is
+// required inside it. The distinction is the whole of etappe 40: these are not
+// powers MatrixCtrl should never have, they are powers it should only have where
+// it works.
+//
+// Checked against a namespace the panel has no business in — see
+// TestNamespaceConfinementLive. Every one of them answered `allowed` until the
+// rules moved out of a ClusterRoleBinding and into a Role. Secrets are why P0-4a
+// outranked everything else: Helm's release storage needs them in the managed
+// namespace, and a cluster-wide binding turned that into every secret in the
+// cluster, readable and writable.
+var ConfinedToNamespace = []Permission{
+	{Group: "", Resource: "secrets", Verb: "list", Namespaced: true, Why: "secrets outside the managed namespace"},
+	{Group: "", Resource: "secrets", Verb: "get", Namespaced: true, Why: "secrets outside the managed namespace"},
+	{Group: "", Resource: "secrets", Verb: "delete", Namespaced: true, Why: "secrets outside the managed namespace"},
+	{Group: "apps", Resource: "deployments", Verb: "delete", Namespaced: true, Why: "workloads outside the managed namespace"},
+	{Group: "apps", Resource: "deployments", Verb: "patch", Namespaced: true, Why: "workloads outside the managed namespace"},
+	{Group: "", Resource: "configmaps", Verb: "update", Namespaced: true, Why: "config outside the managed namespace"},
+	{Group: "rbac.authorization.k8s.io", Resource: "rolebindings", Verb: "create", Namespaced: true, Why: "granting itself rights in another namespace"},
+	{Group: "", Resource: "pods", Verb: "delete", Namespaced: true, Why: "deleting pods outside the managed namespace"},
 }
 
 // PermissionCheck is one permission and the API server's answer about it.

@@ -1,0 +1,151 @@
+{{/*
+Everything MatrixCtrl does that Kubernetes can confine to a namespace (etappe 40).
+
+This is where the P0-4a fix lives. The same rules used to sit in the ClusterRole
+bound cluster-wide, which meant `secrets` — needed for Helm's release storage in
+the managed namespace — were readable and writable in *every* namespace, including
+kube-system. Moving them here confines them to the namespace this panel exists to
+administer.
+
+Two Roles, deliberately, rather than one ClusterRole bound twice: the managed
+namespace needs the full set, and MatrixCtrl's own namespace needs only a pod list
+for the diagnostics page. Granting the full set in both would put the panel's own
+Postgres secret inside its own blast radius for no reason.
+*/}}
+{{- $essNS := .Values.ess.namespace -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: matrixctrl
+  namespace: {{ $essNS }}
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+rules:
+  # --- What MatrixCtrl reads and does itself ---------------------------------
+
+  # Pod list, drill-down, rollout progress, and two deletes: restart-a-pod, and
+  # cleaning up Evicted pods (k8s/pods.go, k8s/node.go:105). Helm's `--wait` also
+  # watches pods for readiness.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # Events carry the *reason* a pod is unhealthy; without them the drill-down can
+  # only say that it is.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+  # --- What Helm needs to install, upgrade and roll back the chart ------------
+  #
+  # One verb set throughout: Helm creates, reads back, three-way-merge patches and
+  # deletes on rollback, and it decides at apply time which verb each object gets.
+  # Splitting per kind would imply a precision that does not exist.
+
+  # Release storage lives in Secrets, and the chart renders Secrets of its own.
+  # This is the rule that made P0-4a a P0 while it was cluster-wide.
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps", "services", "serviceaccounts",
+                "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read-only, and the chart never renders one. Needed because `--wait` is on for
+  # install, upgrade and rollback: Helm's readiness check for a Deployment calls
+  # GetNewReplicaSet, which **lists** ReplicaSets. Neither the chart nor our own
+  # code mentions ReplicaSets, so this rule is invisible to both sources the
+  # permission list is otherwise derived from — E37 shipped its first draft without
+  # it, which would have made every ESS upgrade apply and then fail while waiting.
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Helm hooks: init-secrets, deployment-markers (pre/post), synapse-check-config.
+  # These never appear in `helm get manifest`, so a role built by reading the live
+  # release would fail on the next upgrade instead of now.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # matrix-stack renders three namespaced Roles. Kubernetes refuses to let an
+  # account create a Role granting permissions it does not itself hold; those three
+  # grant secrets create/get/update, configmaps create/get/update, pods list and
+  # statefulsets list/get/update — all of which the rules above hold *in this
+  # namespace*. So escalation prevention is satisfied without `escalate` or `bind`,
+  # and it is satisfied more tightly than before: the permissions being granted and
+  # the permissions being held are now confined to the same namespace.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Conditional kinds, rendered only when the cluster has the matching operator.
+  # Granted unconditionally: a missing CRD makes the rule inert, while a missing
+  # rule makes an upgrade fail halfway, and a half-applied release is a state this
+  # install has already had to be recovered from once.
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "podmonitors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates", "issuers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: matrixctrl
+  namespace: {{ $essNS }}
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: matrixctrl
+subjects:
+  - kind: ServiceAccount
+    name: matrixctrl
+    namespace: {{ .Release.Namespace }}
+{{- if ne $essNS .Release.Namespace }}
+---
+{{/*
+MatrixCtrl's own namespace: the pod count on the diagnostics page, and nothing
+else. The panel does not administer itself, so it does not need write access to
+its own Postgres secret through the Kubernetes API.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: matrixctrl-self
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: matrixctrl-self
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrixctrl.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: matrixctrl-self
+subjects:
+  - kind: ServiceAccount
+    name: matrixctrl
+    namespace: {{ .Release.Namespace }}
+{{- end }}
