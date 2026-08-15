@@ -2,8 +2,8 @@ apiVersion: v2
 name: matrixctrl
 description: Admin layer for self-hosted Matrix / Element Server Suite (ESS)
 type: application
-version: 0.1.38
-appVersion: "0.1.38"
+version: 0.1.39
+appVersion: "0.1.39"
 keywords:
   - matrix
   - element

@@ -11,12 +11,69 @@ import (
 )
 
 type PodInfo struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Ready     bool   `json:"ready"`
-	Restarts  int32  `json:"restarts"`
-	StartedAt string `json:"started_at,omitempty"`
-	Node      string `json:"node"`
+	Name  string `json:"name"`
+	Phase string `json:"phase"`
+	Ready bool   `json:"ready"`
+	// Restarts is the sum across containers, which is what kubectl shows and what
+	// an operator compares against. It is also the number that misleads, so it never
+	// travels without RestartsBy (P2-8).
+	Restarts int32 `json:"restarts"`
+	// RestartsBy names the container carrying most of the count, when a pod has more
+	// than one container and the restarts are not spread evenly.
+	//
+	// This is not a nicety. On 2026-08-15 `ess-postgres-0` reported 42 restarts; the
+	// database had restarted **zero** times and all 42 belonged to
+	// `postgres-exporter`, a monitoring sidecar. The obvious reading of "42" was
+	// wrong in the most alarming possible direction, and disproving it took reading
+	// per-container state by hand — while the per-container numbers were already in
+	// the struct being folded away here.
+	RestartsBy string `json:"restarts_by,omitempty"`
+	StartedAt  string `json:"started_at,omitempty"`
+	Node       string `json:"node"`
+}
+
+// dominantRestarter names the container responsible for a pod's restart count, or
+// "" when naming one would mislead in its own right.
+func dominantRestarter(statuses []corev1.ContainerStatus, total int32) string {
+	if len(statuses) < 2 {
+		return ""
+	}
+	byName := make(map[string]int32, len(statuses))
+	for _, cs := range statuses {
+		byName[cs.Name] += cs.RestartCount
+	}
+	return DominantContributor(byName, total)
+}
+
+// DominantContributor names the entry carrying most of a total, or "" when naming
+// one would mislead in its own right.
+//
+// It stays silent when there is nothing to attribute, when only one candidate
+// exists (the name adds nothing the label does not already say), and when no single
+// entry holds a clear majority — three containers at 14 each is genuinely "the
+// pod", and picking one of them would invent a culprit. Silence means "the total is
+// the honest answer", not "unknown".
+//
+// Two thirds rather than "the largest share": at 22 against 20 the second entry
+// matters just as much, and naming only the first hides it.
+func DominantContributor(byName map[string]int32, total int32) string {
+	if total == 0 || len(byName) < 2 {
+		return ""
+	}
+	var topName string
+	var topCount int32
+	for name, count := range byName {
+		// Ties resolve by name so the answer does not change between two identical
+		// reads — map iteration order is randomised, and a value that flickers
+		// between refreshes reads as something happening.
+		if count > topCount || (count == topCount && name < topName) {
+			topCount, topName = count, name
+		}
+	}
+	if topCount*3 < total*2 {
+		return ""
+	}
+	return topName
 }
 
 type PVCInfo struct {
@@ -57,6 +114,7 @@ type PodDetail struct {
 	Phase      string            `json:"phase"`
 	Ready      bool              `json:"ready"`
 	Restarts   int32             `json:"restarts"`
+	RestartsBy string            `json:"restarts_by,omitempty"`
 	StartedAt  string            `json:"started_at,omitempty"`
 	Node       string            `json:"node"`
 	PodIP      string            `json:"pod_ip,omitempty"`
@@ -120,6 +178,7 @@ func podDetail(p corev1.Pod) PodDetail {
 		Phase:      string(p.Status.Phase),
 		Ready:      allReady,
 		Restarts:   restarts,
+		RestartsBy: dominantRestarter(p.Status.ContainerStatuses, restarts),
 		StartedAt:  startedAt,
 		Node:       p.Spec.NodeName,
 		PodIP:      p.Status.PodIP,
@@ -206,12 +265,13 @@ func podInfoList(items []corev1.Pod) []PodInfo {
 			startedAt = p.Status.StartTime.UTC().Format(time.RFC3339)
 		}
 		out = append(out, PodInfo{
-			Name:      p.Name,
-			Phase:     string(p.Status.Phase),
-			Ready:     allReady,
-			Restarts:  restarts,
-			StartedAt: startedAt,
-			Node:      p.Spec.NodeName,
+			Name:       p.Name,
+			Phase:      string(p.Status.Phase),
+			Ready:      allReady,
+			Restarts:   restarts,
+			RestartsBy: dominantRestarter(p.Status.ContainerStatuses, restarts),
+			StartedAt:  startedAt,
+			Node:       p.Spec.NodeName,
 		})
 	}
 	return out

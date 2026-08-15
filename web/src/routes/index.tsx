@@ -50,6 +50,9 @@ interface ComponentStatus {
   ready: number;
   desired: number;
   restarts: number;
+  /** Container carrying most of `restarts`, when one does. Empty means the
+   *  total is the honest answer — see internal/k8s/health.go podRestarts. */
+  restarts_by?: string;
 }
 interface NodeInfo { name: string; cpu_used_millis: number; cpu_total_millis: number; mem_used_mi: number; mem_total_mi: number }
 interface StatusResponse {
@@ -121,8 +124,20 @@ function ComponentRow({ c, last, onClick }: { c: ComponentStatus; last: boolean;
         <span style={{ fontSize: 12.5, color: dot === "ok" || dot === "idle" ? "var(--text-dim)" : `var(--status-${dot})`, fontWeight: 500 }}>{STATUS_LABEL[c.status] ?? c.status}</span>
       </div>
       <span style={{ fontSize: 12.5, fontFamily: "var(--mono)", color: isHealthy(c) ? "var(--text-dim)" : "var(--status-warn)" }}>{c.ready}/{c.desired}</span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontFamily: "var(--mono)", color: hot ? "var(--status-err)" : c.restarts > 0 ? "var(--status-warn)" : "var(--text-faint)" }}>
-        {c.restarts}×{hot && <Icon name="alert" size={12} />}
+      {/* The count alone reads as "this component is crash-looping". For a
+          multi-container workload that is often false: ess-postgres showed 42
+          while the database itself had restarted zero times and a monitoring
+          sidecar carried all of them (P2-8). */}
+      <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5, fontSize: 12.5, fontFamily: "var(--mono)", color: hot ? "var(--status-err)" : c.restarts > 0 ? "var(--status-warn)" : "var(--text-faint)", minWidth: 0 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          {c.restarts}×{hot && <Icon name="alert" size={12} />}
+        </span>
+        {c.restarts_by && (
+          <span title={`${c.restarts} Restarts, überwiegend im Container ${c.restarts_by}`}
+            style={{ fontSize: 10.5, color: "var(--text-faint)", fontFamily: "var(--font)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {c.restarts_by}
+          </span>
+        )}
       </span>
       <Icon name="chevRight" size={16} style={{ color: "var(--text-faint)", opacity: 0.5 }} />
     </button>

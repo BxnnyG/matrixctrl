@@ -15,6 +15,36 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.39] — 2026-08-15
+
+### Fixed
+
+- **A restart count no longer implies the wrong container.** The dashboard summed
+  restarts across every container in a pod, so `ess-postgres` read **42** — which
+  says "the database is crash-looping". It was not: `postgres` had restarted zero
+  times and all 42 belonged to `postgres-exporter`, a monitoring sidecar. The total
+  stays, since it is what `kubectl` shows, but when one container carries at least
+  two thirds of it the row and the drawer badge now name that container.
+
+  Deliberately silent when attribution would be a guess — single-container pods,
+  zero restarts, or anything more even than 2:1, because three containers at 14 each
+  is genuinely "the pod" and picking one would invent a culprit. Ties resolve by
+  name so the answer cannot flicker between two identical reads.
+
+### Documentation
+
+- **Eight backlog entries claimed problems that no longer existed.** The whole
+  2026-08-04 security review batch — P0-5, P1-16, P1-17, P2-26, P2-27, P2-28 — plus
+  P1-6 and P2-1 had been fixed by E17, E29 and E35 and never struck through, so the
+  public repo carried a document, maintained by the author, stating that this admin
+  panel runs as root with wildcard CORS, no login rate limiting, a guessable
+  signing-key fallback and session tokens in URLs. None of it was true.
+
+  Every entry was re-checked against the source rather than against the etappe that
+  claimed to close it, and each now names the code that closes it. `P1-11` had been
+  marked done inside its body while its heading still read as open, which is how
+  eight of them survived readers looking directly at them.
+
 ## [0.1.38] — 2026-08-15
 
 ### Security

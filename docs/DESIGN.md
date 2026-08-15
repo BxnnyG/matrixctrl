@@ -1153,3 +1153,40 @@ honest order and the reason the entry now carries the citation. The general form
 **a permission reached through a library's internals is invisible to an enumeration
 of your own call sites**, so a dependency that acts on the cluster on your behalf has
 to be read, not inferred from what you asked it to do.
+
+### §4.36 — A stale inventory is a defect, not untidiness (2026-08-15, agent, from E37)
+
+CLAUDE.md rule 2 is "inventory instead of guessing", and it names BACKLOG.md as one
+of the two files the inventory lives in. While closing P0-4, P0-5 turned out to be
+listed as open and to have been fixed months earlier. Checking its neighbours found
+**eight** entries in that state — the entire 2026-08-04 security review batch, all
+closed by E29 and E35, none struck through.
+
+So a reader of the public repo found a document, maintained by the author, stating
+that this admin panel runs as root with wildcard CORS, no login rate limiting, a
+guessable signing-key fallback, and session tokens in URLs. Every one of those was
+false.
+
+That is a specific kind of wrong, and it is worth naming because the instinct is to
+treat it as bookkeeping:
+
+- **It errs toward looking worse than reality**, which is the direction nobody
+  audits. A project overstating its safety gets caught; a project understating it is
+  simply believed, and the cost lands on the reader who decides not to use it, or on
+  the maintainer who re-fixes something already fixed.
+- **It hides the entries that are open** by burying them among eight that are not. A
+  P0 list where most items are already done trains its own author to skim it.
+- **It is self-similar.** P2-1 in this same file already records the lesson —
+  "a status written from intent rather than observation decays into a lie, and the
+  lie survives because nobody re-checks their own notes" — written about a claim
+  that greenfield deploy worked. The file containing that sentence had drifted the
+  same way, in the opposite direction. Writing the lesson down does not apply it.
+
+**Consequences:** every entry closed in this pass names the code that closes it and
+the etappe that shipped it, not merely "done" — an entry closed by assertion is the
+same defect one iteration later. Struck-through entries keep their original text,
+because several of them are worth more as a record of how a thing was wrong than as
+a record of it being fixed. And a claim in this file that describes code is now
+something to re-run, not re-read: `P1-11` was marked done in its body while its
+heading still read as open, which is how eight of them survived a reader who was
+looking directly at them. Affects S9, S12.

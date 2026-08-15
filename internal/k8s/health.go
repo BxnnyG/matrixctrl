@@ -15,6 +15,9 @@ type ComponentHealth struct {
 	Ready    int32  `json:"ready"`
 	Desired  int32  `json:"desired"`
 	Restarts int32  `json:"restarts"`
+	// RestartsBy names the container carrying most of Restarts, when one does.
+	// Empty means the total is the honest answer (P2-8, see podRestarts).
+	RestartsBy string `json:"restarts_by,omitempty"`
 }
 
 // ComponentHealth reports every ESS workload. StatefulSets matter as much as
@@ -32,13 +35,15 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		if d.Spec.Replicas != nil {
 			desired = *d.Spec.Replicas
 		}
+		restarts, by := c.podRestarts(ctx, namespace, d.Spec.Selector.MatchLabels)
 		result = append(result, ComponentHealth{
-			Name:     d.Name,
-			Kind:     "Deployment",
-			Status:   workloadStatus(d.Status.ReadyReplicas, desired),
-			Ready:    d.Status.ReadyReplicas,
-			Desired:  desired,
-			Restarts: c.podRestarts(ctx, namespace, d.Spec.Selector.MatchLabels),
+			Name:       d.Name,
+			Kind:       "Deployment",
+			Status:     workloadStatus(d.Status.ReadyReplicas, desired),
+			Ready:      d.Status.ReadyReplicas,
+			Desired:    desired,
+			Restarts:   restarts,
+			RestartsBy: by,
 		})
 	}
 
@@ -51,13 +56,15 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		if s.Spec.Replicas != nil {
 			desired = *s.Spec.Replicas
 		}
+		restarts, by := c.podRestarts(ctx, namespace, s.Spec.Selector.MatchLabels)
 		result = append(result, ComponentHealth{
-			Name:     s.Name,
-			Kind:     "StatefulSet",
-			Status:   workloadStatus(s.Status.ReadyReplicas, desired),
-			Ready:    s.Status.ReadyReplicas,
-			Desired:  desired,
-			Restarts: c.podRestarts(ctx, namespace, s.Spec.Selector.MatchLabels),
+			Name:       s.Name,
+			Kind:       "StatefulSet",
+			Status:     workloadStatus(s.Status.ReadyReplicas, desired),
+			Ready:      s.Status.ReadyReplicas,
+			Desired:    desired,
+			Restarts:   restarts,
+			RestartsBy: by,
 		})
 	}
 
@@ -78,20 +85,34 @@ func workloadStatus(ready, desired int32) string {
 	}
 }
 
-func (c *Client) podRestarts(ctx context.Context, namespace string, matchLabels map[string]string) int32 {
+// podRestarts returns a component's restart total and, when one container carries
+// most of it, that container's name.
+//
+// This number collapses two levels at once — across containers and across pods —
+// and it is the most prominent figure on the dashboard, turning red above 20. On
+// 2026-08-15 it read 42 for `ess-postgres`, which invites exactly one conclusion:
+// the database is crash-looping. It was not. `postgres` had restarted zero times
+// and all 42 belonged to `postgres-exporter`, a monitoring sidecar in the same pod.
+// The total was correct and the impression it created was false (P2-8).
+//
+// Container names are stable across the pods of one workload, so attributing by
+// name is meaningful even when the total spans several pods.
+func (c *Client) podRestarts(ctx context.Context, namespace string, matchLabels map[string]string) (int32, string) {
 	pods, err := c.Static.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelsToSelector(matchLabels),
 	})
 	if err != nil {
-		return 0
+		return 0, ""
 	}
 	var restarts int32
+	byContainer := map[string]int32{}
 	for _, p := range pods.Items {
 		for _, cs := range p.Status.ContainerStatuses {
 			restarts += cs.RestartCount
+			byContainer[cs.Name] += cs.RestartCount
 		}
 	}
-	return restarts
+	return restarts, DominantContributor(byContainer, restarts)
 }
 
 func labelsToSelector(labels map[string]string) string {

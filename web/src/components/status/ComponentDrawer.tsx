@@ -29,6 +29,8 @@ export interface PodDetail {
   phase: string;
   ready: boolean;
   restarts: number;
+  /** Container carrying most of `restarts`, when one does (P2-8). */
+  restarts_by?: string;
   started_at?: string;
   node: string;
   pod_ip?: string;
@@ -110,7 +112,14 @@ function PodCard({ pod, onLogs, onRestart, restarting }: { pod: PodDetail; onLog
             {pod.phase} · Node {pod.node || "—"}{pod.started_at ? ` · gestartet ${relTime(pod.started_at)}` : ""}
           </div>
         </div>
-        {pod.restarts > 0 && <Badge tone={pod.restarts > 20 ? "err" : "warn"} size="sm">{pod.restarts}× Restart</Badge>}
+        {/* Naming the container turns an alarming number into an actionable one:
+            "42× Restart" reads as a failing database, "42× Restart ·
+            postgres-exporter" reads as a failing sidecar (P2-8). */}
+        {pod.restarts > 0 && (
+          <Badge tone={pod.restarts > 20 ? "err" : "warn"} size="sm">
+            {pod.restarts}× Restart{pod.restarts_by ? ` · ${pod.restarts_by}` : ""}
+          </Badge>
+        )}
         <Button variant="ghost" size="sm" icon="rotate" onClick={onRestart} disabled={restarting} title="Pod neu starten (löschen — Controller erstellt ihn neu)">
           {restarting ? <Spinner size={12} /> : "Neustart"}
         </Button>

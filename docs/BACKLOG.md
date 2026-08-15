@@ -255,8 +255,13 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 
 ## 2. P1 — must-have
 
-- **P1-16 · A failed `crypto/rand` writes a guessable JWT key to the database
-  (S1).** From the 2026-08-04 review, and **worse than reported**. The review noted
+- ~~**P1-16 · A failed `crypto/rand` writes a guessable JWT key to the database
+  (S1).**~~ **Done 2026-08-04 (E29), struck through 2026-08-15.** `randomKey()`
+  (`internal/auth/bootstrap.go:92`) now calls `log.Fatalf` — there is no degraded
+  mode worth having, since the alternative to not starting is an admin panel with
+  forgeable sessions. The fallback still visible at `bootstrap.go:47` is a
+  *different* one: the database was unreachable, so the key is ephemeral but still
+  cryptographically random, and it is logged. Original entry: From the 2026-08-04 review, and **worse than reported**. The review noted
   the fallback in `NewBootstrap`, which is ephemeral. But `randomKey()` is also
   called on the **normal** path, in `getOrCreateJWTSecret`
   (`internal/auth/bootstrap.go:57`): the generated value is base64-encoded and
@@ -267,7 +272,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   thereafter, and nothing logs that it happened on this path.
   *Fix:* fail hard. A process that cannot obtain a secure signing key must not start.
 
-- **P1-17 · No rate limiting on the bootstrap login (S1).** From the 2026-08-04
+- ~~**P1-17 · No rate limiting on the bootstrap login (S1).**~~ **Done 2026-08-04
+  (E29), struck through 2026-08-15.** `internal/auth/throttle.go`: progressive
+  backoff, then outright refusal after 15 attempts for 15 minutes, keyed per IP and
+  per user and persisted in `login_attempts`. Original entry: From the 2026-08-04
   review; verified — there is no throttle, backoff or lockout anywhere in the router
   or the login handler. bcrypt makes each attempt slow, which is a cost, not a limit.
   *Fix:* per-IP and per-user limiting with progressive backoff.
@@ -306,7 +314,11 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 - ~~**P1-5 · Headless browser for verification.**~~ **Done 2026-07-31** —
   `web/scripts/verify-ui.mjs` drives chromium over all nine functional routes and
   writes screenshots. First run: 9/9 clean.
-- **P1-6 · `hooks-failed` is silent (S3).** If a post-upgrade hook fails, the only
+- ~~**P1-6 · `hooks-failed` is silent (S3).**~~ **Done, struck through 2026-08-15.**
+  `helm_upgrade.go:109` sets the status and three screens render it:
+  `routes/helm/upgrade.tsx:252` explains it inline after a run, and both
+  `history.tsx` and `index.tsx` label it "Hooks fehlgeschlagen" with a warning tone.
+  Original entry: If a post-upgrade hook fails, the only
   signal is a badge in a UI nobody is looking at. The whole point is that calling
   breaks otherwise. Needs at least a log line at error level, ideally a Matrix
   message to the admin.
@@ -369,13 +381,21 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 
 ## 3. P2 — worth doing
 
-- **P2-26 · CORS is a wildcard on every route (S1).** From the 2026-08-04 review;
+- ~~**P2-26 · CORS is a wildcard on every route (S1).**~~ **Done 2026-08-04 (E29),
+  struck through 2026-08-15.** The middleware was removed rather than scoped;
+  `router.go:42` now carries the reason — the frontend is served by this same binary
+  on the same origin, so nothing ever needed it. Original entry: From the 2026-08-04 review;
   verified at `internal/api/router.go:158`. Auth is a bearer token rather than a
   cookie, so this is not directly exploitable — but the frontend is **served by this
   same binary on the same origin**, so nothing needs the wildcard at all.
   *Fix:* scope to the configured ingress host, or drop the middleware.
 
-- **P2-27 · The container runs as root with no securityContext (S8).** From the
+- ~~**P2-27 · The container runs as root with no securityContext (S8).**~~ **Done
+  2026-08-04 (E29), struck through 2026-08-15.** `USER 65532:65532` in the
+  Dockerfile; `runAsNonRoot: true`, `runAsUser: 65532` on the app container. The
+  `fix-ownership` init container still runs as root deliberately — it exists to
+  chown the mounted volume, which is why a pod-wide `runAsUser` would break it, and
+  the template says so. Original entry: From the
   2026-08-04 review; verified — no `USER` in the `Dockerfile`, no `securityContext`
   anywhere in the chart templates. Meanwhile the ESS chart it manages sets
   `runAsNonRoot`, `readOnlyRootFilesystem` and drops all capabilities on its own
@@ -385,7 +405,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   false`, `capabilities.drop: [ALL]` and a read-only root filesystem where the
   Postgres sidecar allows it.
 
-- **P2-28 · `RevokeSession` does not check the signing method (S1).** From the
+- ~~**P2-28 · `RevokeSession` does not check the signing method (S1).**~~ **Done
+  2026-08-04 (E29), struck through 2026-08-15.** Its keyfunc now rejects anything
+  that is not `*jwt.SigningMethodHMAC`, matching `ValidateToken`, with a comment
+  naming this entry. Original entry: From the
   2026-08-04 review; verified at `internal/auth/bootstrap.go:190` — its keyfunc
   returns the key unconditionally, while `ValidateToken` in the same file checks for
   `*jwt.SigningMethodHMAC`. Not exploitable today: the library refuses `none` without
@@ -394,7 +417,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   nobody reads the changelog for.
 
 
-- **P2-1 · There is no audit trail at all (S10).** This entry used to read "the
+- ~~**P2-1 · There is no audit trail at all (S10).**~~ **Done 2026-08-01 (E17),
+  struck through 2026-08-15.** Writer, reader and UI all exist:
+  `/api/v1/audit` (`router.go:83`), and production now holds rows rather than zero.
+  Original entry, which is kept in full because its *lesson* outlived its subject: This entry used to read "the
   table and the middleware writes exist; nothing reads them back. Cheap." That was
   **wrong**, and checking it took thirty seconds: `grep -rni audit --include=*.go`
   returns nothing, and `SELECT count(*) FROM audit_log` returns 0 after two months
@@ -575,7 +601,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   which needs the REST scheme. The earlier note that ESS has "nothing" was too coarse
   and would have made the panel look wrong to anyone who read the values.
   *Still open:* actually running a relay — see P1-14.
-- **P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly (S2).**
+- ~~**P1-11 · Manual `kubectl patch` edits survive every Helm upgrade, invisibly
+  (S2).**~~ **Both halves done (E21 + E25), struck through 2026-08-15** — the body
+  already said so while the heading still read as open, which is the same defect as
+  the rest of this reconciliation, one level down.
   **Cluster cleaned 2026-08-04, on the operator's instruction:** the leftovers this
   entry was written about are gone. `IngressRoute/matrix-rtc-tls` (71 days old, no
   chart, routing the *old* RTC host including a path-less catch-all into the SFU) and
@@ -687,7 +716,23 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   It is a latent fault that surfaces under real call load, not the present cause.
   Worth surfacing on `/rtc` as a pre-flight check, since it is read-only and
   knowable from inside.
-- **P2-8 · The dashboard sums restarts across containers, which misleads (S4).**
+- ~~**P2-8 · The dashboard sums restarts across containers, which misleads (S4).**~~
+  **Half done 2026-08-15 (E38, `v0.1.39`).** The total stays — it is what `kubectl`
+  shows and what an operator compares against — but it no longer travels alone: when
+  one container carries at least two thirds of it, the row and the drawer badge name
+  that container. `42×` becomes `42× · postgres-exporter`.
+  Deliberately silent when attribution would be a guess: single-container pods, zero
+  restarts, and anything more even than 2:1 — three containers at 14 each is
+  genuinely "the pod", and picking one would invent a culprit. Ties resolve by name
+  so the answer cannot flicker between two identical reads.
+  **Re-confirmed by the agent on 2026-08-15, from the other side of the same
+  mistake:** while verifying E37 I reported `ess-postgres-0` at 42 restarts and had
+  to read per-container `/proc` state to establish that `postgres` had restarted
+  **zero** times and all 42 were the exporter. The entry describes a defect that
+  misleads the people who wrote it, three months apart.
+  **The second half is still open:** grouping restarts that share a termination
+  timestamp. Simultaneous deaths across unrelated containers are one node incident,
+  not several crashes, and nothing yet says so. Original entry:
   The operator read "postgres: 30 restarts" and reasonably concluded something was
   badly wrong. It is three containers in one pod — 15 + 8 + 7 — and they are three
   unrelated stories: `postgres-exporter` genuinely crash-loops, while `postgres`
