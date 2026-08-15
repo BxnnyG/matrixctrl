@@ -71,31 +71,59 @@ fixed manifest (no path traversal), bcrypt for passwords, session revocation
 implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-safe), and
 `RequireAdmin` defaulting to true.
 
-- **P0-4 · The ClusterRole is cluster-admin in all but name.** `apiGroups: ["*"]`,
-  `resources: ["*"]`, `verbs: ["*"]` plus `nonResourceURLs: ["*"]`, bound cluster-wide
-  to the `matrixctrl` ServiceAccount. Verified verbatim in
-  `deploy/helm/matrixctrl/templates/clusterrole.yaml`.
-  The comment in the file argues Helm needs breadth to install releases containing
-  CRDs and ClusterRoles. That is true and does not justify *every* apiGroup: this
-  product manages one known chart.
-  **Why it is the top entry:** it converts *any* defect in the app — an auth bypass,
-  an SSRF, a dependency RCE — from "the ESS deployment is compromised" into "the
-  cluster is compromised". Every other finding below is amplified by this one.
-  *Fix:* enumerate what the ESS chart actually creates and scope to those groups;
-  drop `nonResourceURLs` entirely; use a namespaced `Role` where the resource is
-  namespaced. Needs a real upgrade run against a live release to prove nothing broke,
-  which is why it is its own etappe rather than a quick edit.
+- **P0-4a · The ClusterRole is bound cluster-wide, so its namespaced rules reach
+  every namespace.** What is left after E37 scoped the role by resource type and
+  verb. Helm's release storage needs `secrets` in the managed namespace, and a
+  ClusterRoleBinding turns that into `secrets` everywhere. Measured, not inferred:
 
-- **P0-5 · The session JWT travels in a URL.** `internal/api/handlers/auth.go:185`
-  redirects to `/auth/callback?token=<jwt>`, and `extractToken`
-  (`internal/api/middleware/auth.go`) accepts `?token=` on **every** route, not only
-  the WebSocket one.
-  **Verified live:** chi's `middleware.Logger` is enabled (`router.go:36`) and writes
-  the full request URL including the query string — 400 of the last 400 log lines
-  carry one. So the token is written to the application log by the very request that
-  delivers it, and from there to anything that collects logs. Browser history and
-  `Referer` are the same exposure by other routes.
-  *Fix:* a one-time, short-lived exchange code in the redirect, swapped for the JWT
+  ```
+  kubectl auth can-i list secrets -n kube-system  →  yes
+  ```
+
+  Asserted in `k8s.KnownOverGrants` and checked by `TestKnownOverGrantsLive`, which
+  **fails when the over-grant disappears** — so closing this announces itself instead
+  of leaving three files describing a problem that no longer exists.
+  **Why it is now the top entry:** read/write on every Secret in the cluster is most
+  of what made P0-4 a P0. Type-and-verb scoping removed the escalation paths; it did
+  not remove this.
+  *Fix:* a `Role` + `RoleBinding` in the managed namespace for everything namespaced,
+  leaving only `nodes`, `namespaces` and `metrics.k8s.io` cluster-scoped. The blocker
+  is greenfield: `install.CreateNamespace = true` means the namespace may not exist
+  when the chart is installed, and a RoleBinding cannot be created in a namespace
+  that is not there. Granting `bind`/`escalate` so MatrixCtrl could create its own
+  would re-open what E37 closed, so the chart has to create the namespace — which
+  conflicts with Helm ownership when adopting an ESS whose namespace already exists.
+  That trade is the whole etappe.
+
+- ~~**P0-4 · The ClusterRole is cluster-admin in all but name.**~~ **Scoped
+  2026-08-15** (E37, `v0.1.38`, DESIGN §4.35). Was `apiGroups: ["*"] resources: ["*"]
+  verbs: ["*"]` plus `nonResourceURLs: ["*"]`.
+  The comment defending it claimed a tighter scope "would break upgrades of releases
+  that contain CRDs, ClusterRoles, etc." Measured against the chart, that was false:
+  matrix-stack renders 13 kinds across 7 groups, creates **no** CRDs and **no**
+  ClusterRoles, and its three Roles are namespaced and grant only permissions
+  MatrixCtrl already holds — so Kubernetes' escalation prevention is satisfied
+  without `escalate` or `bind`, which was the load-bearing question.
+  Proven before applying, with the role rendered under a probe name and every entry
+  asked of the API server as a `SubjectAccessReview`: **88/88 required granted**, and
+  denied for `create clusterroles`, `escalate roles`, `list CRDs`,
+  `create serviceaccounts/token`, `create pods/exec`, `delete namespaces`,
+  `impersonate users`. What remains is P0-4a above.
+
+- ~~**P0-5 · The session JWT travels in a URL.**~~ **Done 2026-08-06** (E29 + E35,
+  `v0.1.30` / `v0.1.36`), closed in two halves and verified on 2026-08-15:
+  the callback now redirects to `/auth/callback#code=…` — a *fragment*, which browsers
+  never send to the server, so it cannot reach a log at all — and `extractToken`
+  returns `""` for query parameters on **every** route including the WebSocket
+  handshake, which authenticates with a single-use ticket instead. chi's
+  `middleware.Logger` was replaced by `authmw.Logger`, which redacts credential-shaped
+  query keys. Live check: `GET /api/v1/rooms?token=abc` → 401.
+  *Original entry, for the record:* `auth.go:185` redirected to
+  `/auth/callback?token=<jwt>`, `extractToken` accepted `?token=` on every route, and
+  chi's logger wrote the full URL — 400 of the last 400 log lines carried one, so the
+  token was written to the log by the very request that delivered it.
+  *Fix (as planned, and as shipped):* a one-time, short-lived exchange code in the
+  redirect, swapped for the JWT
   over a POST whose body is never logged; and the `?token=` fallback restricted to the
   WebSocket route, which is the only place a browser cannot set a header.
 

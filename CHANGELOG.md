@@ -15,6 +15,55 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.38] — 2026-08-15
+
+### Security
+
+- **The ClusterRole is no longer `cluster-admin` in all but name.** It granted
+  `apiGroups: ["*"] resources: ["*"] verbs: ["*"]` plus `nonResourceURLs: ["*"]`,
+  which turned any defect in this app — an auth bypass, an SSRF, a dependency RCE —
+  from "the ESS deployment is compromised" into "the cluster is compromised". It is
+  now enumerated: 7 API groups, 15 resources, named verbs, and read-only discovery
+  paths.
+
+  The comment defending the old rule claimed a tighter scope would break upgrades of
+  releases containing CRDs and ClusterRoles. Measured against the chart, matrix-stack
+  creates neither; its three `Role`s are namespaced and grant only permissions
+  MatrixCtrl already holds, so Kubernetes' escalation prevention is satisfied without
+  `escalate` or `bind`.
+
+  Proven **before** being applied: rendered under a probe name, bound to a throwaway
+  ServiceAccount, every entry asked of the API server as a `SubjectAccessReview`.
+  88/88 required permissions granted; `create clusterroles`, `escalate roles`,
+  `list customresourcedefinitions`, `create serviceaccounts/token`,
+  `create pods/exec`, `delete namespaces` and `impersonate users` all denied.
+
+- **A values flag that claimed to withhold cluster-wide secret access was removed
+  rather than documented.** `rbac.discovery.allNamespaces`, off by default, was
+  described as gating the permission Helm needs to scan every namespace for a
+  release. It gated nothing: a ClusterRole bound by a ClusterRoleBinding applies its
+  namespaced rules everywhere, so the base `secrets` rule — required for Helm's
+  release storage — already granted it. A security control that does not control is
+  worse than none, because it is believed.
+
+### Added
+
+- `internal/k8s/permissions.go` — the permissions MatrixCtrl needs, as data derived
+  from call sites and from the kinds the chart renders, plus `Check`, which asks the
+  API server via `SelfSubjectAccessReview` whether the running identity holds them.
+  A diff against the chart would only prove the chart says what it says; this also
+  catches a hand-edited role or a binding that was never applied.
+- `KnownOverGrants` — the three permissions the role still grants beyond its purpose,
+  because it is bound cluster-wide. Asserted by a test that **fails when they
+  disappear**, so closing the gap announces itself instead of leaving three files
+  describing a problem that no longer exists.
+
+### Changed
+
+- ESS discovery falls back to the configured namespace when a cluster-wide release
+  scan is refused, and reports which of the two it did. "No ESS found" after a search
+  that never left one namespace is a different answer from "there is no ESS".
+
 ## [0.1.37] — 2026-08-06
 
 ### Added

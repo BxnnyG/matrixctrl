@@ -45,6 +45,18 @@ ess:
   namespace: ess
   release: ess
 
+# Cluster permissions are not configurable, on purpose.
+#
+# The ClusterRole is scoped to the resource types and verbs MatrixCtrl and the ESS
+# chart actually use (etappe 37) — it used to be `*` on everything, which made any
+# defect in this app a cluster compromise rather than an ESS one. What it grants is
+# derived from call sites and from the chart's rendered kinds, and checked against
+# the live API server by `internal/k8s/permissions.go`; a value that let an operator
+# widen or narrow it by hand would put that check out of step with reality.
+#
+# It is still bound cluster-wide, so its namespaced rules apply in every namespace.
+# See the comment in templates/clusterrole.yaml for what that still over-grants.
+
 # Persistent storage
 storage:
   postgres:

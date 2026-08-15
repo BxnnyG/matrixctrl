@@ -81,18 +81,21 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/setup/discover — scan the cluster for ESS (matrix-stack) releases.
 func (h *SetupHandler) Discover(w http.ResponseWriter, r *http.Request) {
-	found, err := helm.Discover()
+	found, err := helm.Discover(h.essNamespace)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if found == nil {
-		found = []helm.ESSRelease{}
-	}
+	// How far the search reached is part of the answer. Without it, "no ESS found"
+	// after a namespace-only scan reads as "there is no ESS", when it means "there is
+	// none *here*" — and the operator would go looking for a problem that is a
+	// permission by design (etappe 37).
 	JSON(w, http.StatusOK, map[string]interface{}{
-		"releases":          found,
-		"managed_release":   h.essRelease,
-		"managed_namespace": h.essNamespace,
+		"releases":           found.Releases,
+		"cluster_wide":       found.ClusterWide,
+		"searched_namespace": found.Namespace,
+		"managed_release":    h.essRelease,
+		"managed_namespace":  h.essNamespace,
 	})
 }
 

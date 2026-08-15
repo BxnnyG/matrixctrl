@@ -124,14 +124,21 @@ func main() {
 	// MatrixCtrl adopt an existing ESS without hard-coded namespace/release.
 	if helmClient != nil {
 		if _, err := helmClient.GetRelease(essRelease); err != nil {
-			if found, derr := helm.Discover(); derr == nil && len(found) == 1 {
-				essNS, essRelease = found[0].Namespace, found[0].Name
-				log.Printf("ESS auto-discovered: release=%s namespace=%s version=%s", essRelease, essNS, found[0].Version)
+			found, derr := helm.Discover(essNS)
+			switch {
+			case derr != nil:
+			case len(found.Releases) == 1:
+				essNS, essRelease = found.Releases[0].Namespace, found.Releases[0].Name
+				log.Printf("ESS auto-discovered: release=%s namespace=%s version=%s", essRelease, essNS, found.Releases[0].Version)
 				if c, cerr := helm.New(essNS); cerr == nil {
 					helmClient = c
 				}
-			} else if derr == nil && len(found) > 1 {
-				log.Printf("note: %d ESS releases found — set MATRIXCTRL_ESS_RELEASE/NAMESPACE to choose", len(found))
+			case len(found.Releases) > 1:
+				log.Printf("note: %d ESS releases found — set MATRIXCTRL_ESS_RELEASE/NAMESPACE to choose", len(found.Releases))
+			case !found.ClusterWide:
+				// Nothing found, and the search never left this namespace. Saying so
+				// keeps the log from implying the cluster was checked and is empty.
+				log.Printf("note: no ESS release in namespace %s; cluster-wide discovery is off (rbac.discovery.allNamespaces)", found.Namespace)
 			}
 		}
 	}

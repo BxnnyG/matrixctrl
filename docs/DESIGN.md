@@ -1086,3 +1086,70 @@ at startup, because connect-OIDC and the §4.31 retry both replace the OIDC serv
 runtime. Synapse is reached in-cluster, not through the public hostname: a bearer token
 for a call between two pods in one namespace should not cross the ingress and the
 tunnel, which is three more places to be logged after §4.33 removed one. Affects S3, S13.
+
+### §4.35 — Scoping by verb is not scoping by namespace (2026-08-15, agent, from P0-4)
+
+The ClusterRole was `apiGroups: ["*"] resources: ["*"] verbs: ["*"]` plus
+`nonResourceURLs: ["*"]`, bound cluster-wide. Its own comment defended this: a
+tighter scope "would break upgrades of releases that contain CRDs, ClusterRoles,
+etc."
+
+**Measured, the defence was false.** matrix-stack renders 13 kinds across 7 groups
+and creates no CRDs and no ClusterRoles. It does create three namespaced `Role`s,
+which is the fact that looked like a blocker and was not: Kubernetes refuses to let
+an account create a Role granting permissions it does not itself hold, and those
+three grant only `secrets` create/get/update, `configmaps` create/get/update, `pods`
+list and `statefulsets` list/get/update — all in the managed namespace, all of which
+MatrixCtrl needs there anyway. So escalation prevention is satisfied without
+`escalate` or `bind`.
+
+Two things about the enumeration matter more than its content:
+
+- **`helm get manifest` is the wrong source.** It omits Helm hooks, so the live
+  release shows 8 kinds and the chart has 13. A role built from the running release
+  would pass every check today and fail on the next upgrade, halfway through, in the
+  `batch/jobs` rule — leaving the release in the `failed` state this install has
+  already had to be recovered from once.
+- **`kubectl auth can-i` is the wrong instrument.** Asked
+  `create serviceaccounts/token` it answers `yes`; asked the same thing as a
+  `SubjectAccessReview` the API server answers `false`. Subresource parsing differs.
+  Only one of the two is the authorizer.
+
+The scope is by **resource type and verb**, not by namespace, and the difference is
+not cosmetic. A ClusterRole bound by a ClusterRoleBinding applies its namespaced
+rules in every namespace, so `secrets` — required for Helm's release storage —
+remains readable and writable cluster-wide.
+
+An earlier draft hid this behind a values flag, `rbac.discovery.allNamespaces`,
+documented as withholding cluster-wide secret access when off. It withheld nothing:
+`kubectl auth can-i list secrets -n kube-system` answered `yes` with the flag off,
+because the base rule already granted it. The flag was **removed rather than
+documented** — a control that does not control is worse than none, since it is
+believed. What replaced it is `k8s.KnownOverGrants`, a list of three permissions the
+role grants beyond its purpose, asserted by a test that **fails when they go away**.
+A limitation written as prose gets fixed and nobody notices; written as an assertion
+it announces its own repair.
+
+**Consequences:** `internal/k8s/permissions.go` holds the required set as data,
+derived from call sites and rendered kinds, and `Check` asks the API server via
+`SelfSubjectAccessReview` — which needs no permission of its own, being granted to
+`system:authenticated` — whether the running identity holds it. That answers "will my
+next call succeed", which a diff against the chart cannot: it also catches a
+hand-edited role, or a binding that was never applied. `Discover` now falls back to
+the configured namespace when a cluster-wide release scan is refused, and reports
+which of the two it did, so "no ESS found" cannot be read as "there is no ESS" after
+a search that never left one namespace. Affects S6, S9, S13.
+
+**A third source, which neither of the first two contains.** The scoped role was
+built from what the chart renders plus what MatrixCtrl calls. That missed
+`apps/replicasets`: `Wait` is on for install, upgrade and rollback, and Helm's
+readiness check for a Deployment calls `GetNewReplicaSet`, which **lists**
+ReplicaSets. The chart renders none and this code touches none, so both sources are
+silent — and with seven Deployments in ESS, every upgrade would have applied
+successfully and then failed while waiting.
+
+It was found by reading Helm's `pkg/kube` rather than by the matrix, which is the
+honest order and the reason the entry now carries the citation. The general form:
+**a permission reached through a library's internals is invisible to an enumeration
+of your own call sites**, so a dependency that acts on the cluster on your behalf has
+to be read, not inferred from what you asked it to do.
