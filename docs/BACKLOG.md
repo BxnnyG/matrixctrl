@@ -474,7 +474,17 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
-- **P2-29 · Calls show no audit, no connections and no statistics (S14).** Reported
+- **P2-29 · Calls show no audit, no connections and no statistics (S14).**
+  **Two of four done 2026-08-16 (E44, [DESIGN.md §4.42](DESIGN.md)):** live rooms and
+  participants, and a recorded history of calls, talk time and SFU restarts that
+  survives the pod. The inventory this entry demanded found the reason none of it
+  could simply be read: every LiveKit counter is process-lifetime, and the
+  post-upgrade hook deletes the SFU pod on every ESS upgrade.
+  *Still open:* per-call audit entries with more than a count — that needs either the
+  RoomService API (participant identities, deliberately not read) or Synapse-side
+  call events, and neither is a small addition. And "Statistik ausweiten auf das
+  ganze", which is a design question rather than a missing counter.
+  Original entry: Reported
   by the operator 2026-08-16: "calls soll auch wenn möglich audit zeigen
   verbindungen zeigen maby auch statistik (statistik maby ausweiten auf das ganze) /
   logs länge".

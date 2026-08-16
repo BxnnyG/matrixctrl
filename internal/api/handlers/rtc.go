@@ -23,13 +23,13 @@ type RTCHandler struct {
 	configStore *config.Store
 	essNS       string
 	essRelease  string
-	addresses   *rtc.Store
+	store       *rtc.Store
 }
 
 func NewRTCHandler(k8sClient *k8s.Client, cfgStore *config.Store, essNS, essRelease string, db *pgxpool.Pool) *RTCHandler {
 	return &RTCHandler{
 		k8s: k8sClient, configStore: cfgStore, essNS: essNS, essRelease: essRelease,
-		addresses: rtc.NewStore(db),
+		store: rtc.NewStore(db),
 	}
 }
 
@@ -83,7 +83,7 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 	if len(ips) > 0 {
 		resolved = ips[0]
 	}
-	if err := h.addresses.Record(ctx, host, resolved); err != nil {
+	if err := h.store.Record(ctx, host, resolved); err != nil {
 		log.Printf("rtc: could not record address observation for %q: %v", host, err)
 	}
 
@@ -99,7 +99,12 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"ports":          ports,
 		"freshness":      freshness,
 		"media":          media,
-		"call_paths":     paths,
+		// The uptime was already computed for the findings and thrown away. The page
+		// needs it in its own right: every counter here is process-lifetime, so
+		// "0 Räume" a minute after a restart and "0 Räume" all day are the same
+		// number meaning different things (E44).
+		"sfu_uptime": uptime,
+		"call_paths": paths,
 		"findings": append(
 			rtc.AssessWithFreshness(ports, host, ips, resolveErr, freshness, freshnessDetail),
 			rtc.AssessMedia(media, mediaOK, uptime),
@@ -138,7 +143,7 @@ func (h *RTCHandler) freshness(ctx context.Context, host string) (rtc.Freshness,
 		return rtc.FreshnessUnknown, "Für matrixRTC ist kein Hostname konfiguriert."
 	}
 
-	obs, err := h.addresses.Newest(ctx, host)
+	obs, err := h.store.Newest(ctx, host)
 	if err != nil {
 		return rtc.FreshnessUnknown, "Die Adress-Historie konnte nicht gelesen werden."
 	}
@@ -330,6 +335,47 @@ func (h *RTCHandler) mediaEvidence(ctx context.Context) (rtc.MediaEvidence, bool
 
 	ev, ok := rtc.ParseMetrics(string(body))
 	return ev, ok, uptime
+}
+
+// History answers "what has actually happened on this SFU" — the question the
+// metrics port cannot answer about anything before the current process (E44).
+func (h *RTCHandler) History(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	day, err := h.store.SamplesSince(ctx, time.Now().Add(-24*time.Hour), 0)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "could not read samples: "+err.Error())
+		return
+	}
+	daily, err := h.store.Daily(ctx, 30)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "could not aggregate samples: "+err.Error())
+		return
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"last_24h": rtc.Sum(day),
+		"daily":    daily,
+		// Reported so the page can say how precise "when" is. The totals do not
+		// depend on it — both underlying counters are cumulative, so a call that
+		// starts and ends between two samples is still counted — but the timing
+		// within an interval is lost, and a reader should be told which is which.
+		"interval_seconds": int(rtc.SamplerInterval.Seconds()),
+	})
+}
+
+// MetricsReader exposes the SFU read for the sampler.
+//
+// The uptime is dropped: it comes from the pod's start time rather than the metrics
+// body, and a sample is about what the counters said, not about how the process
+// that said it was doing. The page still shows uptime, because there the point is
+// to let the reader tell "no calls" from "restarted a minute ago".
+func (h *RTCHandler) MetricsReader() func(context.Context) (rtc.MediaEvidence, bool) {
+	return func(ctx context.Context) (rtc.MediaEvidence, bool) {
+		ev, ok, _ := h.mediaEvidence(ctx)
+		return ev, ok
+	}
 }
 
 func formatUptime(d time.Duration) string {

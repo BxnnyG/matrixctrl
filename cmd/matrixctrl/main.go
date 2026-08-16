@@ -266,7 +266,14 @@ func main() {
 	// Observe the announced RTC address on a timer. Doing it only on page view
 	// would leave the history with gaps exactly where nobody was looking, and the
 	// thing being measured is *when* the address changed.
-	go rtc.NewWatcher(rtc.NewStore(pool), rtcHandler.AnnouncedHost, 0).Start(context.Background())
+	rtcStore := rtc.NewStore(pool)
+	go rtc.NewWatcher(rtcStore, rtcHandler.AnnouncedHost, 0).Start(context.Background())
+
+	// Sample the SFU's counters on a timer, for a stronger version of the same
+	// reason: LiveKit's counters are process-lifetime, and the post-upgrade hook
+	// deletes the SFU pod on every ESS upgrade. Unrecorded, the call history does
+	// not merely have gaps — it is destroyed several times a week (E44).
+	go rtc.NewSampler(rtcStore, rtcHandler.MetricsReader(), 0).Start(context.Background())
 
 	srv := server.New(addr, router)
 

@@ -15,6 +15,39 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.44] — 2026-08-16
+
+### Added
+
+- **The calls page says whether anyone is actually on a call.** Rooms and
+  participants, live from the SFU. Both numbers were on the metrics port from the
+  beginning and nothing read them — which is the same gap P1-10 was about: every
+  check on this page was green while the feature was completely dead, because none
+  of them asked whether anyone had ever used it.
+
+- **A call history that survives the SFU.** Calls, talk time and SFU restarts over
+  24 hours and per day.
+
+  This had to be recorded rather than read. Every LiveKit counter is
+  process-lifetime, and the post-upgrade hook deletes the SFU pod on every ESS
+  upgrade to restore `hostNetwork` — so a statistics page built directly on those
+  numbers would silently mean "since the last upgrade" while reading as "ever".
+  Measured ten hours after the 26.8.0 upgrade, every counter on the server was `0`.
+
+  The totals are exact regardless of the sampling interval: the underlying counters
+  are cumulative, so a call that starts and ends entirely between two samples is
+  still counted. Only its *timing* is bounded by the interval, and the page says so
+  rather than leaving it to be discovered.
+
+  A counter that comes back lower means the SFU restarted. That is recorded as a
+  restart — never as a negative delta — and shown, because it explains a
+  discontinuity in every other series on the page.
+
+- **No participant identities are read or stored.** LiveKit's RoomService API would
+  give room names and participants; it is deliberately not used. "Three people are
+  in a call" and "who is in a call with whom" are different classes of data, and
+  none of the questions this page answers needs the second.
+
 ## [0.1.43] — 2026-08-16
 
 Three etappes in one release: 0.1.42 was written but never built — the image build

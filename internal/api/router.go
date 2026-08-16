@@ -90,6 +90,7 @@ func NewRouter(deps Deps) http.Handler {
 		}
 		if deps.RTC != nil {
 			r.Get("/api/v1/rtc/status", deps.RTC.Status)
+			r.Get("/api/v1/rtc/history", deps.RTC.History)
 			r.Get("/api/v1/users", deps.Users.List)
 		}
 

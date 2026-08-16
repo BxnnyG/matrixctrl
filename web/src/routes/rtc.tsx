@@ -35,6 +35,17 @@ interface CallPaths {
   turn_uris?: string[];
 }
 
+/** The gauges describe the SFU right now; the counters describe it since it
+ *  started, which is not the same as "ever" — see RTCHistoryResp. */
+interface MediaEvidence {
+  rooms_completed: number;
+  room_seconds: number;
+  quality_samples: number;
+  forward_samples: number;
+  packets_out: number;
+  live: { rooms: number; participants: number };
+}
+
 interface RTCStatusResp {
   announced_host: string;
   resolved_ips: string[] | null;
@@ -42,7 +53,38 @@ interface RTCStatusResp {
   /** Whether the address the SFU announces can still be current — see internal/rtc/address.go. */
   freshness: "ok" | "stale" | "unknown";
   call_paths: CallPaths;
+  media?: MediaEvidence;
+  /** How long the SFU process has been up. Every counter above is scoped to it, so
+   *  this is what lets "0 Räume" be read correctly. */
+  sfu_uptime?: string;
   findings: Finding[];
+}
+
+interface Totals {
+  calls: number;
+  seconds: number;
+  quality_samples: number;
+  sfu_restarts: number;
+  samples: number;
+  since?: string;
+}
+
+interface DailyTotal {
+  day: string;
+  calls: number;
+  seconds: number;
+  sfu_restarts: number;
+}
+
+/** What MatrixCtrl recorded, as opposed to what the SFU remembers.
+ *
+ *  LiveKit's counters are process-lifetime and the post-upgrade hook deletes the
+ *  SFU pod on every ESS upgrade, so anything older than the current process exists
+ *  only because it was sampled and stored (E44). */
+interface RTCHistoryResp {
+  last_24h: Totals;
+  daily: DailyTotal[] | null;
+  interval_seconds: number;
 }
 
 interface ReachPort {
@@ -86,6 +128,137 @@ function PathRow({ name, sub, state, ok, unknown }: {
       </div>
       <Badge tone={tone} size="sm">{state}</Badge>
     </div>
+  );
+}
+
+function fmtDuration(seconds: number): string {
+  if (seconds <= 0) return "0 min";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return m > 0 ? `${h} h ${m} min` : `${h} h`;
+}
+
+/** Live: what is on the SFU at this moment.
+ *
+ *  Uptime sits beside the numbers rather than under a tooltip, because they are
+ *  meaningless without it — the counters reset with the process, and the process is
+ *  replaced by the post-upgrade hook on every ESS upgrade. */
+function LivePanel({ media, uptime }: { media?: MediaEvidence; uptime?: string }) {
+  if (!media) return null;
+  const live = media.live;
+  const busy = live.rooms > 0 || live.participants > 0;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>Jetzt auf der SFU</div>
+        {uptime && <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>SFU läuft seit {uptime}</span>}
+      </div>
+
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 26, fontWeight: 650, color: busy ? "var(--accent)" : "var(--text-dim)", fontFamily: "var(--mono)", lineHeight: 1.1 }}>{live.rooms}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)" }}>{live.rooms === 1 ? "Raum" : "Räume"}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 26, fontWeight: 650, color: busy ? "var(--accent)" : "var(--text-dim)", fontFamily: "var(--mono)", lineHeight: 1.1 }}>{live.participants}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)" }}>{live.participants === 1 ? "Teilnehmer" : "Teilnehmer"}</div>
+        </div>
+        <div style={{ borderLeft: "1px solid var(--border-soft)", paddingLeft: 28 }}>
+          <div style={{ fontSize: 26, fontWeight: 650, color: "var(--text-dim)", fontFamily: "var(--mono)", lineHeight: 1.1 }}>{media.rooms_completed}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Calls seit SFU-Start</div>
+        </div>
+      </div>
+
+      {/* Said plainly, because the alternative is an operator reading a fresh
+          process's zero as a statement about the deployment. */}
+      <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 12, lineHeight: 1.55 }}>
+        Diese Zahlen zählt die SFU selbst und verliert sie bei jedem Neustart —
+        also bei jedem ESS-Upgrade. Der Verlauf unten stammt aus eigenen Messungen
+        und übersteht das.
+      </div>
+    </Card>
+  );
+}
+
+/** Recorded history — the part that survives the SFU. */
+function HistoryPanel() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["rtc", "history"],
+    queryFn: () => api.get<RTCHistoryResp>("/api/v1/rtc/history"),
+    refetchInterval: 120_000,
+  });
+
+  if (isLoading || !data) return null;
+  const t = data.last_24h;
+  const days = (data.daily ?? []).filter((d) => d.calls > 0 || d.sfu_restarts > 0);
+  const minutes = Math.round(data.interval_seconds / 60);
+
+  // Nothing sampled yet is a different statement from nothing happened, and the
+  // difference matters most right after this feature ships.
+  if (t.samples === 0) {
+    return (
+      <Card>
+        <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)", marginBottom: 6 }}>Verlauf</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.6 }}>
+          Noch keine Messungen aufgezeichnet. MatrixCtrl liest die SFU alle{" "}
+          {minutes === 1 ? "Minute" : `${minutes} Minuten`}; der Verlauf beginnt ab jetzt.
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>Verlauf (24 h)</div>
+        {t.since && (
+          <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+            aufgezeichnet seit {new Date(t.since).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 650, fontFamily: "var(--mono)", color: "var(--text)", lineHeight: 1.1 }}>{t.calls}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Calls</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 650, fontFamily: "var(--mono)", color: "var(--text)", lineHeight: 1.1 }}>{fmtDuration(t.seconds)}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Gesprächszeit</div>
+        </div>
+        {t.sfu_restarts > 0 && (
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 650, fontFamily: "var(--mono)", color: "var(--status-warn)", lineHeight: 1.1 }}>{t.sfu_restarts}</div>
+            <div style={{ fontSize: 12, color: "var(--text-faint)" }}>SFU-Neustarts</div>
+          </div>
+        )}
+      </div>
+
+      {days.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 10 }}>
+          {days.slice(-14).reverse().map((d) => (
+            <div key={d.day} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 0", fontSize: 12.5 }}>
+              <span style={{ color: "var(--text-dim)" }}>{new Date(d.day).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}</span>
+              <span style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                {d.sfu_restarts > 0 && <span style={{ fontSize: 11, color: "var(--status-warn)" }}>{d.sfu_restarts}× Neustart</span>}
+                <span style={{ fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{fmtDuration(d.seconds)}</span>
+                <span style={{ fontFamily: "var(--mono)", color: "var(--text)", minWidth: 28, textAlign: "right" }}>{d.calls}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 12, lineHeight: 1.55 }}>
+        Gemessen alle {minutes === 1 ? "Minute" : `${minutes} Minuten`}. Die Summen
+        stimmen auch für Calls, die vollständig zwischen zwei Messungen lagen — nur
+        der genaue Zeitpunkt ist auf dieses Intervall genau.
+        {" "}Teilnehmer-Identitäten werden nicht gelesen und nicht gespeichert.
+      </div>
+    </Card>
   );
 }
 
@@ -166,6 +339,14 @@ function RTCStatus() {
           </div>
         </Card>
       )}
+
+      {/* Usage before configuration. The call-path card above stays first because
+          it says which mechanism everything else is about (§4.22); after that, an
+          operator asking about calls wants to know whether anyone is on one — the
+          question every check on this page was green about while the feature was
+          dead (P1-10). */}
+      <LivePanel media={data?.media} uptime={data?.sfu_uptime} />
+      <HistoryPanel />
 
       <Card>
         <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>

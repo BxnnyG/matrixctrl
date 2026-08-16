@@ -20,9 +20,16 @@ type MediaEvidence struct {
 	// being carried. Either being above zero proves media flowed.
 	QualitySamples int `json:"quality_samples"`
 	ForwardSamples int `json:"forward_samples"`
+	// RoomSeconds is the total room time behind RoomsCompleted. Together they are
+	// what makes an exact history possible from an inexact sampling interval: both
+	// are cumulative, so the calls and the minutes between two samples are right
+	// even for a call that began and ended entirely between them (etappe 44).
+	RoomSeconds int `json:"room_seconds"`
 	// PacketsOut is reported for context only. It rises without any call — it is
 	// not evidence of a working session and must not be read as such.
 	PacketsOut int `json:"packets_out"`
+	// Live is the state of the SFU at the moment of the read, not since it started.
+	Live LiveGauges `json:"live"`
 }
 
 // MediaFlowed reports whether any sample exists. Two sources rather than one
@@ -32,13 +39,31 @@ func (m MediaEvidence) MediaFlowed() bool {
 	return m.QualitySamples > 0 || m.ForwardSamples > 0
 }
 
+// LiveGauges are the two numbers that describe the SFU *right now* rather than
+// since it started.
+//
+// They were on the metrics port the whole time and nothing read them, which is why
+// the calls page could say a great deal about whether calling *can* work and nothing
+// at all about whether anyone is on a call (etappe 44).
+//
+// Unlike the counters above, these need no history to be meaningful — but they need
+// the SFU's uptime beside them to be read correctly, because zero rooms one minute
+// after a restart means something different from zero rooms all day.
+type LiveGauges struct {
+	Rooms        int `json:"rooms"`
+	Participants int `json:"participants"`
+}
+
 // metricsWanted maps the Prometheus metric name to where its value lands. Keeping
 // it a table rather than a chain of ifs means adding a counter is one line, and it
-// documents exactly which four numbers this package depends on.
+// documents exactly which numbers this package depends on.
 var metricsWanted = map[string]func(*MediaEvidence, int){
 	"livekit_room_duration_seconds_count": func(m *MediaEvidence, v int) { m.RoomsCompleted = v },
+	"livekit_room_duration_seconds_sum":   func(m *MediaEvidence, v int) { m.RoomSeconds = v },
 	"livekit_quality_score_count":         func(m *MediaEvidence, v int) { m.QualitySamples = v },
 	"livekit_forward_latency_ns_count":    func(m *MediaEvidence, v int) { m.ForwardSamples = v },
+	"livekit_room_total":                  func(m *MediaEvidence, v int) { m.Live.Rooms = v },
+	"livekit_participant_total":           func(m *MediaEvidence, v int) { m.Live.Participants = v },
 }
 
 // ParseMetrics reads the counters out of a Prometheus exposition body.

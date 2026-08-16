@@ -1404,3 +1404,61 @@ waits in one blocking call and the boundary is not observable. `internal/rollout
 keeps its no-client-go rule, so the assembly is a pure function with unit tests, and
 a live test proves the two reads it depends on are permitted under E40's namespaced
 Role and that Generation is actually populated. Affects S11.
+
+### §4.42 — A counter that resets is not a history (2026-08-16, operator + agent, etappe 44)
+
+The operator asked the calls page for audit, connections and statistics. The
+inventory that P2-29 demanded before building any of it produced one fact that
+decided the shape of all three.
+
+Every number LiveKit publishes is **process-lifetime**. Read ten hours after the
+26.8.0 upgrade, on a server that has been running for months:
+
+    livekit_room_total                   0
+    livekit_participant_total            0
+    livekit_room_duration_seconds_count  0
+    livekit_quality_score_count          0
+
+None of that means "this deployment has never carried a call". It means "this
+process has not", and the process is young because MatrixCtrl's own post-upgrade
+hook deletes the SFU pod on every ESS upgrade to restore `hostNetwork` — several
+times a week here. A statistics panel reading those counters directly would have
+said "since the last upgrade" in the voice of "ever", which is §4.24 again with a
+different subject: reporting confidently on the part that happens to be readable.
+
+**So the history is recorded, not read.** The precedent was already in the package:
+`internal/rtc/watcher.go` samples DNS on a timer because "a history built from page
+views has gaps exactly where nobody was looking, which is most of the time." Here
+the argument is stronger — unrecorded, this history is not merely gappy, it is
+destroyed on a schedule.
+
+Three things make the recording trustworthy:
+
+- **A reset is a first-class event, not an anomaly to smooth over.** When a counter
+  comes back lower, the delta is the *new value* — everything the old process
+  counted was already recorded by samples taken while it ran — and the restart is
+  stored, because it explains a discontinuity in every other series. All three
+  counters are checked, not one: the headline counter is zero on both sides of most
+  restarts on this instance, so watching only it would miss them.
+- **Exact totals from an inexact interval.** Both underlying counters are
+  cumulative, so calls and minutes between two samples are right even for a call
+  that began and ended between them. Only the *timing* is coarse, and the page says
+  which is which instead of implying both are precise.
+- **A failed read records nothing.** An unreachable metrics endpoint is not an SFU
+  with zero rooms. Writing a zero would fabricate a quiet period, and would then
+  read as a counter reset on the next successful sample — inventing a restart that
+  never happened.
+
+**What was deliberately not built:** LiveKit's RoomService API would give room names
+and participant identities. "Three people are in a call" and "who is in a call with
+whom" are different classes of data, and no question this page answers needs the
+second. The gauges answer "connections" without reading a secret, minting an admin
+token, or storing anyone's identity.
+
+**Also not built:** "Statistik ausweiten auf das ganze". A panel-wide statistics
+story is a design question about what an operator wants to see over time, not a
+matter of finding more counters. The plan says so rather than half-doing it — the
+general shape is better argued from one working example than in advance.
+**Consequences:** migration 011 keeps the raw counter values beside the resolved
+deltas, so a bug in the delta logic can be corrected against the original
+observations rather than having destroyed them. Affects S14.
