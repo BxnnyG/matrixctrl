@@ -1517,3 +1517,56 @@ them by their flapping signature rather than migrating them. Retention was added
 both RTC tables at the same time; that is *not* P2-19, which concerns the audit log
 and is a compliance decision, while these are operational telemetry with no such
 duty. Affects S14.
+
+### §4.44 — A queue whose only "done" is deletion (2026-08-16, agent, etappe 46)
+
+Phase 2's last feature. The interesting part was not reading the reports — that is
+one admin endpoint — but deciding what "handled" means, because Synapse has no
+opinion on it.
+
+Synapse offers exactly one way to clear the report queue:
+`DELETE /_synapse/admin/v1/event_reports/<id>`, which destroys the record. There is
+no resolved flag, no assignee, no note. A report is present or it is gone.
+
+Building the queue on that primitive would have been wrong twice over:
+
+- **It destroys the evidence.** A report is a user's statement that something was
+  wrong. Deleting it after acting on it means the next admin cannot see that it
+  existed, what it said, or that anyone looked. And the case that matters most —
+  one account reported five times — is precisely the one that disappears, one report
+  at a time, exactly as each is dealt with. The pattern is the finding; the
+  individual report often is not.
+- **It is irreversible**, and §4.39 already settled how this project treats that: an
+  action with an inverse ships early, one without gets its own careful treatment.
+
+So disposition lives in MatrixCtrl (migration 013) and Synapse's record is never
+touched. Reopening is a row delete and takes nothing away.
+
+Three smaller decisions worth keeping:
+
+- **`open` is not a stored value.** It is the *absence* of a decision, expressed by
+  the absence of a row. Storing it too would create two representations of one state
+  that could then disagree, and every reader would have to know which to trust.
+- **`handled` and `dismissed` are not collapsed.** They both take a report off the
+  open queue and they say different things to the next admin — something was done,
+  versus the report was judged not to need it. That distinction is the only part of
+  a closed report anyone reads later.
+- **Two user IDs on one record.** Synapse's report carries `user_id` (who filed it)
+  and `sender` (who wrote the reported event). The names give no hint which is which,
+  and swapping them accuses the wrong person. They are `Reporter` and `Sender` in Go,
+  translated in exactly one place, and neither is ever rendered without its role
+  beside it. A test asserts the mapping, because this is the kind of thing that is
+  obviously right until it is obviously wrong in production.
+
+**An encrypted event is a finding, not an empty state.** A reported
+`m.room.encrypted` event says so explicitly — the server cannot read it, so neither
+can this panel. Rendering it as a message with no text would suggest the content was
+checked and found unremarkable.
+
+**Consequences:** media quarantine, the other half of the roadmap's "Reports &
+moderation", is deliberately not in this etappe — the reported event has to be parsed
+for media references and reconciled with `room/<id>/media`, and bolting that on would
+give the reversible-pair reasoning a fraction of the attention it needs. The Matrix
+connect panel became shared at the same time, because the authorization is per
+operator rather than per page: one token serves rooms and moderation alike (§3).
+Affects S13.

@@ -15,6 +15,41 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.46] — 2026-08-16
+
+### Added
+
+- **The event report queue.** What users have reported, with the reported event's
+  content, paging, and links to the room. This is Phase 2's last feature — users,
+  rooms and moderation now all exist, which was the whole of *"existing ESS admins
+  can drop element-admin"*.
+
+- **A report can be marked handled or dismissed, with a note — and reopened.**
+
+  Synapse has no "resolved" state. Its only way to clear the queue is
+  `DELETE /event_reports/<id>`, which destroys the record, so the decision is stored
+  in MatrixCtrl instead and Synapse's copy is never touched.
+
+  That is deliberate, not a shortcut. A report is a user's statement that something
+  was wrong; deleting it after acting on it means the next admin cannot see that it
+  existed or that anyone looked. If one account is reported five times and each
+  report is deleted as it is handled, the pattern — the part that actually matters —
+  is erased one report at a time. Marking is also reversible, which §4.39 requires of
+  anything that ships this early.
+
+  *Handled* and *dismissed* are kept apart because they say different things to the
+  next admin: something was done, versus the report was judged not to need it.
+
+- **Encrypted events say so.** A reported `m.room.encrypted` event renders as "the
+  server cannot read this, so MatrixCtrl cannot either" rather than as an empty
+  message — the one case where absence of content is the finding.
+
+### Changed
+
+- **The Matrix connect panel is shared between rooms and moderation.** The
+  authorization is per *operator*, not per page: one token serves both screens, so
+  both show the same panel and start the same flow.
+
 ## [0.1.45] — 2026-08-16
 
 ### Fixed

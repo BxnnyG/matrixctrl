@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner } from "@/components/mc";
+import { Card, Badge, EmptyState, Button, SectionTitle, Spinner } from "@/components/mc";
+import { MatrixConnect } from "@/components/MatrixConnect";
 
 export const Route = createFileRoute("/rooms")({
   component: Rooms,
@@ -48,64 +49,6 @@ interface RoomsState {
 
 const PAGE = 50;
 
-/** Rooms are read with the operator's own Synapse-admin authority, granted in a
- *  separate authorization. This is the screen for "that has not happened yet", which
- *  is also the state after every restart — the refresh token is held in memory only
- *  and deliberately never written to disk (E36). */
-function ConnectPanel({ reason, error }: { reason?: string; error?: string }) {
-  const connect = useMutation({
-    mutationFn: () => api.post<{ url: string }>("/api/v1/rooms/connect", {}),
-    onSuccess: (r) => { window.location.href = r.url; },
-  });
-
-  return (
-    <Card>
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14, alignItems: "flex-start" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <Icon name="shield" size={17} />
-          <span style={{ fontSize: 14.5, fontWeight: 650, color: "var(--text)" }}>
-            Matrix-Admin-Zugriff verbinden
-          </span>
-        </div>
-
-        {error && (
-          <div style={{ fontSize: 13, color: "var(--status-err)", background: "color-mix(in oklch, var(--status-err) 10%, var(--surface))", border: "1px solid color-mix(in oklch, var(--status-err) 30%, var(--border))", borderRadius: "var(--radius-sm)", padding: "9px 11px" }}>
-            {error}
-          </div>
-        )}
-
-        <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.65, maxWidth: 620, margin: 0 }}>
-          {reason ?? "Für Räume wird einmalig der Matrix-Admin-Zugriff verbunden."}{" "}
-          MatrixCtrl fragt dabei <strong style={{ color: "var(--text)" }}>deine eigenen</strong> Rechte
-          ab — nicht mehr, als du selbst hast. Matrix erteilt sie nur Konten, die
-          Administrator sein dürfen.
-        </p>
-
-        {/* This paragraph used to claim the access was "nur für die
-            Admin-Schnittstelle, nicht für deine Nachrichten". That was false once
-            the client-API scope was added — and it had to be added, because Synapse
-            cannot tell whose token it is without it. "Kann nicht" and "tut nicht"
-            are different claims and only one of them is true (E42). */}
-        <p style={{ fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.6, maxWidth: 620, margin: 0 }}>
-          Der Zugriff umfasst technisch die volle Matrix-API deines Kontos — Synapse
-          kann ein Token sonst keiner Person zuordnen. <strong>MatrixCtrl nutzt davon
-          ausschließlich die Admin-Schnittstelle</strong> und liest keine Nachrichten.
-          Es wird <strong>kein Gerät</strong> auf deinem Konto angelegt.
-        </p>
-
-        <p style={{ fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.6, maxWidth: 620, margin: 0 }}>
-          Der Zugriff wird <strong>nicht gespeichert</strong>: nach einem Neustart des
-          Panels ist er weg und muss neu verbunden werden. Abmelden beendet ihn sofort.
-        </p>
-
-        <Button variant="primary" icon="shield" onClick={() => connect.mutate()} disabled={connect.isPending}>
-          {connect.isPending ? "Weiterleitung…" : "Verbinden"}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
 function Rooms() {
   const { error } = Route.useSearch();
   const [from, setFrom] = useState(0);
@@ -138,7 +81,7 @@ function Rooms() {
     return (
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <SectionTitle sub="Räume auf diesem Server">Räume</SectionTitle>
-        <ConnectPanel reason={state.data?.reason} error={error} />
+        <MatrixConnect reason={state.data?.reason} error={error} />
       </div>
     );
   }
@@ -173,7 +116,7 @@ function Rooms() {
           "never connected", which is why the report read as "the button does
           nothing" — it had in fact worked, and the token was being refused (E42). */}
       {needsConnect && (
-        <ConnectPanel reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." />
+        <MatrixConnect reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." />
       )}
 
       {!notAdmin && !needsConnect && (

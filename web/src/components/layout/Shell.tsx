@@ -25,15 +25,14 @@ const NAV: NavGroup[] = [
     { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
     { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
   ] },
-  // Users is real as of E27, rooms as of E36; moderation is still a roadmap entry.
+  // Users is real as of E27, rooms as of E36, moderation as of E46 — which completes
+  // the Verwaltung group and, with it, Phase 2's feature list.
   { group: "Verwaltung", items: [
     { id: "users", label: "Benutzer", icon: "users", to: "/users" },
     { id: "rooms", label: "Räume", icon: "room", to: "/rooms" },
+    { id: "moderation", label: "Moderation", icon: "shield", to: "/reports" },
   ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
-  { group: "Verwaltung · geplant", phase: "2", items: [
-    { id: "moderation", label: "Moderation", icon: "shield" },
-  ] },
   { group: "Betrieb · Day-2", phase: "3", items: [
     { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
   ] },

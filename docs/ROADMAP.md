@@ -14,7 +14,7 @@ Phases below are the coarse grid; etappes are the unit of work.
 | **0 — Discovery & PoC** | Architecture, Helm SDK + hooks PoC, OIDC PoC, schema extraction | ✅ done |
 | **1 — MVP (the differentiators)** | Config management, Helm upgrades + hooks, dashboard, OIDC, own chart | ✅ done |
 | **1.5 — Setup & Onboarding** | Greenfield deploy, adopt existing, auto-register OIDC, runtime auth switch | ⏳ mostly done* |
-| **2 — Element-Admin parity** | Users, rooms, reports/moderation | ⬜ next |
+| **2 — Element-Admin parity** | Users, rooms, reports/moderation | ⏳ features done** |
 | **3 — Day-2 operations** | RTC monitoring, TLS/DNS, backup/restore, full dashboard | ⬜ |
 | **4 — Federation & bridges** | Federation management, mautrix bridges | ⬜ |
 | **5 — Compliance & observability** | Cross-component audit, worker insights | ⬜ |
@@ -22,6 +22,10 @@ Phases below are the coarse grid; etappes are the unit of work.
 
 \* The building blocks are live; the greenfield happy path still has no
 end-to-end test on a fresh cluster (S6 — the largest open gap).
+
+\*\* Users (E27/E28), rooms (E36/E41) and the report queue (E46) all ship. Media
+quarantine — the second half of the moderation line — is deliberately its own
+etappe, so the phase is feature-complete but not closed.
 
 ## Etappes
 
@@ -51,6 +55,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
+| 46 | Moderation — die Meldungs-Queue, und was „erledigt" heißt, wenn Synapse nur Löschen kennt | 🔄 gebaut 2026-08-16 · `v0.1.46` · [plan](plans/etappe-46-event-reports.md) |
 | 45 | Die Staleness-Warnung war zwölf Tage lang falsch — `addrs[0]` aus einer rotierenden DNS-Antwort; dazu Retention für beide RTC-Tabellen | ✅ 2026-08-16 · `v0.1.45` · [plan](plans/etappe-45-address-set.md) |
 | 44 | Calls: wer gerade telefoniert, und ein Verlauf — die SFU-Zähler sterben mit dem Pod, den der Post-Upgrade-Hook jedes Mal löscht | ✅ 2026-08-16 · `v0.1.44` · [plan](plans/etappe-44-call-history.md) |
 | 43 | Das Upgrade-Fenster zeigte eine Uhr statt Fortschritt — dazu Versionen mit Datum und Notes, und der Typecheck, der nie etwas geprüft hat | ✅ 2026-08-16 · `v0.1.43` · [plan](plans/etappe-43-upgrade-progress.md) |
@@ -98,7 +103,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 - **User management** (Synapse + MAS Admin APIs) — list/search/filter, create,
   deactivate/reactivate, reset password, set admin, external IdP links, devices.
 - **Room management** — list/search, members, state, delete/quarantine, block.
-- **Reports & moderation** — event report queue, media quarantine.
+- **Reports & moderation** — event report queue ✅ (E46), media quarantine ⬜.
 - **Deliverable:** existing ESS admins can drop element-admin.
 
 ### Phase 3 — Day-2 operations ⬜

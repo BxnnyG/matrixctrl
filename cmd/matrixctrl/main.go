@@ -208,6 +208,17 @@ func main() {
 	})
 	authHandler.SetMatrixTokens(matrixTokens)
 
+	// One factory for both screens: the token belongs to the caller, so a client
+	// captured at construction would carry one operator's authority into another
+	// operator's request (etappe 36).
+	synapseFor := func(userID string) *synapse.Client {
+		return synapse.New(synapseURL, func(ctx context.Context) (string, error) {
+			return matrixTokens.Get(ctx, userID)
+		})
+	}
+
+	reportsHandler := handlers.NewReportsHandler(synapseFor, synapse.NewDispositions(pool))
+
 	roomsHandler := handlers.NewRoomsHandler(
 		func(userID string) *synapse.Client {
 			return synapse.New(synapseURL, func(ctx context.Context) (string, error) {
@@ -247,18 +258,19 @@ func main() {
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
 
 	router := api.NewRouter(api.Deps{
-		Auth:   authHandler,
-		Status: statusHandler,
-		Hooks:  hooksHandler,
-		Drift:  driftHandler,
-		Helm:   helmHandler,
-		WS:     wsHandler,
-		Config: configHandler,
-		Setup:  setupHandler,
-		Audit:  handlers.NewAuditHandler(auditStore),
-		RTC:    rtcHandler,
-		Users:  usersHandler,
-		Rooms:  roomsHandler,
+		Auth:    authHandler,
+		Status:  statusHandler,
+		Hooks:   hooksHandler,
+		Drift:   driftHandler,
+		Helm:    helmHandler,
+		WS:      wsHandler,
+		Config:  configHandler,
+		Setup:   setupHandler,
+		Audit:   handlers.NewAuditHandler(auditStore),
+		RTC:     rtcHandler,
+		Users:   usersHandler,
+		Rooms:   roomsHandler,
+		Reports: reportsHandler,
 
 		AuditSink: auditStore,
 	})

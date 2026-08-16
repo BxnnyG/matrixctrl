@@ -11,18 +11,19 @@ import (
 )
 
 type Deps struct {
-	Auth   *handlers.AuthHandler
-	Status *handlers.StatusHandler
-	Hooks  *handlers.HooksHandler
-	Helm   *handlers.HelmHandler
-	WS     *handlers.WSHandler
-	Config *handlers.ConfigHandler
-	Setup  *handlers.SetupHandler
-	Audit  *handlers.AuditHandler
-	RTC    *handlers.RTCHandler
-	Drift  *handlers.DriftHandler
-	Users  *handlers.UsersHandler
-	Rooms  *handlers.RoomsHandler
+	Auth    *handlers.AuthHandler
+	Status  *handlers.StatusHandler
+	Hooks   *handlers.HooksHandler
+	Helm    *handlers.HelmHandler
+	WS      *handlers.WSHandler
+	Config  *handlers.ConfigHandler
+	Setup   *handlers.SetupHandler
+	Audit   *handlers.AuditHandler
+	RTC     *handlers.RTCHandler
+	Drift   *handlers.DriftHandler
+	Users   *handlers.UsersHandler
+	Rooms   *handlers.RoomsHandler
+	Reports *handlers.ReportsHandler
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -83,6 +84,14 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/rooms/{id}", deps.Rooms.Detail)
 			r.Get("/api/v1/rooms/{id}/members", deps.Rooms.Members)
 			r.Put("/api/v1/rooms/{id}/block", deps.Rooms.Block)
+		}
+
+		// The report queue reads Synapse with the same operator authority as rooms,
+		// and the same connect flow gates it (etappe 46).
+		if deps.Reports != nil {
+			r.Get("/api/v1/reports", deps.Reports.List)
+			r.Get("/api/v1/reports/{id}", deps.Reports.Detail)
+			r.Put("/api/v1/reports/{id}/disposition", deps.Reports.SetDisposition)
 		}
 
 		if deps.Audit != nil {

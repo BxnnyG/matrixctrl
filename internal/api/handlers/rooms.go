@@ -102,7 +102,7 @@ func (h *RoomsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	page, err := client.ListRooms(r.Context(), opts)
 	if err != nil {
-		writeSynapseError(w, err)
+		writeSynapseError(w, err, "Die Raumliste konnte nicht geladen werden.")
 		return
 	}
 	JSON(w, http.StatusOK, page)
@@ -114,7 +114,15 @@ func (h *RoomsHandler) List(w http.ResponseWriter, r *http.Request) {
 // button. 403 means the account is not a Synapse admin, which signing in again will
 // never fix. Collapsing them into one message sends the operator round a loop with no
 // exit.
-func writeSynapseError(w http.ResponseWriter, err error) {
+//
+// `subject` names what could not be loaded and is used for the fallback only. The two
+// branches above it concern the *token* and read identically whatever was being
+// fetched, which is why they are shared rather than re-derived by every screen that
+// talks to Synapse (etappe 46).
+func writeSynapseError(w http.ResponseWriter, err error, subject string) {
+	if subject == "" {
+		subject = "Die Daten konnten nicht geladen werden."
+	}
 	var se *synapse.Error
 	if errors.As(err, &se) {
 		switch {
@@ -133,7 +141,7 @@ func writeSynapseError(w http.ResponseWriter, err error) {
 			return
 		}
 	}
-	Error(w, http.StatusBadGateway, "Die Raumliste konnte nicht geladen werden.")
+	Error(w, http.StatusBadGateway, subject)
 }
 
 // GET /api/v1/rooms/{id} — one room, with its block state.
@@ -145,7 +153,7 @@ func (h *RoomsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	room, err := client.GetRoom(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeSynapseError(w, err)
+		writeSynapseError(w, err, "Der Raum konnte nicht geladen werden.")
 		return
 	}
 	JSON(w, http.StatusOK, room)
@@ -164,7 +172,7 @@ func (h *RoomsHandler) Members(w http.ResponseWriter, r *http.Request) {
 
 	page, err := client.ListMembers(r.Context(), chi.URLParam(r, "id"), from, limit)
 	if err != nil {
-		writeSynapseError(w, err)
+		writeSynapseError(w, err, "Die Mitgliederliste konnte nicht geladen werden.")
 		return
 	}
 	JSON(w, http.StatusOK, page)
@@ -194,7 +202,7 @@ func (h *RoomsHandler) Block(w http.ResponseWriter, r *http.Request) {
 
 	blocked, err := client.SetBlocked(r.Context(), chi.URLParam(r, "id"), *body.Block)
 	if err != nil {
-		writeSynapseError(w, err)
+		writeSynapseError(w, err, "Die Sperre konnte nicht geändert werden.")
 		return
 	}
 	JSON(w, http.StatusOK, map[string]bool{"blocked": blocked})
