@@ -275,6 +275,11 @@ func main() {
 	// not merely have gaps — it is destroyed several times a week (E44).
 	go rtc.NewSampler(rtcStore, rtcHandler.MetricsReader(), 0).Start(context.Background())
 
+	// Both of the above append forever. On a single-node cluster sharing a disk with
+	// Synapse's database and media, that is a real trap — and the sampler above adds
+	// 1440 rows a day (E45).
+	go rtcStore.StartPruning(context.Background())
+
 	srv := server.New(addr, router)
 
 	sigCh := make(chan os.Signal, 1)

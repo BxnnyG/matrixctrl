@@ -1462,3 +1462,58 @@ general shape is better argued from one working example than in advance.
 **Consequences:** migration 011 keeps the raw counter values beside the resolved
 deltas, so a bug in the delta logic can be corrected against the original
 observations rather than having destroyed them. Affects S14.
+
+### §4.43 — Recording one member of a set (2026-08-16, agent, etappe 45)
+
+Found while checking whether E44's new table would grow without bound. It would —
+but the older table beside it already had, and for a reason that mattered far more
+than the disk.
+
+`rtc_address_history` is meant to hold one row per *change* of the announced RTC
+host's address. It held 1778, in twelve days, split **889 / 889** between two
+Cloudflare addresses. That symmetry is a coin flip, not a history.
+
+The host is proxied, so DNS returns two A records, and `LookupHost` rotates their
+order per query. The writer recorded `addrs[0]`. `NextObservation` — correct for
+what it was handed — saw a different answer roughly half the time.
+
+**The cost was not the rows.** `AssessFreshness` compares the newest observation
+against the SFU pod's start time, so an observation minutes old and a pod hours old
+can only produce one verdict. The calls page showed this continuously from
+2026-08-04:
+
+> **Die SFU kündigt eine veraltete Adresse an** … *Action:* SFU-Pod ersetzen.
+
+A false `WARN`, above a button that drops any call in progress. E22 built the check
+to catch a real failure — the SFU announcing a stale address after a forced
+reconnect (P1-9). For twelve days it reported on DNS round-robin.
+
+Two fixes, and the second is the one worth keeping:
+
+**Record the set, sorted.** A host with several A records has an address *set*; a
+change is a change to that set. This stops the noise, and it is small.
+
+**Refuse the verdict when its premise fails.** E22's reasoning is sound and is stated
+in the file: the SFU discovers its public address by STUN at startup, so the
+announcement is stale exactly when the address changed after that moment. It depends
+entirely on the announced host's A record *being the node's public address*. Behind a
+CDN it is not — those anycast addresses do not move when the operator's line
+reconnects, and they move for reasons unrelated to this deployment. More than one A
+record is a reliable signal of that, because a home connection has one WAN address.
+
+So the answer is `Unknown` **with the reason**. That state already existed for
+exactly this purpose and the page already rendered it; what was missing was
+recognising this as a case of it. An operator behind a CDN now learns that this check
+cannot see their setup, instead of being told to restart the SFU daily.
+
+This is §4.40's table with a fourth row. `addrs[0]` answered "did the first element
+change?" correctly, and never "did the public address change?" — the report was true
+about its own subject and silent about the one being asked. The defence is unchanged:
+**read back the subject, not the verdict.**
+
+**Consequences:** the noise rows cannot be repaired into set-shaped ones — each holds
+one member of a set whose other members were never written — so migration 012 deletes
+them by their flapping signature rather than migrating them. Retention was added to
+both RTC tables at the same time; that is *not* P2-19, which concerns the audit log
+and is a compliance decision, while these are operational telemetry with no such
+duty. Affects S14.

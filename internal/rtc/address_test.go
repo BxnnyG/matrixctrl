@@ -127,3 +127,77 @@ func TestEveryVerdictExplainsItself(t *testing.T) {
 		})
 	}
 }
+
+// The bug this etappe exists for: the resolver rotates a multi-record answer, so
+// recording one member produced 1778 rows in twelve days — 889 for each of two
+// Cloudflare addresses — and a permanently false staleness warning on top of them.
+func TestAddressKeyIsOrderIndependent(t *testing.T) {
+	a := AddressKey([]string{"104.21.33.5", "172.67.188.105"})
+	b := AddressKey([]string{"172.67.188.105", "104.21.33.5"})
+	if a != b {
+		t.Errorf("rotation changed the key: %q vs %q", a, b)
+	}
+	// And the rotation must not read as a change at the layer that decides.
+	obs := &AddressObservation{Address: a}
+	if got := NextObservation(b, obs); got != ActionExtend {
+		t.Errorf("NextObservation on a rotated answer = %v, want ActionExtend", got)
+	}
+}
+
+// A genuine change to the set is still a change. This is the half that a naive
+// "just take the sorted first element" fix would have broken.
+func TestAddressKeyStillSeesRealChanges(t *testing.T) {
+	before := AddressKey([]string{"104.21.33.5", "172.67.188.105"})
+	after := AddressKey([]string{"104.21.33.5", "198.51.100.7"})
+	if before == after {
+		t.Fatal("a withdrawn address is a change")
+	}
+	if got := NextObservation(after, &AddressObservation{Address: before}); got != ActionInsert {
+		t.Errorf("NextObservation on a changed set = %v, want ActionInsert", got)
+	}
+}
+
+func TestAddressKeyEdges(t *testing.T) {
+	if got := AddressKey(nil); got != "" {
+		t.Errorf("nil = %q, want empty", got)
+	}
+	if got := AddressKey([]string{"", "  "}); got != "" {
+		t.Errorf("blanks = %q, want empty — and empty must reach ActionSkip", got)
+	}
+	if got := AddressKey([]string{"203.0.113.9"}); got != "203.0.113.9" {
+		t.Errorf("single = %q", got)
+	}
+}
+
+// The second cause, and the more important one: even recorded perfectly, a CDN's
+// anycast addresses are not the node's public address, so the comparison cannot
+// answer the question. Unknown with a reason, never stale.
+func TestMultipleAddressesRefuseTheVerdict(t *testing.T) {
+	podStart := time.Date(2026, 8, 16, 0, 49, 53, 0, time.UTC)
+	obs := &AddressObservation{
+		Address:   AddressKey([]string{"104.21.33.5", "172.67.188.105"}),
+		FirstSeen: podStart.Add(14 * time.Hour), // long after the pod started
+		Changes:   1778,
+	}
+	got, why := AssessFreshness(podStart, obs)
+	if got != FreshnessUnknown {
+		t.Errorf("verdict = %q, want %q — a proxied host cannot answer this", got, FreshnessUnknown)
+	}
+	if why == "" {
+		t.Error("Unknown without a reason is the thing this product refuses to ship")
+	}
+}
+
+// A single-address host still gets a real verdict — the fix must not disable the
+// check it was built to make honest.
+func TestSingleAddressStillAssessed(t *testing.T) {
+	podStart := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
+	stale := &AddressObservation{Address: "203.0.113.9", FirstSeen: podStart.Add(time.Hour), Changes: 3}
+	if got, _ := AssessFreshness(podStart, stale); got != FreshnessStale {
+		t.Errorf("changed after pod start = %q, want %q", got, FreshnessStale)
+	}
+	ok := &AddressObservation{Address: "203.0.113.9", FirstSeen: podStart.Add(-time.Hour), Changes: 3}
+	if got, _ := AssessFreshness(podStart, ok); got != FreshnessOK {
+		t.Errorf("changed before pod start = %q, want %q", got, FreshnessOK)
+	}
+}

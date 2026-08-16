@@ -71,7 +71,9 @@ func (w *Watcher) observe(ctx context.Context) {
 		return
 	}
 
-	if err := w.store.Record(ctx, host, addrs[0]); err != nil {
+	// The whole set, sorted — see AddressKey. The watcher and the page must record
+	// the same thing, or they would fight each other into a new row per poll.
+	if err := w.store.Record(ctx, host, AddressKey(addrs)); err != nil {
 		log.Printf("rtc watcher: could not record observation for %q: %v", host, err)
 	}
 }

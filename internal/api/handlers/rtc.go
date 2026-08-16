@@ -79,10 +79,12 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 	// Record what the host resolves to, then judge whether what the SFU announces
 	// can still be current. A failure to record is logged and swallowed: losing one
 	// data point is a worse reason to fail this page than it is to lose the page.
-	var resolved string
-	if len(ips) > 0 {
-		resolved = ips[0]
-	}
+	//
+	// The whole answer, not ips[0]. The resolver rotates the order of a multi-record
+	// answer, so taking the first sampled a coin flip and recorded a change roughly
+	// every other poll — 1778 rows in twelve days, and a permanently false staleness
+	// warning built on top of them (E45).
+	resolved := rtc.AddressKey(ips)
 	if err := h.store.Record(ctx, host, resolved); err != nil {
 		log.Printf("rtc: could not record address observation for %q: %v", host, err)
 	}

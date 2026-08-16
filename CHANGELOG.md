@@ -15,6 +15,43 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.45] — 2026-08-16
+
+### Fixed
+
+- **The calls page had been warning "Die SFU kündigt eine veraltete Adresse an" for
+  twelve days, falsely.** It is a `WARN` finding whose stated remedy is replacing the
+  SFU pod — which drops any call in progress.
+
+  `rtc_address_history` held **1778 rows**, split 889/889 between two Cloudflare
+  addresses. The announced RTC host is proxied, so DNS returns two A records and the
+  resolver rotates their order per query; the writer recorded `ips[0]`, so every
+  other poll looked like the address had changed. The freshness check compares the
+  newest observation against the SFU pod's start time, and with a "change" every few
+  minutes that comparison could only ever say stale.
+
+  The whole sorted set is recorded now, so a rotation is not a change — while a
+  genuine change to the set still is.
+
+- **And the verdict is refused when its premise does not hold.** More than one A
+  record means something sits in front of the node — a home connection has one WAN
+  address — so the DNS answer is not what the SFU discovered by STUN, and the
+  comparison cannot answer the question however carefully it is fed. That is now
+  `unknown` with the reason stated, rather than a confident wrong answer. An operator
+  behind a CDN learns this check cannot see their setup, instead of being told to
+  restart the SFU every day.
+
+### Changed
+
+- **The two RTC telemetry tables are bounded.** Samples are kept 90 days, address
+  observations a year; the 1778 noise rows are deleted on upgrade. E44 shipped a
+  table growing 1440 rows a day with no bound, on a single-node cluster sharing its
+  disk with Synapse's database and media.
+
+  This is not the retention decision P2-19 declines to guess at — that entry is about
+  the audit log, which answers "who did what" and whose retention is a compliance
+  question. These are operational telemetry with no such duty.
+
 ## [0.1.44] — 2026-08-16
 
 ### Added

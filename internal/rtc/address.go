@@ -1,8 +1,40 @@
 package rtc
 
 import (
+	"sort"
+	"strings"
 	"time"
 )
+
+// AddressKey turns a resolver answer into the value that gets recorded.
+//
+// The whole set, sorted — not one member of it. `net.Resolver.LookupHost` returns
+// every A record and rotates their order per query, so recording `addrs[0]` samples
+// a coin flip. On this deployment the announced host is proxied and has two A
+// records, which produced 889 rows for one address and 889 for the other: 1778
+// "changes" in twelve days, none of them real (E45).
+//
+// Sorting is what makes a rotation stop being a change. Joining is what makes a
+// *genuine* change to the set — one address added, another withdrawn — still be one.
+func AddressKey(addrs []string) string {
+	if len(addrs) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		if a = strings.TrimSpace(a); a != "" {
+			out = append(out, a)
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
+}
+
+// multiAddress reports whether a recorded key holds more than one address.
+func multiAddress(key string) bool { return strings.Contains(key, ",") }
 
 // Freshness answers whether what the SFU announces to clients can still be current.
 //
@@ -54,6 +86,23 @@ func AssessFreshness(podStart time.Time, obs *AddressObservation) (Freshness, st
 	if podStart.IsZero() {
 		return FreshnessUnknown, "the SFU pod's start time is not available"
 	}
+	// The premise, checked before the arithmetic that depends on it.
+	//
+	// This whole comparison rests on the announced host's DNS answer *being* the
+	// node's public address — that is what makes "the address changed after the pod
+	// started" mean "the address the SFU discovered by STUN is no longer the right
+	// one". More than one A record means something sits in front of the node: a home
+	// connection has one WAN address, and a set of them is a CDN or a load balancer.
+	// Those addresses do not move when the operator's line is reconnected, and they
+	// move for reasons that have nothing to do with this deployment.
+	//
+	// So the answer is Unknown, and the operator is told why. It was previously
+	// Stale — permanently, on this deployment, for twelve days, above a button that
+	// replaces the SFU pod and drops any call in progress (E45).
+	if multiAddress(obs.Address) {
+		return FreshnessUnknown, "the announced host resolves to several addresses, so it is behind a CDN or load balancer and its DNS answer is not the node's own public address"
+	}
+
 	if obs.Changes < 2 {
 		// The first row's first_seen is when MatrixCtrl started watching, not when
 		// the address changed. Reporting "ok" from that would be a guess dressed as
