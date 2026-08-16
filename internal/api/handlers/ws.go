@@ -39,10 +39,32 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 	wsHandler := websocket.Handler(func(ws *websocket.Conn) {
 		defer ws.Close()
 
-		send := func(v map[string]string) bool {
+		send := func(v any) bool {
 			msg, _ := json.Marshal(v)
 			_, err := ws.Write(msg)
 			return err == nil
+		}
+
+		// sendProgress writes the current snapshot when it differs from the last one
+		// sent on this connection.
+		//
+		// Pulled rather than pushed: progress is a *latest value*, not an event, so a
+		// subscriber channel would only add a way to fall behind reality. Reading it
+		// here also keeps the log path exactly as reliable as it was — the log is the
+		// audit trail, and it must not start dropping lines because a progress
+		// feature shares its buffer.
+		var lastProgress string
+		sendProgress := func() bool {
+			p := stream.currentProgress()
+			if p == nil {
+				return true
+			}
+			body, err := json.Marshal(p)
+			if err != nil || string(body) == lastProgress {
+				return true
+			}
+			lastProgress = string(body)
+			return send(map[string]any{"type": "progress", "progress": p})
 		}
 
 		// Replay what already happened, so a reconnecting client loses nothing.
@@ -51,6 +73,12 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 			if !send(map[string]string{"type": "log", "line": line}) {
 				return
 			}
+		}
+		// After the replay and before the done check: a client reconnecting to a
+		// still-running upgrade gets the current state immediately rather than after
+		// the first tick.
+		if !sendProgress() {
+			return
 		}
 		if isDone {
 			send(map[string]string{"type": "done", "status": doneStatus})
@@ -75,15 +103,26 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 		heartbeat := time.NewTicker(wsHeartbeatInterval)
 		defer heartbeat.Stop()
 
+		progressTick := time.NewTicker(snapshotInterval)
+		defer progressTick.Stop()
+
 		for {
 			select {
 			case line, ok := <-ch:
 				if !ok {
+					// The last snapshot before "done", so the stepper lands on its
+					// final step and the component table shows the finished state
+					// rather than whatever it held three seconds ago.
+					sendProgress()
 					_, _, finalStatus := stream.snapshot()
 					send(map[string]string{"type": "done", "status": finalStatus})
 					return
 				}
 				if !send(map[string]string{"type": "log", "line": line}) {
+					return
+				}
+			case <-progressTick.C:
+				if !sendProgress() {
 					return
 				}
 			case <-heartbeat.C:

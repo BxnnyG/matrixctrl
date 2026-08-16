@@ -474,6 +474,20 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P2-29 · Calls show no audit, no connections and no statistics (S14).** Reported
+  by the operator 2026-08-16: "calls soll auch wenn möglich audit zeigen
+  verbindungen zeigen maby auch statistik (statistik maby ausweiten auf das ganze) /
+  logs länge".
+  Four things, not one: per-call audit entries, a live list of current connections,
+  RTC statistics, and a broader statistics story across the whole panel. E23 already
+  reads LiveKit counters that only move when media flows, so the plumbing exists —
+  but sessions and participants are not read at all today.
+  *Needs an inventory pass first:* which of those numbers LiveKit actually exposes on
+  this deployment, and which would have to be invented. §4.24 is the warning — the
+  calls page once reported confidently on the SFU while the failing calls were legacy
+  1:1, which the page had no way to see. A statistics panel built on whatever happens
+  to be readable would repeat that.
+
 - **P2-25 · GDPR erasure on deactivation is not offered (S13).** MAS's `deactivate`
   defaults to `skip_erase: false`, i.e. it asks the homeserver to erase the account.
   E28 always sends `skip_erase: true`, so MatrixCtrl currently cannot erase at all.

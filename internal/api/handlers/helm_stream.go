@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/bxnnyg/matrixctrl/internal/rollout"
 )
 
 // upgradeProgressInterval is how often a long-running Helm operation reports that
@@ -16,12 +18,100 @@ import (
 // doubting a healthy upgrade.
 const upgradeProgressInterval = 30 * time.Second
 
+// snapshotInterval is how often the rollout is re-read while an upgrade runs.
+//
+// Ten times more often than the log heartbeat, and affordable because it costs no
+// log lines: a snapshot replaces the previous one instead of being appended, so the
+// buffer a reconnecting client replays does not grow with it (E43).
+const snapshotInterval = 3 * time.Second
+
 type upgradeStream struct {
 	logs   []string
 	status string
 	done   bool
 	subs   []chan string
-	mu     sync.Mutex
+
+	// phase and progress are the structured view of the same operation the log
+	// narrates. They are kept as the *latest* value rather than as a history: a
+	// client that connects late, reconnects, or misses a frame renders the current
+	// truth on the next read instead of folding a stream of deltas.
+	//
+	// Deliberately not in `logs`. Putting them there would grow the replay buffer by
+	// one entry every three seconds and push every progress update through the log
+	// gate, which exists to count what has already been displayed.
+	phase    string
+	progress *rollout.Progress
+
+	mu sync.Mutex
+}
+
+// setPhase records which step of the operation is running. Callers announce their
+// own transitions; nothing infers them.
+func (s *upgradeStream) setPhase(phase string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.phase = phase
+	if s.progress != nil {
+		p := *s.progress
+		p.Phase = phase
+		s.progress = &p
+	}
+}
+
+func (s *upgradeStream) currentPhase() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.phase
+}
+
+func (s *upgradeStream) setProgress(p rollout.Progress) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.progress = &p
+}
+
+// currentProgress returns the latest snapshot, or nil when none has been taken.
+func (s *upgradeStream) currentProgress() *rollout.Progress {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.progress
+}
+
+// startSnapshots keeps the structured progress current until the returned stop is
+// called.
+//
+// Strictly additive, on the same terms as the log probe: it runs on its own
+// goroutine, a failed read leaves the previous snapshot in place, and nothing here
+// can fail an upgrade. An operator would rather have a stale table than a rolled-back
+// release.
+func (s *upgradeStream) startSnapshots(interval time.Duration, take func() *rollout.Progress) (stop func()) {
+	if take == nil {
+		return func() {}
+	}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			// Taken before the first tick as well, so the table appears immediately
+			// rather than three seconds into an operation that may be over in five.
+			if p := take(); p != nil {
+				s.setProgress(*p)
+			}
+			select {
+			case <-done:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+		<-finished
+	}
 }
 
 func (s *upgradeStream) emit(msg interface{}) {

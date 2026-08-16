@@ -12,6 +12,7 @@
 package synapse
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -178,6 +179,17 @@ func (c *Client) ListRooms(ctx context.Context, opts ListOptions) (*RoomPage, er
 }
 
 func (c *Client) get(ctx context.Context, endpoint string) ([]byte, error) {
+	return c.do(ctx, http.MethodGet, endpoint, nil)
+}
+
+// do performs one authenticated admin-API call.
+//
+// The body is JSON when present. Kept as one method rather than a get and a put
+// because everything around the verb — the token check, the bearer header, the
+// bounded read, the error classification — is identical, and duplicating it is how
+// a second copy ends up missing the "no token in this process" case that the whole
+// reconnect flow depends on (etappe 41).
+func (c *Client) do(ctx context.Context, method, endpoint string, body any) ([]byte, error) {
 	token, err := c.token(ctx)
 	if err != nil {
 		return nil, err
@@ -189,11 +201,23 @@ func (c *Client) get(ctx context.Context, endpoint string) ([]byte, error) {
 		return nil, &Error{Status: http.StatusUnauthorized, Message: "no Matrix session in this process"}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	var payload io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("encode request: %w", err)
+		}
+		payload = bytes.NewReader(raw)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, payload)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -201,15 +225,15 @@ func (c *Client) get(ctx context.Context, endpoint string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit))
 	if err != nil {
 		return nil, fmt.Errorf("could not read the response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseError(resp.StatusCode, body)
+		return nil, parseError(resp.StatusCode, raw)
 	}
-	return body, nil
+	return raw, nil
 }
 
 // parseError reads Matrix's standard error envelope, falling back to the status alone.

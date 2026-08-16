@@ -51,6 +51,16 @@ func TestParseReleaseTag(t *testing.T) {
 		{"0.2.1-sha7e8aed427374dd19f83d2ec7391832ac1f1b1cc7", false, false},
 		{"latest", false, false},
 		{"26.5", false, false},
+		// The older build-tag convention. All twelve suffixed tags the registry
+		// holds are of this shape, and none of them is an upgrade target — see
+		// devTagRe. The real ones from the registry, not invented examples:
+		{"0.0.0-dev", false, false},
+		{"0.7.2-dev", false, false},
+		// `-dev` is matched whole, so a genuine pre-release that merely starts with
+		// those letters survives. Nothing hinges on it today; the point is that the
+		// rule is "the suffix is exactly dev", not "the suffix contains dev".
+		{"26.9.0-dev.1", true, true},
+		{"26.9.0-developer", true, true},
 	}
 	for _, c := range cases {
 		v, ok := parseReleaseTag(c.tag)

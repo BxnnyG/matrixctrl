@@ -36,6 +36,23 @@ var releaseTagRe = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+
 // valid upgrade target, so they never reach the UI.
 var buildTagRe = regexp.MustCompile(`^sha[0-9a-f]{7,}$`)
 
+// devTagRe matches the older build-tag convention: `0.7.2-dev`.
+//
+// Dropping these is not the same judgement as hiding pre-releases, so it is made
+// here rather than left to the UI. A full walk of the registry — 3 pages, 2740 raw
+// tags — yields 67 releases and exactly 12 suffixed tags, and all twelve are
+// `0.x.y-dev` from the chart's first months. None has a GitHub release: the release
+// index carries plain `0.1.0`, `0.2.0`, `0.3.0`. They are development builds under
+// the naming scheme that preceded `-sha…`, not versions anyone can upgrade to.
+//
+// The UI used to offer a "show pre-releases" toggle for them, which revealed twelve
+// 2024 dev builds of a chart now on 26.8.0 — and, because the list renders 25 rows
+// and they sort at index 56 and beyond, usually revealed nothing at all (E42, E43).
+//
+// Prerelease itself stays: `26.9.0-rc.1` would be a real pre-release worth showing.
+// ESS has never published one, which is a fact about today rather than a rule.
+var devTagRe = regexp.MustCompile(`^dev$`)
+
 // ListVersions queries the GHCR OCI registry for available ESS chart versions,
 // newest first.
 func ListVersions(ctx context.Context) ([]VersionInfo, error) {
@@ -67,7 +84,9 @@ func ListVersions(ctx context.Context) ([]VersionInfo, error) {
 	sort.Slice(versions, func(i, j int) bool {
 		return compareVersions(versions[i].Version, versions[j].Version) > 0
 	})
-	return versions, nil
+	// Dates come from a second source and are allowed to be missing — see
+	// releaseindex.go. The list is correct and complete without them.
+	return withDates(ctx, versions), nil
 }
 
 func fetchTagPage(ctx context.Context, url, token string) ([]string, string, error) {
@@ -122,7 +141,7 @@ func nextPageURL(link string) string {
 
 func parseReleaseTag(tag string) (VersionInfo, bool) {
 	m := releaseTagRe.FindStringSubmatch(tag)
-	if m == nil || buildTagRe.MatchString(m[4]) {
+	if m == nil || buildTagRe.MatchString(m[4]) || devTagRe.MatchString(m[4]) {
 		return VersionInfo{}, false
 	}
 	return VersionInfo{Version: tag, Prerelease: m[4] != ""}, true

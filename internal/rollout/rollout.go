@@ -95,6 +95,19 @@ func Assess(pods []PodState) (blockers []Blocker, starting int) {
 		if p.Ready {
 			continue
 		}
+		// A pod that ran to completion is never "still starting". Jobs leave them
+		// behind — `ess-init-secrets`, `ess-synapse-check-config`, the two
+		// deployment-marker pods — and so do old ReplicaSets, and none of them is
+		// ever Ready, so they were counted as starting forever. On the settled
+		// production namespace that is six phantom pods, which is what
+		// "↳ 6 Pods startet noch" meant on a cluster with nothing left to start.
+		//
+		// Phase was on PodState from the beginning and never read; this is what it
+		// was for. Failed is deliberately not skipped: a pod that exited non-zero is
+		// worth surfacing even when nothing is retrying it (E43).
+		if p.Phase == "Succeeded" {
+			continue
+		}
 
 		found := false
 		for _, c := range p.Containers {
@@ -152,6 +165,137 @@ func Describe(blockers []Blocker, starting int) string {
 	if starting > 0 {
 		out += fmt.Sprintf(" (%d weitere starten noch)", starting)
 	}
+	return out
+}
+
+// Phases of a Helm operation, in the order they run. The upgrade screen renders
+// them as a stepper, which is what makes "what is it doing right now" answerable at
+// a glance instead of by reading a log upward (E43).
+const (
+	PhaseConfig  = "config"
+	PhaseApply   = "apply"
+	PhaseRollout = "rollout"
+	PhaseHooks   = "hooks"
+	PhaseDone    = "done"
+)
+
+// Component states, worst-first when several apply.
+const (
+	StateReady   = "ready"
+	StatePulling = "pulling"
+	StateStartin = "starting"
+	StateFailing = "failing"
+	StateWaiting = "waiting"
+)
+
+// Workload mirrors k8s.RolloutWorkload, keeping this package free of client-go.
+type Workload struct {
+	Kind    string
+	Name    string
+	Desired int32
+	Updated int32
+	Ready   int32
+	// Generation vs Observed: while the first is ahead, the controller has not yet
+	// seen the spec Helm just wrote, so the replica counters still describe the old
+	// one. See k8s.RolloutWorkload.
+	Generation int64
+	Observed   int64
+}
+
+// settled reports whether the controller has acted on the current spec.
+func (w Workload) settled() bool { return w.Observed >= w.Generation }
+
+// Component is one workload as the operator sees it.
+type Component struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	State   string `json:"state"`
+	Ready   int32  `json:"ready"`
+	Desired int32  `json:"desired"`
+	// Detail is the one-line explanation for a failing component, empty otherwise.
+	Detail string `json:"detail,omitempty"`
+}
+
+// Progress is the whole answer to "what is happening", sent as one snapshot.
+//
+// It is a snapshot rather than an event stream on purpose: a client that connects
+// late, reconnects, or drops a frame renders the current truth from the next tick
+// instead of replaying a history it has to fold itself.
+type Progress struct {
+	Phase      string      `json:"phase"`
+	Components []Component `json:"components"`
+	Ready      int         `json:"ready"`
+	Total      int         `json:"total"`
+}
+
+// BuildProgress folds the cluster reads into the snapshot the UI renders.
+//
+// Pure, and tested without a cluster: every input is a plain struct, which is the
+// same reason PodState exists rather than a corev1.Pod.
+func BuildProgress(phase string, workloads []Workload, pods []PodState, pulling map[string]bool) Progress {
+	blockers, _ := Assess(pods)
+
+	// A pod's trouble belongs to the workload whose name prefixes it. Pods are named
+	// <workload>-<hash>-<suffix> for Deployments and <workload>-<ordinal> for
+	// StatefulSets, so prefix matching covers both without another API call.
+	detailFor := func(workload string) string {
+		for _, b := range blockers {
+			if !strings.HasPrefix(b.Pod, workload) {
+				continue
+			}
+			where := b.Container
+			if b.Init {
+				where = "init:" + b.Container
+			}
+			line := fmt.Sprintf("%s %s", where, b.Reason)
+			if b.Message != "" {
+				line += " — " + summarise(b.Message)
+			}
+			return line
+		}
+		return ""
+	}
+
+	pullingFor := func(workload string) bool {
+		for pod := range pulling {
+			if strings.HasPrefix(pod, workload) {
+				return true
+			}
+		}
+		return false
+	}
+
+	out := Progress{Phase: phase, Total: len(workloads)}
+	for _, w := range workloads {
+		c := Component{
+			Name: w.Name, Kind: w.Kind,
+			Ready: w.Ready, Desired: w.Desired,
+		}
+		switch {
+		case w.settled() && w.Updated == w.Desired && w.Ready == w.Desired:
+			c.State = StateReady
+			out.Ready++
+		case detailFor(w.Name) != "":
+			c.State = StateFailing
+			c.Detail = detailFor(w.Name)
+		case pullingFor(w.Name):
+			c.State = StatePulling
+		case w.settled() && w.Updated > 0:
+			c.State = StateStartin
+		default:
+			// Either Helm has not replaced this one yet, or it has just written the
+			// spec and the controller has not reacted. Both are "nothing has begun
+			// to move here", which is distinct from "starting".
+			c.State = StateWaiting
+		}
+		out.Components = append(out.Components, c)
+	}
+
+	// Stable order, so a table that refreshes every three seconds does not reshuffle
+	// under the operator's eyes — the same reason Assess sorts its blockers.
+	sort.SliceStable(out.Components, func(i, j int) bool {
+		return out.Components[i].Name < out.Components[j].Name
+	})
 	return out
 }
 

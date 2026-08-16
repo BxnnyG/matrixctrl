@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner } from "@/components/mc";
+import { Markdown } from "@/components/Markdown";
 import { cmpVersion, essVersion } from "@/lib/version";
 
 export const Route = createFileRoute("/helm/")({
@@ -22,6 +23,13 @@ interface ESSVersion {
   published_at?: string;
   prerelease?: boolean;
 }
+interface ReleaseNotes {
+  version: string;
+  available: boolean;
+  body?: string;
+  url?: string;
+  reason?: string;
+}
 
 
 const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: string }> = {
@@ -31,9 +39,85 @@ const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: s
   pending: { tone: "info", icon: "clock" },
 };
 
+/** One version, with what is known about it.
+ *
+ *  The row used to be a version number and an empty date slot: ListVersions reads
+ *  the GHCR *tag list*, which is a list of strings, so `published_at` was never set
+ *  on any row for any version. It is now filled from the GitHub release index, and
+ *  the row expands to the notes for that version — the endpoint and its cache
+ *  already existed for the upgrade screen (E32, E43). */
+function VersionRow({ version: v, isFirst, isCurrent, isNewer, last, expanded, onToggle, onUpgrade }: {
+  version: ESSVersion;
+  isFirst: boolean; isCurrent: boolean; isNewer: boolean; last: boolean;
+  expanded: boolean; onToggle: () => void; onUpgrade: () => void;
+}) {
+  // Fetched only while open, so opening the page does not fire 25 requests at
+  // GitHub's 60-per-hour unauthenticated budget.
+  const { data: notes, isFetching } = useQuery({
+    queryKey: ["helm", "notes", v.version],
+    queryFn: () => api.get<ReleaseNotes>(`/api/v1/helm/versions/${encodeURIComponent(v.version)}/notes`),
+    enabled: expanded,
+    staleTime: Infinity,
+  });
+
+  return (
+    <div style={{ borderBottom: last ? "none" : "1px solid var(--border-soft)" }}>
+      <div
+        onClick={onToggle}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "11px 14px", borderRadius: "var(--radius-sm)", background: isCurrent ? "var(--accent-soft)" : "transparent", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <Icon name={expanded ? "chevDown" : "chevRight"} size={13} style={{ color: "var(--text-faint)", flexShrink: 0 }} />
+          <StatusDot status={isCurrent ? "accent" : isNewer ? "warn" : "idle"} />
+          <span style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 600, color: isCurrent ? "var(--accent)" : "var(--text)" }}>{v.version}</span>
+          {isFirst && !v.prerelease && <Badge tone="accent" size="sm">latest</Badge>}
+          {isCurrent && <Badge tone="ok" size="sm">installiert</Badge>}
+          {v.prerelease && <Badge tone="neutral" size="sm">pre-release</Badge>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {v.published_at && (
+            <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+              {new Date(v.published_at).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+            </span>
+          )}
+          {/* The click is stopped on a wrapper rather than by widening Button's
+              onClick: the primitive is shared by every screen, and one caller
+              needing the event is not a reason to change its signature. */}
+          {isNewer && (
+            <span onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" size="sm" iconRight="chevRight" onClick={onUpgrade}>Upgrade</Button>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: "2px 14px 14px 37px" }}>
+          {isFetching && !notes && (
+            <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> Lade Release Notes…</div>
+          )}
+          {notes && !notes.available && (
+            <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}>{notes.reason ?? "Keine Release Notes verfügbar."}</div>
+          )}
+          {notes?.available && (
+            <div style={{ borderRadius: "var(--radius-sm)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "12px 14px" }}>
+              {notes.url && (
+                <a href={notes.url} target="_blank" rel="noreferrer noopener"
+                  style={{ float: "right", fontSize: 11.5, color: "var(--accent)", textDecoration: "none" }}>auf GitHub ↗</a>
+              )}
+              <div className="mc-scroll" style={{ maxHeight: 260, overflowY: "auto" }}>
+                <Markdown text={notes.body ?? ""} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HelmPage() {
   const navigate = useNavigate();
-  const [showPre, setShowPre] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data: release } = useQuery({
     queryKey: ["helm", "release"],
@@ -49,7 +133,17 @@ function HelmPage() {
   const st = release ? STATUS_MAP[release.status] ?? STATUS_MAP.pending : STATUS_MAP.pending;
   const current = release ? essVersion(release.chart_version) : "";
 
-  const visible = (versions ?? []).filter((v) => showPre || !v.prerelease);
+  // No pre-release filter any more. The twelve tags it used to hide were all
+  // `0.x.y-dev` build tags from the chart's first months, and they are now dropped
+  // where the other build tags are — in parseReleaseTag, on the server. What
+  // reaches this list is upgrade targets, so the list shows them (E43).
+  //
+  // `prerelease` survives on the row: a real `26.9.0-rc.1` would be a legitimate
+  // target worth marking. ESS has never published one.
+  const visible = versions ?? [];
+
+  const SHOWN = 25;
+  const shown = visible.slice(0, SHOWN);
   const latest = visible.find((v) => !v.prerelease) ?? visible[0];
   const behind = current && latest ? visible.filter((v) => !v.prerelease && cmpVersion(v.version, current) > 0) : [];
   const upToDate = !!current && !!latest && cmpVersion(latest.version, current) <= 0;
@@ -100,32 +194,29 @@ function HelmPage() {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(280px, 1fr)", gap: 22, alignItems: "start" }} className="mc-dash-grid">
         <Card pad={false}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px 12px", flexWrap: "wrap" }}>
-            <SectionTitle sub={versions ? `${visible.length} Versionen aus der OCI-Registry` : "Lade aus der OCI-Registry…"} icon="git">ESS-Versionen</SectionTitle>
-            <Button variant="ghost" size="sm" icon="eye" onClick={() => setShowPre((v) => !v)}>
-              {showPre ? "Nur Releases" : "Pre-Releases zeigen"}
-            </Button>
+            <SectionTitle
+              sub={versions
+                ? visible.length > SHOWN
+                  ? `${shown.length} von ${visible.length} Versionen aus der OCI-Registry`
+                  : `${visible.length} Versionen aus der OCI-Registry`
+                : "Lade aus der OCI-Registry…"}
+              icon="git">ESS-Versionen</SectionTitle>
           </div>
           <div style={{ padding: "0 8px 8px" }}>
             {versionsLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px", fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade Versionen…</div>}
-            {!versionsLoading && visible.length > 0 && visible.slice(0, 25).map((v, i) => {
-              const isCurrent = v.version === current;
-              const isNewer = current ? cmpVersion(v.version, current) > 0 : false;
-              return (
-                <div key={v.version} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "11px 14px", borderRadius: "var(--radius-sm)", background: isCurrent ? "var(--accent-soft)" : "transparent", borderBottom: i < Math.min(visible.length, 25) - 1 ? "1px solid var(--border-soft)" : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <StatusDot status={isCurrent ? "accent" : isNewer ? "warn" : "idle"} />
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 600, color: isCurrent ? "var(--accent)" : "var(--text)" }}>{v.version}</span>
-                    {i === 0 && !v.prerelease && <Badge tone="accent" size="sm">latest</Badge>}
-                    {isCurrent && <Badge tone="ok" size="sm">installiert</Badge>}
-                    {v.prerelease && <Badge tone="neutral" size="sm">pre-release</Badge>}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                    {v.published_at && <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{new Date(v.published_at).toLocaleDateString("de-DE")}</span>}
-                    {isNewer && <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/helm/upgrade", search: { version: v.version } })}>Upgrade</Button>}
-                  </div>
-                </div>
-              );
-            })}
+            {!versionsLoading && shown.map((v, i) => (
+              <VersionRow
+                key={v.version}
+                version={v}
+                isFirst={i === 0}
+                isCurrent={v.version === current}
+                isNewer={current ? cmpVersion(v.version, current) > 0 : false}
+                last={i === shown.length - 1}
+                expanded={expanded === v.version}
+                onToggle={() => setExpanded(expanded === v.version ? null : v.version)}
+                onUpgrade={() => navigate({ to: "/helm/upgrade", search: { version: v.version } })}
+              />
+            ))}
             {!versionsLoading && visible.length === 0 && <EmptyState icon="git" title="Keine Versionen entdeckt" sub="MatrixCtrl konnte die OCI-Registry nicht erreichen." />}
           </div>
         </Card>

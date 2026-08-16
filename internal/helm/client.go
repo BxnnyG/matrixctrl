@@ -1,10 +1,12 @@
 package helm
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -26,7 +28,34 @@ type Client struct {
 	// revCache holds the immutable per-revision facts the history page needs,
 	// keyed release → revision. Guarded by relMu (etappe 39).
 	revCache map[string]map[int]revisionFacts
+
+	// facts persists what revCache holds, so the cold read happens once per
+	// revision rather than once per process. Nil is supported and means
+	// memory-only: the page is then as fast as E39 left it and no slower
+	// (etappe 42).
+	facts RevisionStore
 }
+
+// RevisionStore persists per-revision facts across restarts.
+//
+// An interface rather than a *pgxpool.Pool so this package keeps not knowing about
+// the database — internal/helm talks to Helm and Kubernetes, and the one thing it
+// now wants to remember is passed in by whoever owns the connection.
+type RevisionStore interface {
+	LoadRevisionFacts(ctx context.Context, release string) (map[int]RevisionFact, error)
+	SaveRevisionFacts(ctx context.Context, release string, facts map[int]RevisionFact) error
+}
+
+// RevisionFact is the exported shape of what gets stored. Deliberately not the
+// unexported revisionFacts: a store implemented elsewhere should not have to reach
+// into this package's internals.
+type RevisionFact struct {
+	Chart      string
+	DeployedAt time.Time
+}
+
+// SetRevisionStore attaches persistence. Called once at startup, before serving.
+func (c *Client) SetRevisionStore(s RevisionStore) { c.facts = s }
 
 func New(namespace string) (*Client, error) {
 	flags := genericclioptions.NewConfigFlags(true)

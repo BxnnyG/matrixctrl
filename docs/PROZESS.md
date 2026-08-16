@@ -77,7 +77,7 @@ nothing here is a manual step for the operator.**
 
 ```bash
 go test ./...                      # Go unit tests
-cd web && ./node_modules/.bin/tsc --noEmit && npm run build
+cd web && ./node_modules/.bin/tsc -b --noEmit && npm run build
 make docker VERSION=<next>         # build the image
 docker save ghcr.io/bxnnyg/matrixctrl:<next> -o /tmp/mc.tar
 k3s ctr images import /tmp/mc.tar  # no registry pull; chart uses IfNotPresent
@@ -87,6 +87,15 @@ helm upgrade matrixctrl deploy/helm/matrixctrl -n matrixctrl \
 kubectl -n matrixctrl rollout status deploy/matrixctrl --timeout=180s
 ```
 
+> **`-b` is not optional either.** `web/tsconfig.json` carries `"files": []` and
+> nothing but project references, so plain `tsc --noEmit` type-checks *zero files*
+> and exits 0 no matter what is broken. It was the documented command here and in
+> CLAUDE.md until 2026-08-16, which means every "typecheck green" reported before
+> that date was a no-op. The errors still surfaced — the Dockerfile runs
+> `npm run build`, which ends in `tsc -b --noEmit` — but they surfaced eleven
+> minutes into an image build instead of in two seconds, and E42's image silently
+> never got built at all (E43).
+>
 > **`--set image.tag` is not optional.** The chart's committed default is
 > `tag: "latest"`, and CI rewrites it to the exact version only when it *packages a
 > released chart* (`release.yml`). A local deploy from the working tree therefore

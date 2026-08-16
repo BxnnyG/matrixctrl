@@ -19,6 +19,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as HooksIndexRouteImport } from './routes/hooks/index'
 import { Route as HelmIndexRouteImport } from './routes/helm/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
+import { Route as RoomsIdRouteImport } from './routes/rooms.$id'
 import { Route as HooksIdRouteImport } from './routes/hooks/$id'
 import { Route as HelmUpgradeRouteImport } from './routes/helm/upgrade'
 import { Route as HelmHistoryRouteImport } from './routes/helm/history'
@@ -77,6 +78,11 @@ const ConfigIndexRoute = ConfigIndexRouteImport.update({
   path: '/config/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoomsIdRoute = RoomsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => RoomsRoute,
+} as any)
 const HooksIdRoute = HooksIdRouteImport.update({
   id: '/hooks/$id',
   path: '/hooks/$id',
@@ -116,7 +122,7 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
-  '/rooms': typeof RoomsRoute
+  '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/rooms/$id': typeof RoomsIdRoute
   '/config/': typeof ConfigIndexRoute
   '/helm/': typeof HelmIndexRoute
   '/hooks/': typeof HooksIndexRoute
@@ -135,7 +142,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
-  '/rooms': typeof RoomsRoute
+  '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/rooms/$id': typeof RoomsIdRoute
   '/config': typeof ConfigIndexRoute
   '/helm': typeof HelmIndexRoute
   '/hooks': typeof HooksIndexRoute
@@ -155,7 +163,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
-  '/rooms': typeof RoomsRoute
+  '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/helm/history': typeof HelmHistoryRoute
   '/helm/upgrade': typeof HelmUpgradeRoute
   '/hooks/$id': typeof HooksIdRoute
+  '/rooms/$id': typeof RoomsIdRoute
   '/config/': typeof ConfigIndexRoute
   '/helm/': typeof HelmIndexRoute
   '/hooks/': typeof HooksIndexRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/rooms/$id'
     | '/config/'
     | '/helm/'
     | '/hooks/'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/rooms/$id'
     | '/config'
     | '/helm'
     | '/hooks'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/helm/history'
     | '/helm/upgrade'
     | '/hooks/$id'
+    | '/rooms/$id'
     | '/config/'
     | '/helm/'
     | '/hooks/'
@@ -234,7 +246,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
-  RoomsRoute: typeof RoomsRoute
+  RoomsRoute: typeof RoomsRouteWithChildren
   RtcRoute: typeof RtcRoute
   SetupRoute: typeof SetupRoute
   SystemRoute: typeof SystemRoute
@@ -323,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfigIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rooms/$id': {
+      id: '/rooms/$id'
+      path: '/$id'
+      fullPath: '/rooms/$id'
+      preLoaderRoute: typeof RoomsIdRouteImport
+      parentRoute: typeof RoomsRoute
+    }
     '/hooks/$id': {
       id: '/hooks/$id'
       path: '/hooks/$id'
@@ -375,10 +394,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface RoomsRouteChildren {
+  RoomsIdRoute: typeof RoomsIdRoute
+}
+
+const RoomsRouteChildren: RoomsRouteChildren = {
+  RoomsIdRoute: RoomsIdRoute,
+}
+
+const RoomsRouteWithChildren = RoomsRoute._addFileChildren(RoomsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
-  RoomsRoute: RoomsRoute,
+  RoomsRoute: RoomsRouteWithChildren,
   RtcRoute: RtcRoute,
   SetupRoute: SetupRoute,
   SystemRoute: SystemRoute,

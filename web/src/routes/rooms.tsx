@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -6,7 +6,12 @@ import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner } from "@/
 
 export const Route = createFileRoute("/rooms")({
   component: Rooms,
-  validateSearch: (s: Record<string, unknown>) => ({
+  // The return type is annotated with `error?:` rather than inferred. Inference
+  // produces `{ error: string | undefined }`, and TanStack reads a key that is
+  // merely *nullable* as required — which makes every `<Link to="/rooms">` in the
+  // app a type error demanding a `search` prop. `tsc -b` catches it; the bare
+  // `tsc --noEmit` in the old CLAUDE.md checked nothing at all (E43).
+  validateSearch: (s: Record<string, unknown>): { error?: string } => ({
     error: typeof s.error === "string" ? s.error : undefined,
   }),
 });
@@ -76,10 +81,21 @@ function ConnectPanel({ reason, error }: { reason?: string; error?: string }) {
           Administrator sein dürfen.
         </p>
 
+        {/* This paragraph used to claim the access was "nur für die
+            Admin-Schnittstelle, nicht für deine Nachrichten". That was false once
+            the client-API scope was added — and it had to be added, because Synapse
+            cannot tell whose token it is without it. "Kann nicht" and "tut nicht"
+            are different claims and only one of them is true (E42). */}
         <p style={{ fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.6, maxWidth: 620, margin: 0 }}>
-          Der Zugriff gilt nur für die Admin-Schnittstelle, nicht für deine Nachrichten,
-          und wird <strong>nicht gespeichert</strong>: nach einem Neustart des Panels ist
-          er weg und muss neu verbunden werden. Abmelden beendet ihn sofort.
+          Der Zugriff umfasst technisch die volle Matrix-API deines Kontos — Synapse
+          kann ein Token sonst keiner Person zuordnen. <strong>MatrixCtrl nutzt davon
+          ausschließlich die Admin-Schnittstelle</strong> und liest keine Nachrichten.
+          Es wird <strong>kein Gerät</strong> auf deinem Konto angelegt.
+        </p>
+
+        <p style={{ fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.6, maxWidth: 620, margin: 0 }}>
+          Der Zugriff wird <strong>nicht gespeichert</strong>: nach einem Neustart des
+          Panels ist er weg und muss neu verbunden werden. Abmelden beendet ihn sofort.
         </p>
 
         <Button variant="primary" icon="shield" onClick={() => connect.mutate()} disabled={connect.isPending}>
@@ -153,7 +169,12 @@ function Rooms() {
         </Card>
       )}
 
-      {needsConnect && <ConnectPanel reason="Der Matrix-Zugriff ist abgelaufen." />}
+      {/* A 409 after a successful connect used to render exactly the same panel as
+          "never connected", which is why the report read as "the button does
+          nothing" — it had in fact worked, and the token was being refused (E42). */}
+      {needsConnect && (
+        <ConnectPanel reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." />
+      )}
 
       {!notAdmin && !needsConnect && (
         <>
@@ -199,12 +220,16 @@ function Rooms() {
                     {list.map((r) => (
                       <tr key={r.room_id} style={{ borderTop: "1px solid var(--border)" }}>
                         <td style={{ padding: "10px 12px" }}>
-                          <div style={{ color: "var(--text)", fontWeight: 550 }}>
-                            {r.name || r.canonical_alias || r.room_id}
-                          </div>
-                          <div style={{ color: "var(--text-faint)", fontSize: 11.5, fontFamily: "var(--font-mono)" }}>
-                            {r.canonical_alias || r.room_id}
-                          </div>
+                          {/* The room ID goes in the path, and a room ID is not a
+                              word: `!AbCd:example.org`. Link's params encode it. */}
+                          <Link to="/rooms/$id" params={{ id: r.room_id }} style={{ textDecoration: "none" }}>
+                            <div style={{ color: "var(--text)", fontWeight: 550 }}>
+                              {r.name || r.canonical_alias || r.room_id}
+                            </div>
+                            <div style={{ color: "var(--text-faint)", fontSize: 11.5, fontFamily: "var(--font-mono)" }}>
+                              {r.canonical_alias || r.room_id}
+                            </div>
+                          </Link>
                         </td>
                         <td style={{ padding: "10px 12px", color: "var(--text-dim)" }}>
                           {r.joined_members}

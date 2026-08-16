@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useUpgradeStream } from "@/lib/ws";
+import { useUpgradeStream, type UpgradeProgress, type ProgressComponent } from "@/lib/ws";
 import { Card, Icon, Badge, Button, SectionTitle, Spinner } from "@/components/mc";
+import { Markdown } from "@/components/Markdown";
 
 export const Route = createFileRoute("/helm/upgrade")({
   component: UpgradeWizard,
@@ -73,68 +74,133 @@ function NotesPanel({ notes, loading, version }: { notes?: ReleaseNotes; loading
   );
 }
 
-/** A deliberately small markdown subset: headings, list items, links and inline
- *  code. Release notes have a fixed shape, and a markdown library for four
- *  constructs is a lot of bundle for a little text — the same reasoning that keeps
- *  Monaco behind a lazy boundary. */
-function Markdown({ text }: { text: string }) {
-  const lines = text.split("\n");
+const PHASES: { key: UpgradeProgress["phase"]; label: string }[] = [
+  { key: "config", label: "Konfiguration" },
+  { key: "apply", label: "Anwenden" },
+  { key: "rollout", label: "Rollout" },
+  { key: "hooks", label: "Hooks" },
+  { key: "done", label: "Fertig" },
+];
+
+/** Phases in which the cluster numbers mean something.
+ *
+ *  Before Helm has written anything, every workload still matches its old spec and
+ *  reads as ready — so a bar shown during `config` or `apply` would open at 100 %,
+ *  fall as pods roll, and climb back. The backend promotes `apply` to `rollout` the
+ *  moment a workload stops being settled, which is exactly when these become true. */
+const SHOWS_NUMBERS: UpgradeProgress["phase"][] = ["rollout", "hooks", "done"];
+
+const STATE_LABEL: Record<ProgressComponent["state"], string> = {
+  ready: "bereit",
+  pulling: "lädt Image",
+  starting: "startet",
+  failing: "Fehler",
+  waiting: "wartet",
+};
+
+const STATE_COLOR: Record<ProgressComponent["state"], string> = {
+  ready: "var(--status-ok)",
+  pulling: "var(--accent)",
+  starting: "var(--accent)",
+  failing: "var(--status-err)",
+  waiting: "var(--text-faint)",
+};
+
+/** The stepper. Answers "what is it doing" without reading the log upward. */
+function PhaseSteps({ phase }: { phase: UpgradeProgress["phase"] }) {
+  const at = Math.max(0, PHASES.findIndex((p) => p.key === phase));
   return (
-    <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
-      {lines.map((raw, i) => {
-        const line = raw.trimEnd();
-        if (line.trim() === "") return <div key={i} style={{ height: 6 }} />;
-
-        const heading = /^(#{1,4})\s+(.*)$/.exec(line);
-        if (heading) {
-          const level = heading[1].length;
-          return (
-            <div key={i} style={{ fontSize: level <= 2 ? 13.5 : 13, fontWeight: 650, color: "var(--text)", marginTop: i === 0 ? 0 : 12, marginBottom: 4 }}>
-              {inline(heading[2])}
+    <div style={{ display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap" }}>
+      {PHASES.map((p, i) => {
+        const done = i < at;
+        const active = i === at;
+        return (
+          <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", borderRadius: 999, background: active ? "var(--accent-soft)" : "transparent" }}>
+              <div style={{
+                display: "grid", placeItems: "center", width: 16, height: 16, borderRadius: 999, flexShrink: 0,
+                background: done ? "var(--status-ok)" : active ? "var(--accent)" : "var(--surface-2)",
+                color: done || active ? "var(--surface)" : "var(--text-faint)",
+                border: done || active ? "none" : "1px solid var(--border)",
+              }}>
+                {done ? <Icon name="check" size={10} /> : active ? <Spinner size={9} /> : null}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: active ? 650 : 500, color: done ? "var(--text-dim)" : active ? "var(--accent)" : "var(--text-faint)", whiteSpace: "nowrap" }}>
+                {p.label}
+              </span>
             </div>
-          );
-        }
-
-        const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
-        if (bullet) {
-          return (
-            <div key={i} style={{ display: "flex", gap: 8, paddingLeft: bullet[1].length * 6 }}>
-              <span style={{ color: "var(--text-faint)" }}>•</span>
-              <span style={{ flex: 1, minWidth: 0 }}>{inline(bullet[2])}</span>
-            </div>
-          );
-        }
-
-        return <div key={i} style={{ paddingLeft: /^\s+/.test(raw) ? 14 : 0 }}>{inline(line.trim())}</div>;
+            {i < PHASES.length - 1 && (
+              <div style={{ width: 16, height: 1, background: done ? "var(--status-ok)" : "var(--border)", flexShrink: 0 }} />
+            )}
+          </div>
+        );
       })}
     </div>
   );
 }
 
-/** Inline links and code. Everything else is rendered as text — an unrecognised
- *  construct should look plain, never be interpreted as markup. */
-function inline(text: string): React.ReactNode[] {
-  const out: React.ReactNode[] = [];
-  const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let key = 0;
+/** Per-component state, live.
+ *
+ *  The denominator is workloads, not pods. A pod count churns — old pods terminate
+ *  while new ones start, so "4 of 9" can fall while everything is going right —
+ *  whereas the workload set is fixed for the operation and is what `helm --wait` is
+ *  itself waiting on. */
+function ProgressPanel({ progress, elapsed }: { progress: UpgradeProgress; elapsed: number }) {
+  const pct = progress.total > 0 ? Math.round((progress.ready / progress.total) * 100) : 0;
+  const showNumbers = progress.total > 0 && SHOWS_NUMBERS.includes(progress.phase);
 
-  while ((m = pattern.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
-    if (m[1] !== undefined && /^https?:\/\//.test(m[2])) {
-      // Only http(s). A javascript: or data: URL in third-party text must not
-      // become a clickable link in an admin panel.
-      out.push(<a key={key++} href={m[2]} target="_blank" rel="noreferrer noopener" style={{ color: "var(--accent)", textDecoration: "none" }}>{m[1]}</a>);
-    } else if (m[1] !== undefined) {
-      out.push(m[1]);
-    } else {
-      out.push(<code key={key++} style={{ fontFamily: "var(--mono)", fontSize: 11.5, background: "var(--surface)", padding: "1px 4px", borderRadius: 3 }}>{m[3]}</code>);
-    }
-    last = pattern.lastIndex;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <PhaseSteps phase={progress.phase} />
+        {/* Ticks every second in the client. The backend's 30 s log line was the
+            only sign of life on a healthy upgrade, which is precisely when the
+            panel was quietest. */}
+        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-faint)", flexShrink: 0 }}>
+          {formatElapsed(elapsed)}
+        </span>
+      </div>
+
+      {showNumbers && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-dim)" }}>
+            <span>{progress.ready} von {progress.total} Komponenten bereit</span>
+            <span style={{ fontFamily: "var(--mono)" }}>{pct}%</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 999, background: "var(--surface-2)", overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: "var(--accent)", transition: "width 400ms ease" }} />
+          </div>
+        </div>
+      )}
+
+      {showNumbers && progress.components && progress.components.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {progress.components.map((c, i) => (
+            <div key={c.name} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid var(--border-soft)" }}>
+              <div style={{ width: 7, height: 7, borderRadius: 999, background: STATE_COLOR[c.state], flexShrink: 0, marginTop: 5 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--text)", overflowWrap: "anywhere" }}>{c.name}</span>
+                  <span style={{ fontSize: 11.5, color: STATE_COLOR[c.state] }}>{STATE_LABEL[c.state]}</span>
+                </div>
+                {c.detail && (
+                  <div style={{ fontSize: 11.5, color: "var(--status-err)", marginTop: 3, overflowWrap: "anywhere" }}>{c.detail}</div>
+                )}
+              </div>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>
+                {c.ready}/{c.desired}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
 function UpgradeWizard() {
@@ -146,6 +212,19 @@ function UpgradeWizard() {
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [finalStatus, setFinalStatus] = useState<string | null>(null);
+  const [progress, setProgress] = useState<UpgradeProgress | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [showLog, setShowLog] = useState(false);
+
+  // The elapsed clock runs in the client. It used to arrive as a log line every
+  // 30 s, which meant the only evidence that a healthy upgrade was alive appeared
+  // twice a minute — and the probe's diagnosis is deduped, so a *smooth* rollout
+  // produced the least output of all (E43).
+  useEffect(() => {
+    if (!upgradeId || done) return;
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [upgradeId, done]);
 
   const { data: current } = useQuery({
     queryKey: ["helm", "release"],
@@ -173,6 +252,8 @@ function UpgradeWizard() {
       setLogs([]);
       setDone(false);
       setFinalStatus(null);
+      setProgress(null);
+      setElapsed(0);
     },
   });
 
@@ -181,10 +262,19 @@ function UpgradeWizard() {
       setLogs((prev) => [...prev, line]);
       setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30);
     },
+    onProgress: setProgress,
     onDone: (status) => {
       setDone(true);
       setFinalStatus(status);
-      if (status === "success") setTimeout(() => navigate({ to: "/helm" }), 3000);
+      // Collapsed by default, opened on failure. The structured panel is the thing
+      // to read while an upgrade is going well; the moment it is not, the log is,
+      // and making the operator hunt for it at that point would be the wrong
+      // trade in the one situation that matters.
+      if (status !== "success") setShowLog(true);
+      // Longer than the old three seconds. The point of this screen is now the
+      // finished component table, and redirecting off it before it can be read
+      // undoes the work.
+      if (status === "success") setTimeout(() => navigate({ to: "/helm" }), 6000);
     },
   });
 
@@ -237,10 +327,32 @@ function UpgradeWizard() {
         </Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", minHeight: 200, maxHeight: 400, overflowY: "auto", lineHeight: 1.6 }}>
-            {logs.map((line, i) => <div key={i}>{line}</div>)}
-            {!done && <div style={{ animation: "mc-ping 1.2s ease infinite", marginTop: 2 }}>▋</div>}
+          {progress ? (
+            <ProgressPanel progress={progress} elapsed={elapsed} />
+          ) : (
+            <Card style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-dim)" }}>
+              <Spinner size={14} /> Upgrade wird gestartet…
+            </Card>
+          )}
+
+          <div>
+            <Button variant="ghost" size="sm" icon={showLog ? "chevDown" : "chevRight"} onClick={() => setShowLog((v) => !v)}>
+              {showLog ? "Log ausblenden" : `Log anzeigen (${logs.length} Zeilen)`}
+            </Button>
           </div>
+
+          {/* whiteSpace/overflowWrap are the fix, not styling. `overflowY: auto`
+              computes overflow-x to `auto` as well, so the 200-character pinned-tag
+              warning made the box scroll sideways — and the auto-scroll only ever
+              set `top`, leaving the view parked to the right while the cursor sat at
+              x=0. That is the "cursor verschwindet nach links ausm frame" the
+              operator reported. Wrapping removes the horizontal axis entirely. */}
+          {showLog && (
+            <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", minHeight: 160, maxHeight: 400, overflowY: "auto", overflowX: "hidden", whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.6 }}>
+              {logs.map((line, i) => <div key={i}>{line}</div>)}
+              {!done && <span style={{ animation: "mc-ping 1.2s ease infinite" }}>▋</span>}
+            </div>
+          )}
 
           {done && finalStatus === "success" && (
             <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>

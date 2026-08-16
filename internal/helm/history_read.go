@@ -3,6 +3,7 @@ package helm
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -43,6 +44,10 @@ const (
 	// path exists to do once. Exceeding this costs the old latency, never a wrong
 	// answer.
 	historyProbeTimeout = probeTimeout
+
+	// persistTimeout bounds the write-behind. Short: nothing waits on it, and a
+	// database that is slow to accept a cache row should not hold a request open.
+	persistTimeout = 5 * time.Second
 )
 
 // revisionMeta is what a release secret's labels reveal without decoding it.
@@ -135,17 +140,33 @@ func (c *Client) listHistoryFast(name string, max int) ([]RevisionEntry, error) 
 		metas = metas[:max]
 	}
 
-	missing := make([]int, 0, len(metas))
-	for _, m := range metas {
-		if _, ok := c.revisionFacts(name, m.Revision); !ok {
-			missing = append(missing, m.Revision)
+	missing := c.missingRevisions(name, metas)
+
+	// Ask the store before decoding anything. This is what makes the cold read a
+	// once-per-*revision* cost instead of a once-per-*process* one: the map dies
+	// with the pod, and the operator measured 7.7 s because a deploy had reset it
+	// (etappe 42).
+	if len(missing) > 0 && c.facts != nil {
+		if stored, err := c.facts.LoadRevisionFacts(ctx, name); err == nil {
+			for rev, f := range stored {
+				c.storeRevisionFacts(name, rev, revisionFacts{Chart: f.Chart, DeployedAt: f.DeployedAt})
+			}
+			missing = c.missingRevisions(name, metas)
 		}
+		// A store that cannot be read costs the decode it was meant to avoid, and
+		// nothing else. It is not reported: the page is correct either way, and a
+		// warning about a cache is noise on a screen about upgrades.
 	}
 
 	if len(missing) > 0 {
 		if err := c.fillRevisionFacts(name, missing); err != nil {
 			return nil, err
 		}
+		// A fresh context, deliberately. `ctx` carries historyProbeTimeout, which
+		// bounds the 56 ms label list — by the time a bulk decode has finished it is
+		// long expired, so persisting under it would fail every single time and the
+		// store would silently never fill.
+		c.persistRevisions(name, missing)
 	}
 
 	entries := make([]RevisionEntry, 0, len(metas))
@@ -192,4 +213,41 @@ func (c *Client) fillRevisionFacts(name string, missing []int) error {
 		c.storeRevisionFacts(name, rel.Version, factsOf(rel))
 	}
 	return nil
+}
+
+// missingRevisions is the set of revisions whose facts are not in memory.
+func (c *Client) missingRevisions(name string, metas []revisionMeta) []int {
+	out := make([]int, 0, len(metas))
+	for _, m := range metas {
+		if _, ok := c.revisionFacts(name, m.Revision); !ok {
+			out = append(out, m.Revision)
+		}
+	}
+	return out
+}
+
+// persistRevisions writes freshly decoded facts to the store, best effort.
+//
+// Failing to persist costs the next process the same decode. That is the situation
+// this feature exists to improve, not a correctness problem, so it does not
+// propagate: an upgrade page that refuses to render because a cache write failed
+// would be a worse product than a slow one.
+func (c *Client) persistRevisions(name string, revs []int) {
+	if c.facts == nil || len(revs) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	out := make(map[int]RevisionFact, len(revs))
+	for _, rev := range revs {
+		if f, ok := c.revisionFacts(name, rev); ok {
+			out[rev] = RevisionFact{Chart: f.Chart, DeployedAt: f.DeployedAt}
+		}
+	}
+	if len(out) == 0 {
+		return
+	}
+	if err := c.facts.SaveRevisionFacts(ctx, name, out); err != nil {
+		log.Printf("helm: could not persist revision facts for %s: %v", name, err)
+	}
 }

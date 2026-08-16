@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ import (
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
+	"github.com/bxnnyg/matrixctrl/internal/rollout"
 )
 
 func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +55,16 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 	// Run upgrade async
 	go func() {
 		ctx := context.Background()
+		started := time.Now()
+
+		// The snapshot goroutine runs for the whole operation, across every phase,
+		// so the component table is live during the hooks too — the phase after the
+		// one the old progress ticker covered, and the one that restarts the SFU.
+		stream.setPhase(rollout.PhaseConfig)
+		stopSnapshots := stream.startSnapshots(snapshotInterval,
+			h.progressSnapshot(ctx, stream, started))
+		defer stopSnapshots()
+
 		stream.emit("Starting upgrade to " + req.ToVersion + "...")
 
 		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running' WHERE id=$1", upgradeUUID)
@@ -82,6 +94,10 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			stream.emit("WARNUNG: " + line)
 		}
 
+		// Apply, not rollout: helm has not written anything yet. The snapshot
+		// promotes this to `rollout` the moment a workload stops being settled,
+		// which is the observable definition of "the rollout has begun".
+		stream.setPhase(rollout.PhaseApply)
 		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
 		result, err := h.helm.Upgrade(ctx, name, req.ToVersion, values)
 		stopProgress()
@@ -93,7 +109,10 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		stream.emit(fmt.Sprintf(`{"revision":%s,"status":"%s"}`, intToStr(result.Revision), result.Status))
+		// The raw `{"revision":…,"status":…}` line that used to be emitted here went
+		// straight into the operator's log view as a JSON blob, immediately above the
+		// human sentence saying the same thing. Nothing consumed it (E43).
+		stream.setPhase(rollout.PhaseHooks)
 		stream.emit("Helm upgrade successful (revision " + intToStr(result.Revision) + "). Running post-upgrade hooks...")
 
 		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running-hooks', helm_revision=$1 WHERE id=$2",
@@ -120,6 +139,10 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 		} else {
 			stream.emit("WARNING: Post-upgrade hooks failed. Check hooks page and re-run manually.")
 		}
+		// Phase before finish, not after: finish closes the subscriber channels, and
+		// a client that gets "done" while the stepper still reads "hooks" shows a
+		// finished upgrade stuck on its second-to-last step.
+		stream.setPhase(rollout.PhaseDone)
 		stream.finish(finalStatus)
 	}()
 
@@ -167,6 +190,14 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		ctx := context.Background()
+		started := time.Now()
+
+		// Applying config is the same operation with the same chart version, so it
+		// gets the same view. It is also the one an operator runs most often.
+		stream.setPhase(rollout.PhaseConfig)
+		stopSnapshots := stream.startSnapshots(snapshotInterval,
+			h.progressSnapshot(ctx, stream, started))
+		defer stopSnapshots()
 
 		sha, commitErr := h.configStore.Commit(ctx, commitMsg, userID)
 		if commitErr != nil {
@@ -198,6 +229,7 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
+		stream.setPhase(rollout.PhaseApply)
 		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
 		result, err := h.helm.Upgrade(ctx, name, currentVersion, values)
 		stopProgress()
@@ -209,6 +241,7 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		stream.setPhase(rollout.PhaseHooks)
 		stream.emit(fmt.Sprintf("Helm apply successful (revision %s). Running post-upgrade hooks...", intToStr(result.Revision)))
 		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running-hooks', helm_revision=$1 WHERE id=$2",
 			result.Revision, upgradeUUID)
@@ -233,6 +266,7 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		} else {
 			stream.emit("WARNING: Post-upgrade hooks failed. Check the Hooks page.")
 		}
+		stream.setPhase(rollout.PhaseDone)
 		stream.finish(finalStatus)
 	}()
 

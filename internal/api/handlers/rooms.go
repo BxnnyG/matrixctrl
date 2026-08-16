@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
@@ -131,4 +134,68 @@ func writeSynapseError(w http.ResponseWriter, err error) {
 		}
 	}
 	Error(w, http.StatusBadGateway, "Die Raumliste konnte nicht geladen werden.")
+}
+
+// GET /api/v1/rooms/{id} — one room, with its block state.
+func (h *RoomsHandler) Detail(w http.ResponseWriter, r *http.Request) {
+	client := h.client(authmw.UserIDFromContext(r.Context()))
+	if client == nil {
+		Error(w, http.StatusServiceUnavailable, "Synapse ist nicht erreichbar")
+		return
+	}
+	room, err := client.GetRoom(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeSynapseError(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, room)
+}
+
+// GET /api/v1/rooms/{id}/members — one page of joined members.
+func (h *RoomsHandler) Members(w http.ResponseWriter, r *http.Request) {
+	client := h.client(authmw.UserIDFromContext(r.Context()))
+	if client == nil {
+		Error(w, http.StatusServiceUnavailable, "Synapse ist nicht erreichbar")
+		return
+	}
+	q := r.URL.Query()
+	from, _ := strconv.Atoi(q.Get("from"))
+	limit, _ := strconv.Atoi(q.Get("limit"))
+
+	page, err := client.ListMembers(r.Context(), chi.URLParam(r, "id"), from, limit)
+	if err != nil {
+		writeSynapseError(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, page)
+}
+
+// PUT /api/v1/rooms/{id}/block — refuse or allow new joins.
+//
+// The only room moderation this etappe ships, because it is the only one that can be
+// undone. Deleting a room evicts every member and purges its history; that gets its
+// own etappe, as user deactivation did.
+func (h *RoomsHandler) Block(w http.ResponseWriter, r *http.Request) {
+	client := h.client(authmw.UserIDFromContext(r.Context()))
+	if client == nil {
+		Error(w, http.StatusServiceUnavailable, "Synapse ist nicht erreichbar")
+		return
+	}
+
+	var body struct {
+		Block *bool `json:"block"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Block == nil {
+		// A missing field is refused rather than defaulted. Guessing wrong here
+		// either blocks a room nobody asked to block or silently declines to.
+		Error(w, http.StatusBadRequest, "Es fehlt die Angabe, ob der Raum gesperrt werden soll.")
+		return
+	}
+
+	blocked, err := client.SetBlocked(r.Context(), chi.URLParam(r, "id"), *body.Block)
+	if err != nil {
+		writeSynapseError(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"blocked": blocked})
 }

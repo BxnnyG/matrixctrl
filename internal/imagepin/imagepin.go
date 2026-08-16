@@ -123,6 +123,13 @@ func prefixTrim(s string) string {
 }
 
 // Describe renders the findings for a log line during an upgrade.
+//
+// Each grammatical number is written out in full rather than assembled from
+// fragments. The clever version interpolated `plural(n, "", "n werden")` into a
+// template that still carried its own `wird`, so every plural read "Diese
+// Komponenten werden wird vom Upgrade nicht mit aktualisiert." — which the
+// operator duly saw during the 26.8.0 upgrade, on the one warning line the whole
+// mechanism exists to produce (E43). Singular was correct, which is how it lasted.
 func Describe(findings []Finding) string {
 	if len(findings) == 0 {
 		return ""
@@ -131,18 +138,17 @@ func Describe(findings []Finding) string {
 	for _, f := range findings {
 		parts = append(parts, f.String())
 	}
-	n := len(findings)
-	return fmt.Sprintf("%d Image-Tag%s in der Config %s älter als im Chart: %s. "+
-		"Diese Komponente%s wird vom Upgrade nicht mit aktualisiert.",
-		n, plural(n, "", "s"), plural(n, "ist", "sind"),
-		strings.Join(parts, " · "), plural(n, "", "n werden"))
-}
+	list := strings.Join(parts, " · ")
 
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
+	if len(findings) == 1 {
+		return fmt.Sprintf(
+			"1 Image-Tag in der Config ist älter als im Chart: %s. "+
+				"Diese Komponente wird vom Upgrade nicht mit aktualisiert.", list)
 	}
-	return many
+	return fmt.Sprintf(
+		"%d Image-Tags in der Config sind älter als im Chart: %s. "+
+			"Diese Komponenten werden vom Upgrade nicht mit aktualisiert.",
+		len(findings), list)
 }
 
 // ExtractTags pulls `<component>.image.tag` out of a merged values map.

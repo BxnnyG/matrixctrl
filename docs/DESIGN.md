@@ -1292,3 +1292,115 @@ managed namespace, **7/7** forbidden powers denied, and the eight confined
 permissions denied in `kube-system` while still granted in `ess`. That last pair is
 the point — checking only the denial would pass equally well against a role that
 grants nothing, which is a broken panel rather than a safe one. Affects S9, S13.
+
+### §4.39 — A verb that sounds more final than it is (2026-08-16, agent, etappe 41)
+
+E28 established that every write dialog must state what the verb actually does,
+after `deactivate` turned out to GDPR-erase by default — a verb doing **more** than
+its name suggested.
+
+Room blocking is the mirror image. Synapse's block flag refuses **new joins** and
+nothing else: everyone already in the room stays, every message stays, and the
+conversation carries on. An admin who blocks a room to stop something happening and
+walks away has not stopped it. The same rule therefore produces the opposite text —
+the dialog spends its words on what blocking *does not* do, because that is the part
+a reasonable person would otherwise assume.
+
+It ships alone, without deletion, for the reason E36 gave and then partly got wrong:
+E36 grouped blocking with deleting as "destructive". Blocking is a flag with an
+inverse; deleting evicts every member and purges history and has none. Grouping a
+reversible action with an irreversible one delays the safe half for the sake of the
+dangerous one.
+
+Two smaller decisions worth keeping:
+
+- **The block state is read back after the write, never assumed.** A 200 on the PUT
+  says the request was accepted, not that the flag is now set, and the UI renders
+  that field as a fact. §4.20 made the same distinction for release status.
+- **Unblocking needs no confirmation; blocking does.** The confirmation exists
+  because the action changes what *other people* can do. Restoring the default takes
+  nothing away, and a control whose reverse is hard to find is one operators avoid
+  using at all.
+
+**Consequences:** room IDs contain `!` and `:` and are path-escaped rather than
+concatenated — a test uses real IDs, because a hand-typed example would pass either
+way. Synapse's member endpoint has no paging of its own, so the boundaries are ours
+and `sliceMembers` is separated out to be tested without a server: every failure
+there is an off-by-one at an edge, and edges are what never come up while clicking
+through a small room. Affects S13.
+
+### §4.40 — A command that reports success without doing its job (2026-08-16, agent, etappe 43)
+
+`web/tsconfig.json` contains `"files": []` and two project references. Plain
+`tsc --noEmit` therefore type-checks *zero files* and exits 0 whatever the code says.
+That was the command in CLAUDE.md and in PROZESS.md's ship checklist for the life of
+the project, so every "typecheck green" reported before this date was a no-op.
+
+The errors were never invisible — the Dockerfile ends `npm run build` with
+`tsc -b --noEmit`, which is the real check. But that runs eleven minutes into an
+image build, and its failure is a hundred lines of BuildKit output ending in
+`exit code: 2`. E42's build failed exactly this way, the failure went unread, and
+**0.1.43 did not exist** while two etappes were recorded as built.
+
+This is the third instance of one shape, and worth naming as a class:
+
+| The report | What it was actually about |
+|---|---|
+| `rollout status` succeeded (§4.17) | the *old* Deployment, untouched |
+| `helm list` said APP VERSION 0.1.33 | the chart's label, not the running image |
+| `tsc --noEmit` exited 0 | zero files, not zero errors |
+
+Each answered its own question correctly and none answered the question being asked.
+The defence is the same one PROZESS.md already applies to deploys: **read back the
+subject, not the verdict.** A check that cannot say *what it checked* is not a check.
+
+**Consequences:** the documented command is `tsc -b --noEmit`, with the trap written
+down beside the `--set image.tag` one, since they fail identically. The four errors
+it had been hiding were real — TanStack treats a `validateSearch` return type of
+`{ error: string | undefined }` as a *required* search param, so every
+`<Link to="/rooms">` in the app was a type error. Annotating the return type as
+`{ error?: string }` is the fix.
+
+### §4.41 — A progress bar has to have an honest denominator (2026-08-16, operator + agent, etappe 43)
+
+§4.29 replaced a clock that never looked at the cluster with a probe that reports
+which pod is stuck and why. It fixed the failing case and left the healthy one
+worse than it looked: the probe's diagnosis is deduplicated, so a *smooth* rollout
+emits one line and then nothing, and the operator watching a working upgrade sees
+the least output of any scenario. Reported during the 26.8.0 upgrade as "man sieht
+nicht genau was passiert".
+
+Three choices made the structured version honest rather than merely prettier.
+
+**Workloads, not pods, are the denominator.** During a rollout old pods terminate
+while new ones start, so a pod-based ratio falls while everything is going right. A
+bar that goes backwards is worse than no bar. The workload set is fixed for the
+operation, and is what `helm --wait` is itself waiting on.
+
+**Generation is part of "ready".** A Deployment Helm has just patched still has
+every old replica matching the old spec, so the replica counters alone call it
+ready. Every workload is in that state in the first moments of an upgrade — the
+screen would open at 100 %, fall, and climb back. While `Generation > ObservedGeneration`
+the controller has not seen the new spec, which is exactly "not started".
+
+**"Pulling an image" cannot come from the pod.** Its container status reads
+`ContainerCreating` while pulling, mounting a volume and attaching a network alike,
+and those have very different expected durations — the operator specifically asked
+to be able to tell them apart. The kubelet says which it is, as an event, so that is
+where it is read from, bounded by a field selector and by the operation's own start
+time (events live an hour; without the cut a pod that pulled fifty minutes ago reads
+as pulling now).
+
+The progress snapshot is a **latest value, not an event stream**: it is stored on the
+stream and pulled by the WebSocket rather than pushed through the log's subscriber
+channel. A client that reconnects or drops a frame renders the current truth on the
+next tick instead of folding a history. It also keeps the log path exactly as
+reliable as it was — the log is the audit trail, and it must not begin dropping lines
+because a progress feature shares its buffer.
+
+**Consequences:** phases are announced by the code that performs them, never
+inferred; there is no `apply` step in the stepper because helm's Upgrade applies and
+waits in one blocking call and the boundary is not observable. `internal/rollout`
+keeps its no-client-go rule, so the assembly is a pure function with unit tests, and
+a live test proves the two reads it depends on are permitted under E40's namespaced
+Role and that Generation is actually populated. Affects S11.

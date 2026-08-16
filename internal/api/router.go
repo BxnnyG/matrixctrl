@@ -77,6 +77,12 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/rooms/state", deps.Rooms.State)
 			r.Post("/api/v1/rooms/connect", deps.Rooms.Connect)
 			r.Get("/api/v1/rooms", deps.Rooms.List)
+			// Registered after /rooms/state so the literal path wins over {id}.
+			// chi matches static segments first regardless, but the order also has
+			// to read correctly to whoever adds the next route (etappe 41).
+			r.Get("/api/v1/rooms/{id}", deps.Rooms.Detail)
+			r.Get("/api/v1/rooms/{id}/members", deps.Rooms.Members)
+			r.Put("/api/v1/rooms/{id}/block", deps.Rooms.Block)
 		}
 
 		if deps.Audit != nil {

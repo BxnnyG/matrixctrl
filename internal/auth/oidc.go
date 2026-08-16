@@ -92,11 +92,32 @@ const loginScope = "openid email"
 // SynapseAdminScope is what Synapse's admin API requires. MAS grants it only to
 // accounts with `can_request_admin`, so the privilege check lives upstream of any
 // code here.
-//
-// Deliberately *not* `urn:matrix:org.matrix.msc2967.client:api:*`: that grants the
-// full client-server API and creates a device on the account, which would let this
-// panel read the operator's messages. Rooms need the admin API and nothing more.
 const SynapseAdminScope = "urn:synapse:admin:*"
+
+// clientAPIScope has to accompany it, and E36 left it out on purpose:
+//
+//	"Deliberately *not* urn:matrix:org.matrix.msc2967.client:api:*: that grants the
+//	 full client-server API and creates a device on the account, which would let
+//	 this panel read the operator's messages."
+//
+// The reasoning about what it grants was right. The conclusion was wrong, and
+// Synapse says so in one line:
+//
+//	SynapseError: 401 - Token doesn't grant access to the Matrix C-S API
+//
+// Under MSC3861 the C-S scope is what resolves a token **to a user**. The admin
+// scope says what that user may do; without the other one there is no user for it
+// to apply to, so an admin-only token is not something Synapse can act on. The
+// authorization succeeded, the token was stored, and every admin call then failed
+// with a 401 that the UI rendered as "not connected" (etappe 42).
+//
+// The **device** scope is still deliberately absent —
+// `urn:matrix:org.matrix.msc2967.client:device:<id>` is separate, so no device is
+// created on the operator's account. What this does concede is real and is stated
+// in the connect panel rather than glossed: the token *could* read the operator's
+// messages, and MatrixCtrl does not. "Cannot" and "does not" are different claims,
+// and only one of them is true.
+const clientAPIScope = "urn:matrix:org.matrix.msc2967.client:api:*"
 
 const (
 	purposeLogin = "login"
@@ -112,7 +133,7 @@ func (o *OIDCService) AuthURL(ctx context.Context) (string, error) {
 // SynapseAdminAuthURL starts the separate authorization that grants the panel the
 // operator's Synapse admin authority, for rooms and moderation (E36).
 func (o *OIDCService) SynapseAdminAuthURL(ctx context.Context) (string, error) {
-	return o.authURL(ctx, "openid "+SynapseAdminScope, PurposeSynapseAdmin)
+	return o.authURL(ctx, "openid "+clientAPIScope+" "+SynapseAdminScope, PurposeSynapseAdmin)
 }
 
 func (o *OIDCService) authURL(ctx context.Context, scope, purpose string) (string, error) {
@@ -350,10 +371,20 @@ func (o *OIDCService) SynapseAdminTokens(ctx context.Context, code string) (acce
 		return "", "", 0, fmt.Errorf("no access token in the response")
 	}
 	// MAS may grant fewer scopes than were asked for. Silently keeping a token that
-	// cannot reach the admin API would surface later as an unexplained 403 from
-	// Synapse, far from the cause.
-	if tr.Scope != "" && !strings.Contains(tr.Scope, SynapseAdminScope) {
-		return "", "", 0, fmt.Errorf("this account was not granted Synapse admin access")
+	// cannot reach the admin API would surface later as an unexplained failure from
+	// Synapse, far from the cause — which is precisely what happened when the C-S
+	// scope was missing and only the admin one was checked here: the token was
+	// stored, the page said "connected", and every call answered 401 (etappe 42).
+	//
+	// Both are required, and each has its own message: "not an admin" and "the
+	// grant was incomplete" send the operator to different places.
+	if tr.Scope != "" {
+		if !strings.Contains(tr.Scope, SynapseAdminScope) {
+			return "", "", 0, fmt.Errorf("this account was not granted Synapse admin access")
+		}
+		if !strings.Contains(tr.Scope, clientAPIScope) {
+			return "", "", 0, fmt.Errorf("the Matrix grant is incomplete: without %s Synapse cannot tell whose token this is", clientAPIScope)
+		}
 	}
 	if tr.ExpiresIn <= 0 {
 		tr.ExpiresIn = 300 // measured MAS default; a missing value must not read as "already expired"

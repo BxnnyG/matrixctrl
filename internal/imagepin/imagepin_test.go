@@ -168,7 +168,12 @@ func TestDescribeAgreesInNumber(t *testing.T) {
 	if !strings.Contains(two, "2 Image-Tags in der Config sind älter") {
 		t.Errorf("plural: %s", two)
 	}
-	if !strings.Contains(two, "Diese Komponenten werden") {
-		t.Errorf("plural tail: %s", two)
+	// Asserted whole, and by suffix. The earlier version checked
+	// Contains(…, "Diese Komponenten werden"), which is a prefix of the broken
+	// "Diese Komponenten werden wird vom Upgrade nicht mit aktualisiert." — so the
+	// bug shipped past a test that reads as though it covers exactly this (E43).
+	const wantTail = "Diese Komponenten werden vom Upgrade nicht mit aktualisiert."
+	if !strings.HasSuffix(two, wantTail) {
+		t.Errorf("plural tail: got %q, want suffix %q", two, wantTail)
 	}
 }

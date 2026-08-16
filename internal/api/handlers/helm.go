@@ -91,21 +91,80 @@ func (h *HelmHandler) rolloutProbe(ctx context.Context) probeFunc {
 		return nil
 	}
 	return func() string {
-		pods := h.k8s.RolloutState(ctx, h.essNS)
-		states := make([]rollout.PodState, 0, len(pods))
-		for _, p := range pods {
-			cs := make([]rollout.ContainerState, 0, len(p.Containers))
-			for _, c := range p.Containers {
-				cs = append(cs, rollout.ContainerState{
-					Name: c.Name, Init: c.Init, Waiting: c.Waiting,
-					LastExitCode: c.LastExitCode, Terminated: c.Terminated, Message: c.Message,
-				})
-			}
-			states = append(states, rollout.PodState{
-				Name: p.Name, Ready: p.Ready, Phase: p.Phase, Containers: cs,
+		return rollout.Describe(rollout.Assess(podStates(h.k8s.RolloutState(ctx, h.essNS))))
+	}
+}
+
+// podStates converts a cluster read into the shape internal/rollout reasons about.
+// Shared by the log probe and the progress snapshot, which read the same pods.
+func podStates(pods []k8s.RolloutPod) []rollout.PodState {
+	states := make([]rollout.PodState, 0, len(pods))
+	for _, p := range pods {
+		cs := make([]rollout.ContainerState, 0, len(p.Containers))
+		for _, c := range p.Containers {
+			cs = append(cs, rollout.ContainerState{
+				Name: c.Name, Init: c.Init, Waiting: c.Waiting,
+				LastExitCode: c.LastExitCode, Terminated: c.Terminated, Message: c.Message,
 			})
 		}
-		return rollout.Describe(rollout.Assess(states))
+		states = append(states, rollout.PodState{
+			Name: p.Name, Ready: p.Ready, Phase: p.Phase, Containers: cs,
+		})
+	}
+	return states
+}
+
+// progressSnapshot builds the structured view the upgrade screen renders.
+//
+// `since` is the moment the operation started: it bounds which image pulls count as
+// this upgrade's. Kubernetes keeps events for an hour, so without the cut a pod that
+// pulled fifty minutes ago would still be reported as pulling.
+func (h *HelmHandler) progressSnapshot(ctx context.Context, stream *upgradeStream, since time.Time) func() *rollout.Progress {
+	if h.k8s == nil || h.essNS == "" {
+		return nil
+	}
+	return func() *rollout.Progress {
+		phase := stream.currentPhase()
+		workloads := h.k8s.WorkloadRollout(ctx, h.essNS)
+		if len(workloads) == 0 {
+			// No cluster answer at all. Reporting "0 of 0 ready" would render an
+			// empty table that looks like a finished upgrade, so the phase alone
+			// travels and the UI keeps whatever it had.
+			return &rollout.Progress{Phase: phase}
+		}
+		ws := make([]rollout.Workload, 0, len(workloads))
+		for _, w := range workloads {
+			ws = append(ws, rollout.Workload{
+				Kind: w.Kind, Name: w.Name, Desired: w.Desired,
+				Updated: w.Updated, Ready: w.Ready,
+				Generation: w.Generation, Observed: w.Observed,
+			})
+		}
+		// Promote apply → rollout on the first sign that Helm has written something.
+		//
+		// This is the one phase transition the code performing the operation cannot
+		// announce: helm's Upgrade applies the manifests and waits for them in a
+		// single blocking call, so from the caller's side there is no boundary to
+		// report. It is read rather than guessed — "a workload is no longer settled"
+		// *is* "the rollout has begun" — and it only ever moves forward.
+		//
+		// It matters because until Helm writes, every workload still matches its old
+		// spec and counts as ready. Showing the bar during `apply` would open the
+		// screen at 100 %, drop it, and climb back.
+		if phase == rollout.PhaseApply {
+			for _, w := range workloads {
+				if !w.Done() {
+					phase = rollout.PhaseRollout
+					stream.setPhase(phase)
+					break
+				}
+			}
+		}
+
+		p := rollout.BuildProgress(phase, ws,
+			podStates(h.k8s.RolloutState(ctx, h.essNS)),
+			h.k8s.PullingPods(ctx, h.essNS, since))
+		return &p
 	}
 }
 

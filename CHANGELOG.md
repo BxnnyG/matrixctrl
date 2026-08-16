@@ -15,6 +15,121 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.43] — 2026-08-16
+
+Three etappes in one release: 0.1.42 was written but never built — the image build
+failed on type errors that the documented typecheck command could not see (below),
+and the failure went unread.
+
+### Added
+
+- **Room detail.** Who is in a room and what its state says: members with paging,
+  join rule, history visibility, encryption, creator, room version and event count.
+  Reached by clicking a row in the room list.
+- **Block and unblock a room** — the one moderation action that can be undone, and
+  the only one this release ships. The dialog says what blocking *does not* do:
+  it refuses new joins and nothing else, so nobody is removed, no message is
+  deleted, and an ongoing conversation carries on. E36 grouped blocking with
+  deleting as "destructive"; it is a flag with an inverse, and deleting is not.
+
+  The state shown afterwards is read back from Synapse rather than assumed from the
+  write having returned 200. Unblocking needs no confirmation — it restores the
+  default and takes nothing away — while blocking does, because it changes what
+  other people can do.
+
+  Deleting a room stays out. It evicts every member and purges the history, and it
+  gets its own etappe, as user deactivation did.
+
+- **The upgrade screen shows what is happening.** A stepper for the phase
+  (Konfiguration → Rollout → Hooks → Fertig), a ready-count over the workloads Helm
+  is actually waiting for, and a live row per component saying whether it is
+  waiting, pulling an image, starting, ready, or failing — with the reason on the
+  failing one. It refreshes every three seconds, against a log line every thirty.
+
+  The denominator is workloads rather than pods on purpose: pods churn as old ones
+  terminate, so a pod-based bar can go *backwards* during a healthy upgrade.
+  Workloads are also compared by generation, so a Deployment Helm has just patched
+  reads as "not started" instead of "ready" — without that the bar opens at 100 %,
+  falls, and climbs back.
+
+  "Pulling an image" comes from the kubelet's own events. A pod cannot report it:
+  its container status says `ContainerCreating` while pulling, mounting and
+  attaching alike, and those have very different expected durations.
+
+- **Every version in the list has a date, and expands to its release notes.** The
+  date column had existed since the list was written and had never once been filled
+  — `ListVersions` reads the registry's tag list, which is a list of strings. The
+  dates come from the GitHub release index in a single cached request.
+
+### Fixed
+
+- **Connecting rooms to Matrix succeeded and then did not work.** The
+  authorization completed, the token was stored, the page said connected — and every
+  admin call came back 401, so the connect panel reappeared and the whole thing read
+  as a button that does nothing. Synapse said why in one line: *Token doesn't grant
+  access to the Matrix C-S API*.
+
+  E36 deliberately left `urn:matrix:org.matrix.msc2967.client:api:*` out of the
+  requested scope, reasoning that it grants more than rooms need. Under MSC3861 that
+  scope is what resolves a token **to a user**; the admin scope says what that user
+  may do, and without the other one there is no user for it to apply to. It is
+  requested now, and the granted scopes are both checked before the token is kept —
+  the earlier check looked only for the admin one, which is why a token that could
+  never work was stored as if it had.
+
+  The **device** scope is still excluded, so no device is created on the account.
+
+- **The connect panel no longer makes a false claim about what it can reach.** It
+  said the access was "nur für die Admin-Schnittstelle, nicht für deine Nachrichten".
+  With the client-API scope that is untrue: the token *could* read the operator's
+  messages, and MatrixCtrl does not. "Cannot" and "does not" are different claims.
+
+- **"Show pre-releases" did nothing, and the toggle is gone.** The list renders the
+  first 25 rows; every "pre-release" the chart has published is a `0.x.y-dev` tag
+  from its first months, sitting at index 56 or beyond. All twelve are development
+  builds under the naming scheme that preceded `-sha…`, and none is an upgrade
+  target — so they are dropped where the other build tags are, on the server, and
+  the control that revealed them is no longer needed. The pre-release *badge* stays
+  for a `26.9.0-rc.1` that may one day exist.
+
+- **The upgrade log no longer scrolls sideways.** `overflow-y: auto` computes
+  `overflow-x` to `auto` as well, so the 200-character pinned-tag warning made the
+  box scroll horizontally — and the auto-scroll only ever set `top`, leaving the view
+  parked to the right while the blinking cursor sat off-screen at the left. Lines
+  wrap now, and the log is collapsed behind a toggle: the structured panel above it
+  is the thing to read.
+
+- **"N Pods startet noch" counted pods that had already finished.** Jobs and old
+  ReplicaSets leave `Succeeded` pods behind — six of them on the production namespace
+  — and since they are never `Ready`, the rollout probe counted them as still
+  starting, permanently. `PodState.Phase` had been carried since E31 and never read;
+  this is what it was for.
+
+- **A raw `{"revision":…,"status":…}` blob no longer appears in the upgrade log.**
+  Nothing consumed it, and the human sentence saying the same thing was on the very
+  next line.
+
+- **The pinned-tag warning is grammatical.** The plural branch read *"Diese
+  Komponenten werden wird vom Upgrade nicht mit aktualisiert."* — a fragment
+  interpolated into a template that still carried its own verb. It was on screen
+  during the 26.8.0 upgrade. The test that covered it asserted a `Contains` of a
+  prefix, which the broken string satisfied.
+
+- **`tsc --noEmit` type-checked nothing.** `web/tsconfig.json` is `"files": []` plus
+  project references, so the command documented in CLAUDE.md and PROZESS.md exited 0
+  regardless of the code. It is `tsc -b --noEmit` now. The four real type errors it
+  had been hiding are fixed: `validateSearch` in the rooms route let TypeScript infer
+  `{ error: string | undefined }`, and TanStack reads a nullable key as required, so
+  every `<Link to="/rooms">` demanded a `search` prop.
+
+### Performance
+
+- **The upgrade history is fast after a restart, not just within one.** E39 cached
+  the per-revision facts in memory and described the cold read as "once per process";
+  with several deploys a day the operator met that path often, and measured 7.7 s.
+  Those facts are immutable, so they are now persisted — the cold read costs once per
+  revision rather than once per pod.
+
 ## [0.1.41] — 2026-08-16
 
 ### Security

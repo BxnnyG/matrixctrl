@@ -68,8 +68,12 @@ jobs:
 
       - run: npm ci
 
+      # `-b` is load-bearing: web/tsconfig.json is `"files": []` plus project
+      # references, so plain `tsc --noEmit` checks zero files and always passes.
+      # The Build step below caught what this one missed, eleven minutes later
+      # and a hundred lines of output further down (§4.40).
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npx tsc -b --noEmit
 
       - name: Unit tests
         run: npm run test -- --run

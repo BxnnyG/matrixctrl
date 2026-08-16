@@ -1,9 +1,30 @@
 import { useEffect } from "react";
 import { api } from "./api";
 
+/** One workload as the upgrade screen shows it. Mirrors internal/rollout.Component. */
+export interface ProgressComponent {
+  name: string;
+  kind: string;
+  state: "ready" | "pulling" | "starting" | "failing" | "waiting";
+  ready: number;
+  desired: number;
+  detail?: string;
+}
+
+/** Mirrors internal/rollout.Progress. */
+export interface UpgradeProgress {
+  phase: "config" | "apply" | "rollout" | "hooks" | "done";
+  components?: ProgressComponent[];
+  ready: number;
+  total: number;
+}
+
 interface UseUpgradeStreamOptions {
   onLog: (line: string) => void;
   onDone: (status: string) => void;
+  /** Latest structured snapshot. Each one supersedes the last — it is a state, not
+   *  an event, so a dropped frame costs nothing and nothing needs folding. */
+  onProgress?: (progress: UpgradeProgress) => void;
 }
 
 /** Reconnect backoff — see docs/plans/etappe-14-*.md (P1-7). */
@@ -105,7 +126,7 @@ export function useUpgradeStream(
       };
 
       ws.onmessage = (e) => {
-        let msg: { type?: string; line?: string; status?: string };
+        let msg: { type?: string; line?: string; status?: string; progress?: UpgradeProgress };
         try {
           msg = JSON.parse(e.data);
         } catch {
@@ -119,6 +140,12 @@ export function useUpgradeStream(
             return;
           case "log":
             if (gate.accept()) opts.onLog(msg.line ?? "");
+            return;
+          case "progress":
+            // Never goes through the gate. The gate counts what has already been
+            // *displayed* so a replayed log is not shown twice; a snapshot has no
+            // history to replay, and counting it would shift the log's own tally.
+            if (msg.progress) opts.onProgress?.(msg.progress);
             return;
           case "done":
             finish(msg.status ?? "unknown");

@@ -119,6 +119,13 @@ func main() {
 		log.Printf("warning: helm unavailable: %v", err)
 		helmClient = nil
 	}
+	if helmClient != nil {
+		// Persist the immutable per-revision facts the history page decodes, so the
+		// cold read costs once per revision rather than once per pod. Without this
+		// the in-memory cache is reset by every deploy, and the operator measured
+		// 7.7 s on a page E39 had made 25 ms warm (etappe 42).
+		helmClient.SetRevisionStore(db.NewRevisionFacts(pool))
+	}
 
 	// Auto-discover the ESS release if the configured one isn't found — lets
 	// MatrixCtrl adopt an existing ESS without hard-coded namespace/release.
@@ -138,7 +145,7 @@ func main() {
 			case !found.ClusterWide:
 				// Nothing found, and the search never left this namespace. Saying so
 				// keeps the log from implying the cluster was checked and is empty.
-				log.Printf("note: no ESS release in namespace %s; cluster-wide discovery is off (rbac.discovery.allNamespaces)", found.Namespace)
+				log.Printf("note: no ESS release in namespace %s; a cluster-wide search needs read access to every Secret, which the namespaced role does not grant", found.Namespace)
 			}
 		}
 	}

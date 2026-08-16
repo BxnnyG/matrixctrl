@@ -29,9 +29,13 @@ type ESSRelease struct {
 type DiscoveryResult struct {
 	Releases []ESSRelease `json:"releases"`
 	// ClusterWide is false when the cluster refused a cluster-wide secret list and
-	// only Namespace was searched. Since etappe 37 that is the *default* posture:
-	// `rbac.discovery.allNamespaces` is off, because Helm implements a cluster-wide
-	// release scan as listing every Secret in the cluster.
+	// only Namespace was searched.
+	//
+	// Since etappe 40 that is the **normal** posture rather than an edge case: the
+	// role is namespaced, so Helm's cluster-wide release scan — which it implements
+	// as listing every Secret in the cluster — is denied, and this fallback is the
+	// path that actually runs. It was written in etappe 37 for a permission that did
+	// not yet exist to be missing.
 	ClusterWide bool `json:"cluster_wide"`
 	// Namespace is the single namespace searched when ClusterWide is false.
 	Namespace string `json:"searched_namespace,omitempty"`
@@ -43,9 +47,9 @@ type DiscoveryResult struct {
 //
 // It tries the whole cluster first and falls back to fallbackNS when that is refused,
 // rather than requiring the caller to know which permission it has. The fallback is
-// the normal path, not an error case: the permission it needs is a permanent
-// cluster-wide read of every Secret, which the chart no longer grants by default
-// (etappe 37).
+// the normal path, not an error case: a cluster-wide scan needs a permanent read of
+// every Secret in the cluster, which the chart stopped granting when the role became
+// namespaced (etappe 40).
 func Discover(fallbackNS string) (DiscoveryResult, error) {
 	releases, err := listReleases("", true)
 	if err == nil {

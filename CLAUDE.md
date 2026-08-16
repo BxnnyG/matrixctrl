@@ -41,8 +41,9 @@ Go lives at `/usr/local/go/bin/go` and is **not** on the default PATH.
 
 | Purpose | Command |
 |---|---|
+| **Everything before a build** | `make check` — Go tests + typecheck + secret scan |
 | Go tests | `go test ./...` |
-| Typecheck | `cd web && ./node_modules/.bin/tsc --noEmit` |
+| Typecheck | `cd web && ./node_modules/.bin/tsc -b --noEmit` — **`-b` is not optional**, see below |
 | Build frontend | `make web-build` |
 | Build binary (embeds frontend) | `make build` |
 | Run locally | `make dev` (backend) + `make web-dev` (frontend) |
@@ -51,6 +52,10 @@ Go lives at `/usr/local/go/bin/go` and is **not** on the default PATH.
 
 ## Things that will bite you
 
+- `tsc --noEmit` **without `-b`** type-checks nothing: `web/tsconfig.json` is
+  `"files": []` plus project references, so it exits 0 whatever is broken. It was the
+  documented command until 2026-08-16 and hid four real errors that only surfaced
+  eleven minutes into an image build (§4.40). Use `make check`.
 - Go embeds `cmd/matrixctrl/dist`, **not** `web/dist`. The Makefile copies it.
 - `ComponentHealth.Status` is `healthy | degraded | down | scaled-zero` — never
   `"ok"`. Comparing against `"ok"` silently marks everything as a warning.
