@@ -55,7 +55,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
-| 47 | Medien-Quarantäne — der Endpunkt antwortet 200 und tut manchmal nichts | 🔄 gebaut 2026-08-16 · `v0.1.47` · [plan](plans/etappe-47-media-quarantine.md) |
+| 47 | Medien-Quarantäne — der Endpunkt antwortet 200 und tut manchmal nichts | ✅ 2026-08-16 · `v0.1.47` · [plan](plans/etappe-47-media-quarantine.md) · Round-Trip live offen (P2-32) |
 | 46 | Moderation — die Meldungs-Queue, und was „erledigt" heißt, wenn Synapse nur Löschen kennt | ✅ 2026-08-16 · `v0.1.46` · [plan](plans/etappe-46-event-reports.md) |
 | 45 | Die Staleness-Warnung war zwölf Tage lang falsch — `addrs[0]` aus einer rotierenden DNS-Antwort; dazu Retention für beide RTC-Tabellen | ✅ 2026-08-16 · `v0.1.45` · [plan](plans/etappe-45-address-set.md) |
 | 44 | Calls: wer gerade telefoniert, und ein Verlauf — die SFU-Zähler sterben mit dem Pod, den der Post-Upgrade-Hook jedes Mal löscht | ✅ 2026-08-16 · `v0.1.44` · [plan](plans/etappe-44-call-history.md) |
