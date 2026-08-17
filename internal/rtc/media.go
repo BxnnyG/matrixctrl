@@ -28,6 +28,12 @@ type MediaEvidence struct {
 	// PacketsOut is reported for context only. It rises without any call — it is
 	// not evidence of a working session and must not be read as such.
 	PacketsOut int `json:"packets_out"`
+	// PacketsDropped is the SFU's own count of dropped packets, from its own network
+	// namespace. DroppedKnown separates "the counter says zero" from "the metric was
+	// not in the exposition" — an absent metric read as zero would report a healthy
+	// buffer on evidence that does not exist (etappe 51).
+	PacketsDropped int  `json:"packets_dropped"`
+	DroppedKnown   bool `json:"dropped_known"`
 	// Live is the state of the SFU at the moment of the read, not since it started.
 	Live LiveGauges `json:"live"`
 }
@@ -99,6 +105,14 @@ func ParseMetrics(body string) (MediaEvidence, bool) {
 		// Packets out carries a label selecting the direction.
 		if name == "livekit_node_packet_total" && strings.Contains(line, `type="out"`) {
 			m.PacketsOut = value
+			found = true
+		}
+		// The same family with a different label. It was in this package's test
+		// fixture from the start and never read; E51 needs it to say whether the
+		// undersized receive buffer is costing anything yet.
+		if name == "livekit_node_packet_total" && strings.Contains(line, `type="dropped"`) {
+			m.PacketsDropped = value
+			m.DroppedKnown = true
 			found = true
 		}
 	}

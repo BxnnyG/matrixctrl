@@ -94,6 +94,7 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 
 	ports := rtc.SFUPorts(services)
 	paths := h.callPaths(ctx, ports)
+	buf, bufFound := h.udpBuffer(ctx)
 
 	JSON(w, http.StatusOK, map[string]any{
 		"announced_host": host,
@@ -111,6 +112,10 @@ func (h *RTCHandler) Status(w http.ResponseWriter, r *http.Request) {
 			rtc.AssessWithFreshness(ports, host, ips, resolveErr, freshness, freshnessDetail),
 			rtc.AssessMedia(media, mediaOK, uptime),
 			rtc.AssessCallPaths(paths),
+			// The drop count comes from the SFU's own metrics, never from this
+			// process's /proc — different network namespace, so it would count
+			// MatrixCtrl's traffic and read zero forever (E51).
+			rtc.AssessUDPBuffer(buf, bufFound, media.PacketsDropped, mediaOK && media.DroppedKnown),
 		),
 	})
 }
@@ -288,6 +293,37 @@ func (h *RTCHandler) Reachability(w http.ResponseWriter, r *http.Request) {
 		"result":  result,
 		"verdict": reach.Assess(result),
 	})
+}
+
+// udpBuffer reads the receive buffer LiveKit reported at startup (etappe 51).
+//
+// From the SFU's own log rather than from net.core.rmem_max here: that sysctl is
+// network-namespaced and MatrixCtrl does not run with hostNetwork while the SFU does,
+// so a value read in this process is not necessarily the value the SFU got. It also
+// disagrees by a factor of two — the kernel doubles SO_RCVBUF for accounting — and
+// the number the operator sees is the one in this log line.
+//
+// A tail rather than the whole log: LiveKit writes this once at startup and is
+// otherwise quiet (44 lines in nineteen hours on the live SFU), so a few hundred
+// lines reach it comfortably. When they do not, the caller reports unknown rather
+// than healthy.
+func (h *RTCHandler) udpBuffer(ctx context.Context) (rtc.UDPBuffer, bool) {
+	if h.k8s == nil {
+		return rtc.UDPBuffer{}, false
+	}
+	pods, err := h.k8s.ListDeploymentPods(ctx, h.essNS, h.sfuDeployment())
+	if err != nil || len(pods) == 0 {
+		return rtc.UDPBuffer{}, false
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	logs, err := h.k8s.GetPodLogs(reqCtx, h.essNS, pods[0].Name, "", 500)
+	if err != nil {
+		return rtc.UDPBuffer{}, false
+	}
+	return rtc.ParseBufferWarning(logs)
 }
 
 // mediaEvidence reads the SFU's own counters. They are the only thing in this

@@ -835,7 +835,16 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   single-replica hostNetwork workload; it fits the existing built-in patch hook
   (`internal/hooks/builtin/ess_rtc_patches.go`) which already survives Helm
   upgrades.
-- **P2-24 · The host UDP buffer is 24× smaller than the SFU asks for (S14).** LiveKit
+- **P2-24 · The host UDP buffer is 24× smaller than the SFU asks for (S14).**
+  ✅ **Done 2026-08-17 (E51, [DESIGN.md §4.50](DESIGN.md)).** Surfaced on `/rtc` with
+  LiveKit's own numbers and the drop count, so it reads as the latent fault it is.
+  Two corrections to this entry: the ratio is ~12×, not 24× — 24× compares against
+  `net.core.rmem_max` (212992) while LiveKit reports 425984, since the kernel doubles
+  `SO_RCVBUF` for accounting — and reading either that sysctl or `RcvbufErrors` from
+  MatrixCtrl's own process would have been wrong, because both are network-namespaced
+  and MatrixCtrl is not `hostNetwork`. Measured: 320 datagrams in this pod against the
+  node's 48009.
+  *Original entry:* LiveKit
   logs `UDP receive buffer is too small for a production set-up  current: 425984
   suggested: 5000000` on every start; the host runs the kernel default
   `net.core.rmem_max = 212992`. Honest scope: `RcvbufErrors` is currently **0**, so

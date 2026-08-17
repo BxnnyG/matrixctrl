@@ -1770,3 +1770,55 @@ begins `rm -rf cmd/matrixctrl/dist`, which deleted the very placeholder the fix
 depends on. The first `make build` after the change left `.gitkeep` staged-and-deleted
 and would have broken the next clean checkout's compile. Caught by looking at
 `git status` after the build rather than at the build's exit code. Affects S8, S9.
+
+### §4.50 — Reading a namespaced counter from the wrong namespace (2026-08-17, agent, etappe 51)
+
+LiveKit warns at every start that its UDP receive buffer is far below what it wants:
+
+```
+WARN livekit rtcconfig/rtc_unix.go:31 UDP receive buffer is too small for a
+     production set-up  {"current": 425984, "suggested": 5000000}
+```
+
+P2-24 asked for that surfaced on `/rtc` as a pre-flight check. The obvious build is to
+read `net.core.rmem_max` and `/proc/net/snmp` from MatrixCtrl's own process. Both are
+**network-namespaced**, and MatrixCtrl does not run with `hostNetwork` while the SFU
+does. Measured before writing any of it:
+
+| | InDatagrams | RcvbufErrors |
+|---|---|---|
+| node | 48009 | 0 |
+| matrixctrl pod | **320** | 0 |
+
+A drop counter read in this process counts *MatrixCtrl's own UDP traffic*. It would
+read zero forever regardless of what the SFU experienced, and it would look
+authoritative doing it — the panel would answer "no packets dropped" from a source
+structurally incapable of ever saying anything else. That is §4.43 and E45's `addrs[0]`
+once more: a value taken from the wrong member of a set, correct-looking and unrelated
+to the question.
+
+So both readings come from the SFU's own vantage point — the sizes from its startup
+log line, the drops from `livekit_node_packet_total{type="dropped"}`, which was in
+this package's own test fixture from the beginning and had never been parsed, because
+only `type="out"` was.
+
+Two smaller decisions worth keeping:
+
+**Which "current" is current.** `net.core.rmem_max` is 212992 on this node while
+LiveKit reports 425984 — exactly double, because `SO_RCVBUF` accounting returns twice
+what was set. Both are defensible; the panel reports LiveKit's, because that is the
+number in the log the operator is reading. A panel that contradicts its component's
+own log costs more time than it saves. (P2-24's "24× too small" used the sysctl; against
+LiveKit's figure it is ~12×.)
+
+**A warning has to say whether it is biting.** The buffer is undersized and
+`RcvbufErrors` is 0 — a latent fault, not a present one. Saying only the first half
+sends someone hunting a problem that is not happening, so the finding states the drop
+count, and says something different when it is non-zero. An absent metric is a third
+case again: not zero, not fine, just not read.
+
+The fix is a host sysctl, outside a cluster this project has spent two etappes
+narrowing the privileges of (E37, E40). Naming what it cannot change is the correct
+scope here, unlike P1-14 where the same posture was called half a feature — the
+difference is that here the remedy is one documented command and the panel's value is
+knowing it is needed *before* the first call drops. Affects S14.

@@ -15,6 +15,30 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.49] — 2026-08-17
+
+### Added
+
+- **`/rtc` now reports the SFU's UDP receive buffer.** LiveKit asks for 5 MB and gets
+  ~426 KB on a default kernel, warns about it once at startup, and nothing ever
+  surfaced that. The finding carries LiveKit's own two numbers, states whether packets
+  are actually being dropped yet — currently none, so it is a capacity warning rather
+  than an active fault — and names the host sysctl that fixes it, along with the fact
+  that MatrixCtrl cannot apply it itself.
+- The SFU's dropped-packet counter (`livekit_node_packet_total{type="dropped"}`) is
+  now read. It was in this package's test fixture from the start and had never been
+  parsed; only `type="out"` was.
+
+### Notes
+
+- Both readings come from the SFU's own network namespace — its startup log and its
+  metrics — never from `/proc` in MatrixCtrl's process. MatrixCtrl does not run with
+  `hostNetwork` and the SFU does, so a counter read here reports MatrixCtrl's own
+  traffic: 320 datagrams against the node's 48009. It would have read zero drops
+  forever.
+- A missing startup line is reported as *unknown*, not *fine*. LiveKit logs it once,
+  so a long or rotated log legitimately lacks it.
+
 ### Changed — no image or chart change
 
 - **The compiled frontend is no longer committed.** `cmd/matrixctrl/dist` was 40
