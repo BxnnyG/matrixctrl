@@ -78,5 +78,24 @@ than instrumenting it.
 - `go build ./...` and `go test ./...` still work on a clean checkout
 - A binary built without the frontend says so at startup and in the browser
 - `make build` still produces a working binary with the real UI
-- CI asks whether `index.html` is there, not whether a directory is
+- CI asks a question whose answer it actually depends on
 - `make check` green
+
+## Two corrections to this plan, made while building it
+
+**CI must not check for `index.html`.** The line above originally said it should. That
+is wrong: the Go job compiles against the placeholder on purpose — it does not build
+the frontend, and demanding `index.html` would fail every run. What CI can usefully
+assert is that the placeholder is present (so `//go:embed` compiles) and that **built
+assets have not been committed again**, which is the regression this etappe exists to
+prevent. Both are in the workflow.
+
+**`copy-dist` deleted the placeholder.** It opens with `rm -rf cmd/matrixctrl/dist`,
+so the first `make build` after the change left `.gitkeep` staged-and-deleted and
+would have broken the next clean checkout's compile — the same class of mistake this
+etappe is about, one level down, introduced by the fix for it. Found by reading
+`git status` after the build instead of the build's exit code. `copy-dist` now
+restores it.
+
+Verified on a fresh `git clone`: one tracked file under `dist`, `go build ./...` and
+`go test` both green without building the frontend.
