@@ -1623,3 +1623,55 @@ served is not what the admin meant. Media ids containing a slash are refused rat
 than escaped, since they become a URL path segment. Reading the source also turned up
 `/_synapse/admin/v1/user_reports`, an entire second report queue that E46 does not
 know exists; it is recorded as P2-30 rather than folded in. Affects S13.
+
+### §4.46 — An identifier is only unique inside the thing that issued it (2026-08-17, agent, etappe 48)
+
+E46 stored a report's disposition in `event_report_dispositions` with
+`report_id BIGINT PRIMARY KEY`. That was correct for exactly as long as there was one
+queue. Synapse has two: `event_reports` and `user_reports`, each with **its own
+sequence**. Both therefore contain an id 1, an id 2, an id 3, and they mean unrelated
+reports.
+
+Adding the user queue on top of that table would have made event report 5 and user
+report 5 the same row. Marking one handled marks the other; reopening one reopens the
+other. Nothing raises, no constraint is violated, no log line appears — the queue just
+shows a decision nobody made. It is §4.43 again (recording one member of a set and
+reading it back as the set), with the twist that the two members come from different
+systems and are indistinguishable by inspection: both are small positive integers.
+
+The fix is the boring one — the key is `(kind, report_id)`, migration 014 — but the
+point worth keeping is the question that found it, which was not "how do I store user
+reports?" but **"is the id I am about to use as a key unique in the scope I am using
+it in?"** Foreign ids are unique inside the system that issued them and nowhere else.
+This project already had the same shape twice: a media id is unique per server, which
+is why `MediaRef` carries both, and a Helm revision is unique per release.
+
+The kind is bound to the `Dispositions` value at construction rather than passed to
+each method. Four methods taking a kind parameter is four call sites that can pass the
+wrong one, and the whole reason this bug is dangerous is that a wrong kind looks
+exactly like a right one. Affects S13.
+
+### §4.47 — The fallback route decides what "this endpoint does not exist" sounds like (2026-08-17, agent, etappe 48)
+
+`r.NotFound(deps.Status.ServeFrontend)` — one line, correct-looking, and it meant every
+unmatched **API** path answered `200 text/html` with the app shell. A misspelled
+endpoint in the frontend passed `res.ok`, then died inside `JSON.parse` with a message
+about unexpected `<`, which sends the reader looking at their parsing code instead of
+at their URL.
+
+It is the same defect as §4.45 one layer out: a 200 that means "no such thing". It was
+found not by a bug report but while *verifying* something else — the E47 route probe
+used "404 means unregistered" as its control, and the control came back 200.
+
+The second-order cost is worse than the confusing error. It made "is this route
+registered?" unanswerable: only a route behind auth was distinguishable from the
+fallback, because a 401 proved something was there. Any future unguarded route would
+have been indistinguishable from a typo, and every verification built on probing would
+have quietly measured nothing — the §4.40 family again.
+
+The fix has two halves and only one of them is the interesting one. Returning JSON 404
+under `/api/` is trivial. Not breaking the SPA is the part that needs a test: every
+frontend route is served by index.html, so a `NotFound` that stops doing that turns
+every page reload into a 404. The test asserts both directions, and it was run against
+the old code first to confirm it fails with exactly the reported symptom
+(`status = 200`, an HTML body) rather than passing for its own reasons. Affects S9.

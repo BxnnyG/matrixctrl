@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner } from "@/components/mc";
+import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner, Tabs } from "@/components/mc";
 import { MatrixConnect } from "@/components/MatrixConnect";
 
 export const Route = createFileRoute("/reports")({
@@ -33,6 +33,27 @@ interface Report {
 
 interface ReportList {
   reports: Report[] | null;
+  total: number;
+  open_on_page: number;
+  next_token?: number | null;
+}
+
+/** A reported *user*. Far thinner than an event report: no room, no event, no score. */
+interface UserReport {
+  id: number;
+  /** Who filed the report. Synapse calls this `user_id`. */
+  reporter: string;
+  /** Who was reported. Synapse calls this `target_user_id`. */
+  target: string;
+  reason?: string;
+  received_ts: number;
+  state: State;
+  note?: string;
+  actor?: string;
+}
+
+interface UserReportList {
+  reports: UserReport[] | null;
   total: number;
   open_on_page: number;
   next_token?: number | null;
@@ -244,48 +265,139 @@ function ReportRow({ r, last }: { r: Report; last: boolean }) {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Notiz (optional)"
-              style={{ flex: "1 1 240px", padding: "7px 10px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 12.5, fontFamily: "var(--font)" }}
-            />
-            {r.state === "open" ? (
-              <>
-                <Button variant="soft" size="sm" icon="check" disabled={decide.isPending}
-                  onClick={() => decide.mutate("handled")}>Bearbeitet</Button>
-                <Button variant="ghost" size="sm" disabled={decide.isPending}
-                  onClick={() => decide.mutate("dismissed")}>Verwerfen</Button>
-              </>
-            ) : (
-              <Button variant="outline" size="sm" disabled={decide.isPending}
-                onClick={() => decide.mutate("open" as State)}>Wieder öffnen</Button>
-            )}
-          </div>
-
-          {r.actor && (
-            <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-              entschieden von {r.actor}
-            </div>
-          )}
-
-          {/* Said once per report rather than once per page: this is the sentence
-              that explains why the queue never shrinks upstream. */}
-          <div style={{ fontSize: 11.5, color: "var(--text-faint)", lineHeight: 1.55 }}>
-            Der Status wird nur in MatrixCtrl gespeichert. Die Meldung selbst bleibt in
-            Synapse erhalten — so bleibt sichtbar, wenn dieselbe Person mehrfach
-            gemeldet wurde.
-          </div>
+          <DispositionControls
+            state={r.state} note={note} setNote={setNote} actor={r.actor}
+            pending={decide.isPending} onDecide={(s) => decide.mutate(s)} />
         </div>
       )}
     </div>
   );
 }
 
+/**
+ * The disposition footer, shared by both queues.
+ *
+ * Extracted rather than copied when the user queue arrived (etappe 48): the states,
+ * the wording and the reopen semantics are the same for both, and two copies are how
+ * the two screens start telling the operator different things about what a status
+ * means.
+ */
+function DispositionControls({ state, note, setNote, actor, pending, onDecide }: {
+  state: State;
+  note: string;
+  setNote: (v: string) => void;
+  actor?: string;
+  pending: boolean;
+  onDecide: (s: State) => void;
+}) {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Notiz (optional)"
+          style={{ flex: "1 1 240px", padding: "7px 10px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 12.5, fontFamily: "var(--font)" }}
+        />
+        {state === "open" ? (
+          <>
+            <Button variant="soft" size="sm" icon="check" disabled={pending}
+              onClick={() => onDecide("handled")}>Bearbeitet</Button>
+            <Button variant="ghost" size="sm" disabled={pending}
+              onClick={() => onDecide("dismissed")}>Verwerfen</Button>
+          </>
+        ) : (
+          <Button variant="outline" size="sm" disabled={pending}
+            onClick={() => onDecide("open" as State)}>Wieder öffnen</Button>
+        )}
+      </div>
+
+      {actor && (
+        <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+          entschieden von {actor}
+        </div>
+      )}
+
+      {/* Said once per report rather than once per page: this is the sentence
+          that explains why the queue never shrinks upstream. */}
+      <div style={{ fontSize: 11.5, color: "var(--text-faint)", lineHeight: 1.55 }}>
+        Der Status wird nur in MatrixCtrl gespeichert. Die Meldung selbst bleibt in
+        Synapse erhalten — so bleibt sichtbar, wenn dieselbe Person mehrfach
+        gemeldet wurde.
+      </div>
+    </>
+  );
+}
+
+/**
+ * One reported *user*.
+ *
+ * Deliberately not a copy of ReportRow: there is no detail fetch, because Synapse's
+ * `/user_reports/<id>` returns exactly the five fields the list already carried
+ * (etappe 48). Everything shown here is already in hand when the row renders.
+ */
+function UserReportRow({ r, last }: { r: UserReport; last: boolean }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(r.note ?? "");
+
+  const decide = useMutation({
+    mutationFn: (state: State) =>
+      api.put(`/api/v1/reports/users/${r.id}/disposition`, { state, note }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
+  });
+
+  return (
+    <div style={{ borderTop: last ? "none" : "1px solid var(--border)" }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", cursor: "pointer" }}>
+        <Icon name={open ? "chevDown" : "chevRight"} size={13} style={{ color: "var(--text-faint)", flexShrink: 0, marginTop: 3 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Badge tone={STATE_TONE[r.state]} size="sm">{STATE_LABEL[r.state]}</Badge>
+            {/* The reported user is the headline — it is what the row is about. */}
+            <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 550, fontFamily: "var(--mono)", overflowWrap: "anywhere" }}>
+              {r.target}
+            </span>
+            <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{fmtTime(r.received_ts)}</span>
+          </div>
+
+          {/* Same rule as the event queue: two user IDs, neither ever rendered
+              without its role. Here they are both plain user ids, so there is
+              nothing in the value itself to tell them apart. */}
+          <div style={{ marginTop: 5, fontSize: 12, color: "var(--text-faint)" }}>
+            gemeldet von <span style={{ fontFamily: "var(--mono)", color: "var(--text-dim)" }}>{r.reporter}</span>
+          </div>
+
+          {r.reason && (
+            <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 6, overflowWrap: "anywhere" }}>
+              „{r.reason}"
+            </div>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ padding: "0 14px 16px 39px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <DispositionControls
+            state={r.state} note={note} setNote={setNote} actor={r.actor}
+            pending={decide.isPending} onDecide={(s) => decide.mutate(s)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Queue = "events" | "users";
+
 function Reports() {
   const { error } = Route.useSearch();
+  const [queue, setQueue] = useState<Queue>("events");
+  // One offset per queue. A shared one would silently page the other queue to an
+  // offset nobody asked for the moment the tab is switched.
   const [from, setFrom] = useState(0);
+  const [userFrom, setUserFrom] = useState(0);
   const [showAll, setShowAll] = useState(false);
 
   const state = useQuery({
@@ -297,6 +409,17 @@ function Reports() {
   const list = useQuery({
     queryKey: ["reports", "list", from],
     queryFn: () => api.get<ReportList>(`/api/v1/reports?from=${from}&limit=${PAGE}`),
+    enabled: connected,
+    placeholderData: keepPreviousData,
+  });
+
+  // Both queues are fetched whichever tab is showing, so both tab counts are real.
+  // This is the whole point of the etappe: E46 shipped one queue and said nothing
+  // about the other, so an admin could empty this screen and still have reports
+  // waiting. A tab with no number would reproduce that exactly.
+  const userList = useQuery({
+    queryKey: ["reports", "users", userFrom],
+    queryFn: () => api.get<UserReportList>(`/api/v1/reports/users?from=${userFrom}&limit=${PAGE}`),
     enabled: connected,
     placeholderData: keepPreviousData,
   });
@@ -314,25 +437,49 @@ function Reports() {
     );
   }
 
-  const err = list.error instanceof ApiError ? list.error : null;
+  // The active queue's error drives the page: a 403 or an expired token affects both
+  // equally, and reading it from whichever tab is showing keeps the message about the
+  // thing being looked at.
+  const active = queue === "events" ? list : userList;
+  const err = active.error instanceof ApiError ? active.error : null;
   const notAdmin = err?.status === 403;
   const needsConnect = err?.status === 409;
 
   const all = list.data?.reports ?? [];
-  const shown = showAll ? all : all.filter((r) => r.state === "open");
+  const userAll = userList.data?.reports ?? [];
   const total = list.data?.total ?? 0;
-  const hidden = all.length - shown.length;
+  const userTotal = userList.data?.total ?? 0;
+
+  const rowsAll: (Report | UserReport)[] = queue === "events" ? all : userAll;
+  const shown = showAll ? rowsAll : rowsAll.filter((r) => r.state === "open");
+  const hidden = rowsAll.length - shown.length;
+  const pageFrom = queue === "events" ? from : userFrom;
+  const setPageFrom = queue === "events" ? setFrom : setUserFrom;
+  const nextToken = active.data?.next_token;
 
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <SectionTitle sub={total > 0 ? `${total} Meldungen insgesamt` : "Gemeldete Ereignisse"}>Moderation</SectionTitle>
+        <SectionTitle sub="Gemeldete Ereignisse und gemeldete Nutzer">Moderation</SectionTitle>
         {hidden > 0 || showAll ? (
           <Button variant="ghost" size="sm" icon="eye" onClick={() => setShowAll((v) => !v)}>
             {showAll ? "Nur offene" : `${hidden} bearbeitete zeigen`}
           </Button>
         ) : null}
       </div>
+
+      {/* Counts on both tabs, always. Synapse keeps two independent queues and an
+          empty one here never means the other is empty too. */}
+      {!notAdmin && !needsConnect && (
+        <Tabs<Queue>
+          tabs={[
+            { id: "events", label: "Ereignisse", icon: "shield", count: total },
+            { id: "users", label: "Nutzer", icon: "users", count: userTotal },
+          ]}
+          active={queue}
+          onChange={(id) => { setQueue(id); setShowAll(false); }}
+        />
+      )}
 
       {notAdmin && (
         <Card>
@@ -352,7 +499,7 @@ function Reports() {
 
       {!notAdmin && !needsConnect && (
         <Card pad={false}>
-          {list.isFetching && all.length === 0 ? (
+          {active.isFetching && rowsAll.length === 0 ? (
             <div style={{ padding: 24, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>
           ) : shown.length === 0 ? (
             // "No open reports" is a *result*, and a good one. It must never read as
@@ -360,23 +507,27 @@ function Reports() {
             // distinguish itself from.
             <EmptyState
               icon="shield"
-              title={all.length === 0 ? "Keine Meldungen" : "Keine offenen Meldungen"}
-              sub={all.length === 0
-                ? "Auf diesem Server wurde noch nichts gemeldet."
-                : `Alle ${all.length} Meldungen auf dieser Seite sind bearbeitet.`}
+              title={rowsAll.length === 0 ? "Keine Meldungen" : "Keine offenen Meldungen"}
+              sub={rowsAll.length === 0
+                ? queue === "events"
+                  ? "Auf diesem Server wurde noch kein Ereignis gemeldet."
+                  : "Auf diesem Server wurde noch kein Nutzer gemeldet."
+                : `Alle ${rowsAll.length} Meldungen auf dieser Seite sind bearbeitet.`}
             />
+          ) : queue === "events" ? (
+            (shown as Report[]).map((r, i) => <ReportRow key={r.id} r={r} last={i === shown.length - 1} />)
           ) : (
-            shown.map((r, i) => <ReportRow key={r.id} r={r} last={i === shown.length - 1} />)
+            (shown as UserReport[]).map((r, i) => <UserReportRow key={r.id} r={r} last={i === shown.length - 1} />)
           )}
         </Card>
       )}
 
-      {!notAdmin && !needsConnect && (from > 0 || list.data?.next_token) && (
+      {!notAdmin && !needsConnect && (pageFrom > 0 || nextToken) && (
         <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="ghost" size="sm" icon="chevLeft" disabled={from === 0}
-            onClick={() => setFrom(Math.max(0, from - PAGE))}>Zurück</Button>
-          <Button variant="ghost" size="sm" iconRight="chevRight" disabled={!list.data?.next_token}
-            onClick={() => setFrom(from + PAGE)}>Weiter</Button>
+          <Button variant="ghost" size="sm" icon="chevLeft" disabled={pageFrom === 0}
+            onClick={() => setPageFrom(Math.max(0, pageFrom - PAGE))}>Zurück</Button>
+          <Button variant="ghost" size="sm" iconRight="chevRight" disabled={!nextToken}
+            onClick={() => setPageFrom(pageFrom + PAGE)}>Weiter</Button>
         </div>
       )}
     </div>

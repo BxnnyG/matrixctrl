@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -90,6 +91,12 @@ func NewRouter(deps Deps) http.Handler {
 		// and the same connect flow gates it (etappe 46).
 		if deps.Reports != nil {
 			r.Get("/api/v1/reports", deps.Reports.List)
+			// The user queue, before the {id} routes. chi prefers a static segment
+			// over a parameter so this would win regardless, but "users" is also a
+			// value {id} would happily match, and a reader should not have to know
+			// chi's precedence rules to see that (etappe 48).
+			r.Get("/api/v1/reports/users", deps.Reports.ListUsers)
+			r.Put("/api/v1/reports/users/{id}/disposition", deps.Reports.SetUserDisposition)
 			r.Get("/api/v1/reports/{id}", deps.Reports.Detail)
 			r.Put("/api/v1/reports/{id}/disposition", deps.Reports.SetDisposition)
 			// Media quarantine lives on the reports handler because that is the
@@ -188,8 +195,32 @@ func NewRouter(deps Deps) http.Handler {
 		})
 	})
 
-	// Serve embedded frontend for all other routes
-	r.NotFound(deps.Status.ServeFrontend)
+	// Serve the embedded frontend for everything that is not an API path.
+	//
+	// Everything *under /api* gets a real 404 instead (etappe 48, P2-31). Before this,
+	// an unmatched API path fell through to index.html and answered `200 text/html`:
+	// a misspelled endpoint passed `res.ok` in the frontend and then died inside
+	// JSON.parse, pointing at parsing rather than at the wrong URL. It is the same
+	// defect as E47's quarantine endpoint — a 200 that means "no such thing" — and it
+	// also made "is this route registered?" unanswerable for any route without auth,
+	// since only a 401 distinguished a real route from the fallback.
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			handlers.Error(w, http.StatusNotFound, "Diesen Endpunkt gibt es nicht.")
+			return
+		}
+		deps.Status.ServeFrontend(w, req)
+	})
+
+	// A known path with the wrong verb is a different mistake from an unknown path and
+	// says so, rather than being reported as "no such endpoint".
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			handlers.Error(w, http.StatusMethodNotAllowed, "Diese Methode ist für diesen Endpunkt nicht erlaubt.")
+			return
+		}
+		deps.Status.ServeFrontend(w, req)
+	})
 
 	return r
 }

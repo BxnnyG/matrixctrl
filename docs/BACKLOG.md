@@ -474,7 +474,21 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
-- **P2-31 · An unknown `/api/` path answers 200 with the SPA, not 404 (S9).**
+- **P2-33 · Both report queues page on an unstable sort (S13).** Found 2026-08-17
+  reading `get_user_reports_paginate`: Synapse orders both queues by `received_ts`
+  alone, never by id. Reports sharing a timestamp therefore have no defined order
+  between two queries, so paging can show one twice and skip another — most likely
+  exactly when it matters, since a burst of reports about one incident is precisely
+  the case that produces equal timestamps.
+  *Why it was not fixed in E48:* the ordering is Synapse's, and the only fix on this
+  side is to accumulate pages and sort client-side, which changes what a "page" is and
+  what `next_token` means. That is a real design decision about the queue, not a
+  patch, and E48 was already carrying a migration and a routing change.
+  *Cheap partial:* order by `(received_ts, id)` locally within a page, which fixes
+  display order but not the boundary between pages.
+
+- **P2-31 · An unknown `/api/` path answers 200 with the SPA, not 404 (S9).** ✅ **Fixed 2026-08-17 (E48, [DESIGN.md §4.47](DESIGN.md)).** API paths now answer JSON 404, wrong verbs answer 405, and the SPA still serves every frontend route — asserted in `internal/api/router_test.go`, which was run against the old code first to confirm it fails.
+  *Original entry:*
   Found 2026-08-16 while verifying E47's route registration: `PUT
   /api/v1/media/x/y/nonesuch` and `GET /api/v1/definitely-not-a-route` both return
   **200 `text/html`** — the index.html fallback catches everything the router did not
@@ -505,13 +519,24 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   credential out of the database to act as the operator, plus writing to production
   media and marking a real file protected. That is a bigger step than a verification
   warrants, and it is the operator's call, not mine.
-  *Cheapest path:* the operator opens a report with an attachment and clicks the
+  *Cheapest path:* the operator reports a message with an attachment and clicks the
   button — the round trip is then exercised by the intended path. Live media today:
   65 items, 0 quarantined, 0 protected, so the protected branch has no natural
   test subject until one is created deliberately.
+  *Checked 2026-08-16 and it does not work with what is there:* the single existing
+  event report (id 2) is an `m.room.encrypted` event — megolm ciphertext, no
+  `content.url` — so `MediaInEvent` correctly finds nothing and the panel says
+  "Keine Dateien.". Closing this needs a **new** report against a message with an
+  attachment in an **unencrypted** room; an encrypted room hides the mxc URI from the
+  server and no amount of panel work changes that.
 
 - **P2-30 · Synapse has a second report queue that MatrixCtrl does not know about
-  (S13).** Found 2026-08-16 while reading Synapse's admin source for E47:
+  (S13).** ✅ **Done 2026-08-17 (E48, [DESIGN.md §4.46](DESIGN.md)).** Both queues now
+  show as tabs, each always carrying its own count. Closing it turned up a bug that had
+  not happened yet: the disposition table keyed on `report_id` alone, and the two queues
+  number independently, so user report N and event report N would have been one row.
+  Migration 014 makes the key `(kind, report_id)`.
+  *Original entry:* Found 2026-08-16 while reading Synapse's admin source for E47:
   `rest/admin/user_reports.py` serves `GET /_synapse/admin/v1/user_reports` and
   `/user_reports/<id>` — reports about **users**, not events. E46 shipped the event
   queue and is silent about this one, so an admin clearing "Moderation" may have an

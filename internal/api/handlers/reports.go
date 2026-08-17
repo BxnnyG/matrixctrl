@@ -19,14 +19,19 @@ import (
 // has dealt with a report. Synapse has no such concept, and its only way to clear the
 // queue destroys the record, so the decision is stored here instead (migration 013).
 
-// ReportsHandler serves the queue.
+// ReportsHandler serves both queues.
+//
+// Two disposition stores, not one: Synapse numbers the two queues from separate
+// sequences, so the kind is part of a report's identity and a single store would
+// annotate the wrong queue half the time (etappe 48, migrations/014).
 type ReportsHandler struct {
 	client       func(userID string) *synapse.Client
 	dispositions *synapse.Dispositions
+	userDisp     *synapse.Dispositions
 }
 
-func NewReportsHandler(client func(userID string) *synapse.Client, d *synapse.Dispositions) *ReportsHandler {
-	return &ReportsHandler{client: client, dispositions: d}
+func NewReportsHandler(client func(userID string) *synapse.Client, d, userDisp *synapse.Dispositions) *ReportsHandler {
+	return &ReportsHandler{client: client, dispositions: d, userDisp: userDisp}
 }
 
 // reportRow is a report with what this panel knows about it.
@@ -152,6 +157,72 @@ func (h *ReportsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// userReportRow is a user report with what this panel knows about it.
+type userReportRow struct {
+	synapse.UserReport
+	State string `json:"state"`
+	Note  string `json:"note,omitempty"`
+	Actor string `json:"actor,omitempty"`
+}
+
+// GET /api/v1/reports/users — one page of the user-report queue.
+//
+// No detail sibling: Synapse's `/user_reports/<id>` returns the same five fields this
+// list already carries, so a row expands in place (etappe 48).
+func (h *ReportsHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	client := h.client(authmw.UserIDFromContext(r.Context()))
+	if client == nil {
+		Error(w, http.StatusServiceUnavailable, "Synapse ist nicht erreichbar")
+		return
+	}
+
+	q := r.URL.Query()
+	opts := synapse.UserReportOptions{
+		Dir:            q.Get("dir"),
+		ReporterSearch: q.Get("reporter"),
+		TargetSearch:   q.Get("target"),
+	}
+	opts.From, _ = strconv.Atoi(q.Get("from"))
+	opts.Limit, _ = strconv.Atoi(q.Get("limit"))
+
+	page, err := client.ListUserReports(r.Context(), opts)
+	if err != nil {
+		writeSynapseError(w, err, "Die gemeldeten Nutzer konnten nicht geladen werden.")
+		return
+	}
+
+	ids := make([]int64, 0, len(page.Reports))
+	for _, rep := range page.Reports {
+		ids = append(ids, rep.ID)
+	}
+	// As in List: losing the badges is better than refusing the queue.
+	decided, _ := h.userDisp.For(r.Context(), ids)
+
+	rows := make([]userReportRow, 0, len(page.Reports))
+	open := 0
+	for _, rep := range page.Reports {
+		row := userReportRow{UserReport: rep, State: synapse.StateOpen}
+		if d, ok := decided[rep.ID]; ok {
+			row.State, row.Note, row.Actor = d.State, d.Note, d.Actor
+		} else {
+			open++
+		}
+		rows = append(rows, row)
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"reports":      rows,
+		"total":        page.Total,
+		"open_on_page": open,
+		"next_token":   page.NextToken,
+	})
+}
+
+// PUT /api/v1/reports/users/{id}/disposition — mark handled or dismissed, or reopen.
+func (h *ReportsHandler) SetUserDisposition(w http.ResponseWriter, r *http.Request) {
+	h.setDisposition(w, r, h.userDisp)
+}
+
 // PUT /api/v1/media/{server}/{id}/quarantine — quarantine or release one item.
 //
 // The response reports what Synapse holds *afterwards*, not what was requested. Its
@@ -186,6 +257,14 @@ func (h *ReportsHandler) Quarantine(w http.ResponseWriter, r *http.Request) {
 // Nothing is sent to Synapse. Its record of the report is left exactly as it is —
 // see migration 013 for why deleting it would destroy the pattern that matters.
 func (h *ReportsHandler) SetDisposition(w http.ResponseWriter, r *http.Request) {
+	h.setDisposition(w, r, h.dispositions)
+}
+
+// setDisposition is both queues' write path. Shared rather than copied: the rules
+// (open is the absence of a row, reopen is a delete, only handled/dismissed are
+// writable) are identical, and two copies are how they start to differ. The queue is
+// chosen by which store is passed, so it cannot be got wrong by a missing parameter.
+func (h *ReportsHandler) setDisposition(w http.ResponseWriter, r *http.Request, store *synapse.Dispositions) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		Error(w, http.StatusBadRequest, "Ungültige Melde-ID.")
@@ -204,7 +283,7 @@ func (h *ReportsHandler) SetDisposition(w http.ResponseWriter, r *http.Request) 
 	actor := authmw.UserIDFromContext(r.Context())
 
 	if body.State == synapse.StateOpen {
-		if err := h.dispositions.Reopen(r.Context(), id); err != nil {
+		if err := store.Reopen(r.Context(), id); err != nil {
 			Error(w, http.StatusInternalServerError, "Die Meldung konnte nicht erneut geöffnet werden.")
 			return
 		}
@@ -216,7 +295,7 @@ func (h *ReportsHandler) SetDisposition(w http.ResponseWriter, r *http.Request) 
 		Error(w, http.StatusBadRequest, "Unbekannter Status.")
 		return
 	}
-	if err := h.dispositions.Set(r.Context(), id, body.State, body.Note, actor); err != nil {
+	if err := store.Set(r.Context(), id, body.State, body.Note, actor); err != nil {
 		Error(w, http.StatusInternalServerError, "Der Status konnte nicht gespeichert werden.")
 		return
 	}

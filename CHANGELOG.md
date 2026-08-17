@@ -15,6 +15,40 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.48] — 2026-08-17
+
+### Added
+
+- **The second report queue.** Synapse keeps reports about *users* separately from
+  reports about *events*, with its own endpoints and its own id sequence. Moderation
+  shipped in 0.1.46 knowing only about events, so an admin could empty that screen
+  and still have an untouched queue behind it. Both queues now appear as tabs, and
+  **both tabs always carry their count** — a tab without a number would reproduce the
+  original problem in a smaller space.
+
+### Fixed
+
+- **A disposition could have been written against the wrong queue.** `report_id` was
+  the primary key on its own, but Synapse numbers the two queues independently, so
+  event report 5 and user report 5 would have been the same row: marking one handled
+  would have marked the other, with no error anywhere. Migration 014 renames the table
+  to `report_dispositions`, adds `kind`, and makes the key the pair. Existing rows
+  are backfilled as `event`, which is what they all were.
+- **An unknown `/api/` path answered `200 text/html`.** The single-page-app fallback
+  caught unmatched API paths too, so a misspelled endpoint passed `res.ok` and then
+  failed inside `JSON.parse`, pointing at parsing rather than at the wrong URL. API
+  paths now answer a JSON 404, and a known path with the wrong verb answers 405 —
+  a different mistake deserves a different answer. Every frontend route still loads
+  from index.html, which is the half of this change worth testing (P2-31).
+
+### Notes
+
+- No detail endpoint for user reports, on purpose: Synapse's `/user_reports/<id>`
+  returns exactly the five fields its list already carries, so a row expands in place
+  rather than making a second call for an identical answer.
+- The reporter/target search fields are searches, not filters — Synapse matches them
+  with `LIKE '%…%'`, so one user id also matches every id containing it.
+
 ## [0.1.47] — 2026-08-16
 
 ### Added

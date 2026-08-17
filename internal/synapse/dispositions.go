@@ -17,6 +17,15 @@ const (
 	StateDismissed = "dismissed"
 )
 
+// Which queue a report belongs to. Synapse numbers event reports and user reports
+// from separate sequences, so an id alone does not identify a report — see
+// migrations/014, where treating it as if it did would have made report 5 in one
+// queue the same row as report 5 in the other.
+const (
+	KindEvent = "event"
+	KindUser  = "user"
+)
+
 // Disposition is an admin's decision about one report.
 type Disposition struct {
 	State     string    `json:"state"`
@@ -25,10 +34,25 @@ type Disposition struct {
 	DecidedAt time.Time `json:"decided_at,omitempty"`
 }
 
-// Dispositions stores them.
-type Dispositions struct{ db *pgxpool.Pool }
+// Dispositions stores them, for one queue.
+//
+// The kind is bound here rather than passed per call: it is fixed for the lifetime of
+// a handler, and a parameter on four methods is four chances to pass the wrong one at
+// exactly one call site — which is precisely the failure this type was changed to make
+// impossible.
+type Dispositions struct {
+	db   *pgxpool.Pool
+	kind string
+}
 
-func NewDispositions(db *pgxpool.Pool) *Dispositions { return &Dispositions{db: db} }
+// NewDispositions returns a store for one queue. An unknown kind yields a store that
+// refuses every write, rather than one that quietly annotates the wrong queue.
+func NewDispositions(db *pgxpool.Pool, kind string) *Dispositions {
+	if kind != KindEvent && kind != KindUser {
+		return &Dispositions{db: nil, kind: ""}
+	}
+	return &Dispositions{db: db, kind: kind}
+}
 
 // ValidState reports whether a state may be written. `open` is deliberately not
 // writable: it is the *absence* of a decision, expressed by the absence of a row, so
@@ -47,7 +71,7 @@ func (d *Dispositions) For(ctx context.Context, ids []int64) (map[int64]Disposit
 	}
 	rows, err := d.db.Query(ctx,
 		`SELECT report_id, state, note, COALESCE(actor, ''), decided_at
-		 FROM event_report_dispositions WHERE report_id = ANY($1)`, ids)
+		 FROM report_dispositions WHERE kind = $1 AND report_id = ANY($2)`, d.kind, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -72,12 +96,12 @@ func (d *Dispositions) Set(ctx context.Context, reportID int64, state, note, act
 		return fmt.Errorf("invalid state %q", state)
 	}
 	_, err := d.db.Exec(ctx, `
-		INSERT INTO event_report_dispositions (report_id, state, note, actor, decided_at)
-		VALUES ($1, $2, $3, NULLIF($4, ''), now())
-		ON CONFLICT (report_id) DO UPDATE
+		INSERT INTO report_dispositions (kind, report_id, state, note, actor, decided_at)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), now())
+		ON CONFLICT (kind, report_id) DO UPDATE
 		SET state = EXCLUDED.state, note = EXCLUDED.note,
 		    actor = EXCLUDED.actor, decided_at = EXCLUDED.decided_at`,
-		reportID, state, note, actor)
+		d.kind, reportID, state, note, actor)
 	return err
 }
 
@@ -91,7 +115,7 @@ func (d *Dispositions) Reopen(ctx context.Context, reportID int64) error {
 		return fmt.Errorf("no database")
 	}
 	_, err := d.db.Exec(ctx,
-		`DELETE FROM event_report_dispositions WHERE report_id = $1`, reportID)
+		`DELETE FROM report_dispositions WHERE kind = $1 AND report_id = $2`, d.kind, reportID)
 	return err
 }
 

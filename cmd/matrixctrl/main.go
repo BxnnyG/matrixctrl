@@ -217,7 +217,11 @@ func main() {
 		})
 	}
 
-	reportsHandler := handlers.NewReportsHandler(synapseFor, synapse.NewDispositions(pool))
+	// One disposition store per queue. Synapse numbers event reports and user reports
+	// independently, so the kind is part of a report's identity (etappe 48).
+	reportsHandler := handlers.NewReportsHandler(synapseFor,
+		synapse.NewDispositions(pool, synapse.KindEvent),
+		synapse.NewDispositions(pool, synapse.KindUser))
 
 	roomsHandler := handlers.NewRoomsHandler(
 		func(userID string) *synapse.Client {
