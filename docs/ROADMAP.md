@@ -59,7 +59,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
-| 52 | Einmal verbinden, und da landen wo man war — der Rücksprung hing am State, der Auto-Reconnect an seiner Schleifenbremse | 🔄 gebaut 2026-08-17 · `v0.1.50` · [plan](plans/etappe-52-silent-reconnect.md) |
+| 52 | Einmal verbinden, und da landen wo man war — der Rücksprung hing am State, der Auto-Reconnect an seiner Schleifenbremse | ✅ 2026-08-17 · `v0.1.50` · [plan](plans/etappe-52-silent-reconnect.md) |
 | 51 | Der UDP-Puffer, den die SFU anfordert und nicht bekommt — und der Zähler, der aus dem falschen Namespace gelesen worden wäre | ✅ 2026-08-17 · `v0.1.49` · [plan](plans/etappe-51-udp-buffer-preflight.md) |
 | 50 | Ein eingecheckter Build-Artefakt, der seiner Quelle widerspricht — das eingebettete Frontend war 16 Tage alt und kannte die Moderation nicht | ✅ 2026-08-17 · kein Artefakt · [plan](plans/etappe-50-untrack-embedded-frontend.md) |
 | 49 | Die Prüfung, die bestand, ohne etwas geprüft zu haben — Exit 0 bei 10 von 11 übersprungenen Routen | ✅ 2026-08-17 · kein Artefakt · [plan](plans/etappe-49-verification-that-verifies.md) |
