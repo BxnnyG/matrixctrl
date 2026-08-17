@@ -31,6 +31,12 @@ import (
 
 func main() {
 	log.Printf("MatrixCtrl %s (%s) starting", version.Version, version.Commit)
+	// Said once, at startup, rather than left for whoever opens the browser: a
+	// binary with no UI is a build mistake, and the log is where a build mistake is
+	// looked for (etappe 50).
+	if !frontendBuilt(webDist) {
+		log.Printf("WARNING: no frontend embedded — built with a bare `go build`, not `make build`. The API works; the web UI will not.")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -323,6 +329,26 @@ func env(key, fallback string) string {
 }
 
 func staticHandler(f fs.FS) http.Handler {
+	// Built without a frontend — `go build ./cmd/matrixctrl` rather than `make build`.
+	// Answering 404 here would read as a routing fault and send the reader looking in
+	// the router; this says what actually happened and how to fix it (etappe 50).
+	if !frontendBuilt(f) {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`<!doctype html><meta charset="utf-8">` +
+				`<title>MatrixCtrl — frontend not built</title>` +
+				`<body style="font:14px/1.6 system-ui;max-width:34rem;margin:6rem auto;padding:0 1rem">` +
+				`<h1 style="font-size:1.1rem">This binary was built without a frontend.</h1>` +
+				`<p>The API is running normally; only the web UI is missing. The compiled ` +
+				`frontend is generated, not committed, so a bare <code>go build</code> ` +
+				`embeds nothing.</p>` +
+				`<p>Build it with:</p><pre><code>make build</code></pre>` +
+				`<p style="color:#666">The released container image builds the frontend ` +
+				`itself and is never affected by this.</p></body>`))
+		})
+	}
+
 	sub, err := fs.Sub(f, "dist")
 	if err != nil {
 		return http.NotFoundHandler()

@@ -457,7 +457,14 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   intent rather than observation decays into a lie, and the lie survives because
   nobody re-checks their own notes. Planned as
   [etappe 17](plans/etappe-17-audit-trail.md).
-- **P2-2 · Build artefacts are committed.** `cmd/matrixctrl/dist` is 32 tracked
+- **P2-2 · Build artefacts are committed.** ✅ **Done 2026-08-17 (E50,
+  [DESIGN.md §4.49](DESIGN.md)).** Untracked and gitignored; only `dist/.gitkeep`
+  remains, because `//go:embed all:dist` will not compile on an empty directory. The
+  entry undersold it: measured before the fix, the tracked copy was **sixteen days and
+  ~15 etappes stale and contained no moderation screen at all**, so a bare `go build`
+  produced a binary serving the UI of 2026-08-01 and reported nothing. A binary built
+  without a frontend now says so at startup and serves a page naming the fix.
+  *Original entry:* `cmd/matrixctrl/dist` is 32 tracked
   files, so every UI change produces a diff full of hashed bundles and hides the
   real change during review. Generate it at build time and gitignore it.
   *Sharper after E14:* the tracked copy was found **stale** — the frontend fix had

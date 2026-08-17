@@ -1719,3 +1719,54 @@ E48's screen was covered. It was not — `/users`, `/rooms`, `/rooms/{id}` and
 consecutive etappes without this check once opening it. A tool that is not wired into
 `make` or CI drifts out of date silently, because nothing fails when it goes stale.
 Affects S9.
+
+### §4.49 — A generated file under version control is two sources of truth (2026-08-17, agent, etappe 50)
+
+`cmd/matrixctrl/dist` — the compiled React frontend embedded into the Go binary — was
+40 tracked files. P2-2 had it filed as a tidiness item: noisy diffs at review time.
+Measured before fixing it:
+
+```
+$ git log -1 --date=short -- cmd/matrixctrl/dist
+452173b 2026-08-01 chore: rebuild the embedded frontend assets
+
+$ git ls-files cmd/matrixctrl/dist | grep -i reports
+(nothing)
+```
+
+Sixteen days and roughly fifteen etappes stale, with **no moderation screen in it at
+all**. `go build ./cmd/matrixctrl` produced a binary serving the UI of August 1st,
+exited 0, and looked entirely normal. Releases were never affected — the Dockerfile
+builds the frontend itself and `make build` runs `web-build copy-dist` — so the only
+broken path was the most obvious command, which is the worst place for it.
+
+CI's guard is the tell, and it is the fourth appearance of the same defect in three
+days:
+
+```yaml
+run: test -d cmd/matrixctrl/dist || …
+```
+
+It asks *does the directory exist*. The question is *is the embedded UI current*. It
+passed truthfully every day while the answer to the real question was no.
+
+The fix is not "remember to rebuild", which the preceding sixteen days already
+disproved. It is to stop having a second copy: track one placeholder, `dist/.gitkeep`,
+ignore everything else. `//go:embed all:dist` is a build error on an empty directory —
+verified in a scratch module, not assumed — so the placeholder is what keeps
+`go test ./...` working on a clean checkout.
+
+That converts a *stale* frontend into *no* frontend, which is only an improvement if
+the absence is loud. So the binary says so at startup and serves a page naming the
+cause and the command, rather than a 404 that reads like a routing fault.
+
+The general rule: **a generated artefact under version control is a second source of
+truth that can silently disagree with the first, and it will.** Instrumenting the copy
+— embedding a build stamp to compare — was considered and rejected: two timestamps
+that can disagree is another artefact with the same disease. Delete the copy instead.
+
+A tail worth recording, because it is the same mistake one level down: `copy-dist`
+begins `rm -rf cmd/matrixctrl/dist`, which deleted the very placeholder the fix
+depends on. The first `make build` after the change left `.gitkeep` staged-and-deleted
+and would have broken the next clean checkout's compile. Caught by looking at
+`git status` after the build rather than at the build's exit code. Affects S8, S9.

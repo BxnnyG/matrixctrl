@@ -27,6 +27,10 @@ web-build:
 copy-dist:
 	rm -rf cmd/matrixctrl/dist
 	cp -r web/dist cmd/matrixctrl/dist
+	# Restore the tracked placeholder that `rm -rf` above just removed. Without this
+	# line every `make build` deletes a tracked file, leaving the tree dirty and the
+	# next clean checkout unable to compile (//go:embed needs a non-empty dist).
+	touch cmd/matrixctrl/dist/.gitkeep
 
 web-dev:
 	cd web && npm run dev

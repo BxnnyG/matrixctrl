@@ -15,6 +15,21 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Changed — no image or chart change
+
+- **The compiled frontend is no longer committed.** `cmd/matrixctrl/dist` was 40
+  tracked files, last rebuilt 2026-08-01 — sixteen days and roughly fifteen etappes
+  stale, with no moderation screen in it at all. A bare `go build ./cmd/matrixctrl`
+  therefore produced a binary serving an August 1st UI and said nothing about it.
+  Released images were never affected (the Dockerfile builds the frontend itself), and
+  neither was `make build`. Now generated and gitignored, with a single tracked
+  `dist/.gitkeep` because `//go:embed` will not compile on an empty directory.
+- **A binary built without a frontend says so** — one warning line at startup, and a
+  page naming the cause and `make build` instead of a 404 that reads like a routing
+  bug.
+- CI's check changed from "does the dist directory exist" to "is the placeholder
+  present, and have built assets been committed again".
+
 ### Fixed — tooling only, no image or chart change
 
 - **The post-deploy UI check passed without checking anything.** `verify-ui.mjs`

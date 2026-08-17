@@ -25,10 +25,24 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # //go:embed all:dist requires the directory to exist. It is committed, but
-      # a guard here turns a confusing embed error into a clear one.
-      - name: Check embedded frontend assets exist
-        run: test -d cmd/matrixctrl/dist || { echo "cmd/matrixctrl/dist missing — run 'make copy-dist'"; exit 1; }
+      # //go:embed all:dist needs the directory to be non-empty, which dist/.gitkeep
+      # guarantees on every checkout. The built assets are generated, not committed
+      # (etappe 50), so this job compiles against the placeholder — that is intended,
+      # and `frontendBuilt()` makes such a binary announce itself rather than serve a
+      # stale UI.
+      #
+      # This guard used to be `test -d cmd/matrixctrl/dist`, which asked whether a
+      # directory existed while the question was whether the embedded UI was current.
+      # It passed truthfully for sixteen days over assets that predated a third of the
+      # app's screens (§4.49).
+      - name: Check the embed placeholder is present
+        run: test -f cmd/matrixctrl/dist/.gitkeep || { echo "cmd/matrixctrl/dist/.gitkeep missing — //go:embed needs a non-empty dist"; exit 1; }
+
+      # The committed tree must never contain built frontend assets again.
+      - name: No built frontend assets committed
+        run: |
+          tracked=$(git ls-files cmd/matrixctrl/dist | grep -v '^cmd/matrixctrl/dist/.gitkeep$' || true)
+          test -z "$tracked" || { echo "built assets are committed again:"; echo "$tracked"; exit 1; }
 
       # P0-1c: a plan document explaining why the cluster hostname must never be
       # published contained it, and was pushed. Every control in place pointed at
