@@ -29,7 +29,8 @@ exist is worse than admitting there is none.
 > **Update 2026-07-31 (later the same day).** Etappe 13 addressed the first two:
 > the work is committed in nine reviewable slices, CI runs on every push, 22
 > frontend tests cover the functions that had already broken in production, and a
-> headless-browser check walks all nine routes after a deploy. What follows is
+> headless-browser check walks the functional routes after a deploy (fourteen
+> since E49, and a run that skips them now fails instead of passing). What follows is
 > unchanged.
 
 The published artefact is still not the running one: the chart says `0.1.0`, the
@@ -330,8 +331,12 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   the three functions that had each broken in production (version comparison,
   diff parsing, restart-cause mapping). Component tests deliberately still absent.
 - ~~**P1-5 · Headless browser for verification.**~~ **Done 2026-07-31** —
-  `web/scripts/verify-ui.mjs` drives chromium over all nine functional routes and
+  `web/scripts/verify-ui.mjs` drives chromium over the functional routes and
   writes screenshots. First run: 9/9 clean.
+  *Corrected 2026-08-17 (E49):* the list had drifted — `/users`, `/rooms`,
+  `/rooms/{id}` and `/reports` were never in it, and a run that skipped routes still
+  exited 0. Both fixed; the list is fourteen entries and a skip is a failure unless
+  `--allow-skip` is passed.
 - ~~**P1-6 · `hooks-failed` is silent (S3).**~~ **Done, struck through 2026-08-15.**
   `helm_upgrade.go:109` sets the status and three screens render it:
   `routes/helm/upgrade.tsx:252` explains it inline after a run, and both

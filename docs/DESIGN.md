@@ -179,8 +179,11 @@ version strings together, and no tags in git.
 **Purpose:** prove an etappe is done without a human remembering to check.
 **Today:** GitHub Actions runs `go vet`, `go test ./...`, the TypeScript
 typecheck, 26 Vitest unit tests and the frontend build on every push and PR.
-`web/scripts/verify-ui.mjs` drives headless chromium over all nine functional
-routes after a deploy, failing on console errors or an unmounted root.
+`web/scripts/verify-ui.mjs` drives headless chromium over the functional routes
+after a deploy — **fourteen** since E49 — failing on console errors, an unmounted
+root, or a route it never rendered. Run it with `make verify-ui BASE=…`; without
+`MATRIXCTRL_TOKEN` it checks only `/auth/login` and exits non-zero, because until
+2026-08-17 that same run exited 0 having skipped ten of eleven routes (§4.48).
 ✅ **Done (E13, 2026-07-31):** the definition of done is now enforced outside the
 agent's memory. Did *not* solve: component/snapshot tests (deliberately omitted —
 they break on every intentional design change), and the greenfield path (S6),
@@ -1675,3 +1678,44 @@ frontend route is served by index.html, so a `NotFound` that stops doing that tu
 every page reload into a 404. The test asserts both directions, and it was run against
 the old code first to confirm it fails with exactly the reported symptom
 (`status = 200`, an HTML body) rather than passing for its own reasons. Affects S9.
+
+### §4.48 — The check that passes when it checked nothing (2026-08-17, agent, etappe 49)
+
+`verify-ui.mjs` walks every functional route in a real browser and is the answer to
+"an HTTP 200 does not prove the page rendered". Its last line was:
+
+```js
+process.exit(failed ? 1 : 0);
+```
+
+`skipped` was counted and printed and is not in that expression. Without
+`MATRIXCTRL_TOKEN` ten of eleven routes skipped and the process exited **0**. The
+output said so plainly; the exit status did not, and the exit status is the half that
+a Makefile, a CI job or a shell `&&` reads.
+
+That makes four members of this family now, and they are worth listing together
+because the shape is identical every time:
+
+| the check | what it answered | what was being asked |
+|---|---|---|
+| `kubectl rollout status` | the old ReplicaSet is healthy | is the *new* spec live |
+| `tsc --noEmit` (no `-b`) | the zero files I was given are fine | does the app typecheck |
+| Synapse quarantine `200 {}` | the request was accepted | did the media get quarantined |
+| `verify-ui.mjs` exit 0 | nothing I ran failed | were the pages verified |
+
+Each answers its own question correctly. None answers the one being asked, and each
+is *more* dangerous than an error, because a green result ends the investigation.
+
+Two things generalise. First, the defence stays what §4.40 recorded — **read back the
+subject, not the verdict** — and here the subject is "how many routes rendered",
+which the tool already knew and simply did not act on. Second, **"skipped" is not a
+third outcome next to pass and fail.** It is "did not run", and code that treats it as
+benign will report success for a run that did nothing. A skip is now a failure unless
+`--allow-skip` says the partial run was intended.
+
+Found, again, while doing something else: the route list was being read to see whether
+E48's screen was covered. It was not — `/users`, `/rooms`, `/rooms/{id}` and
+`/reports` had never been in it, so the report queue was rewritten by three
+consecutive etappes without this check once opening it. A tool that is not wired into
+`make` or CI drifts out of date silently, because nothing fails when it goes stale.
+Affects S9.

@@ -15,6 +15,19 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Fixed — tooling only, no image or chart change
+
+- **The post-deploy UI check passed without checking anything.** `verify-ui.mjs`
+  exited 0 when routes were *skipped*, so a run without `MATRIXCTRL_TOKEN` skipped ten
+  of eleven routes and still reported success. A skipped route is now a failure unless
+  `--allow-skip` is passed, and the summary counts what actually rendered.
+- **Four screens were missing from that check.** `/users`, `/rooms`, `/rooms/{id}`
+  and `/reports` had never been in the route list, so the report queue was rewritten
+  by three consecutive etappes without the check once opening it in a browser. The
+  room detail screen is opt-in via `--room-id`, since no id is valid on every instance.
+- **Nothing ran the check.** Added `make verify-ui BASE=…`; it had existed only as a
+  command copied out of a plan file, which is how its route list went stale unnoticed.
+
 ## [0.1.48] — 2026-08-17
 
 ### Added

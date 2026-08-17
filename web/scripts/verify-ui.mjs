@@ -59,6 +59,16 @@ const TOKEN = process.env.MATRIXCTRL_TOKEN || "";
 // it by replacing every IPv4 literal, value unknown and unneeded.
 const REDACT_IPS = args.includes("--redact-ips");
 
+// Accepts a run in which some routes were never rendered. Without it, a skip is a
+// failure — see the exit logic at the bottom of this file for why.
+const ALLOW_SKIP = args.includes("--allow-skip");
+
+// A room id to check the room *detail* screen with. Opt-in rather than a fixed entry
+// in ROUTES: there is no id that is valid on every instance, and a route that always
+// skips would — now that skips fail — be a check that always fails, which is a check
+// that gets deleted.
+const ROOM_ID = argOf("--room-id", process.env.MATRIXCTRL_ROOM_ID || "");
+
 const REDACTIONS = allOf("--redact").map((spec) => {
   const i = spec.indexOf("=");
   if (i <= 0) {
@@ -153,6 +163,14 @@ const ROUTES = [
   { path: "/system", name: "system", auth: true },
   { path: "/audit", name: "audit", auth: true },
   { path: "/rtc", name: "rtc", auth: true },
+  // Phase 2. All four shipped after this list was written and none of them was in
+  // it, so the report queue was rewritten by three consecutive etappes (46, 47, 48)
+  // without this check ever opening it in a browser (etappe 49).
+  { path: "/users", name: "users", auth: true },
+  { path: "/rooms", name: "rooms", auth: true },
+  { path: "/reports", name: "reports", auth: true },
+  // Only when --room-id says which room. See ROOM_ID above.
+  ...(ROOM_ID ? [{ path: `/rooms/${encodeURIComponent(ROOM_ID)}`, name: "room-detail", auth: true }] : []),
 ];
 
 // Console noise that is not a defect.
@@ -455,8 +473,6 @@ const redactedResults = results.map((r) => ({
 await writeFile(path.join(OUT, "results.json"), JSON.stringify(redactedResults, null, 2));
 console.log(`\nScreenshots: ${OUT}`);
 
-const skipped = results.filter((r) => r.status === "skipped").length;
-if (skipped) console.log(`${skipped} route(s) skipped — set MATRIXCTRL_TOKEN to include them.`);
 
 if (REDACTIONS.length) {
   const total = results.reduce((n, r) => n + (r.redacted ?? 0), 0);
@@ -465,5 +481,32 @@ if (REDACTIONS.length) {
     console.log("  WARNING: no rule matched anything. Verify the strings before publishing.");
   }
 }
-console.log(failed ? `\n${failed} route(s) failed.` : "\nAll checked routes rendered cleanly.");
+const skipped = results.filter((r) => r.status === "skipped").length;
+if (skipped) console.log(`${skipped} route(s) skipped — set MATRIXCTRL_TOKEN to include them.`);
+
+// Worded to be true in a partial run. "All routes rendered cleanly" sitting above a
+// list of thirteen skips is how the original defect read to anyone skimming.
+const verifiedCount = results.length - skipped;
+console.log(failed
+  ? `\n${failed} route(s) failed.`
+  : `\n${verifiedCount} of ${results.length} route(s) rendered cleanly.`);
+
+// A skipped route is a route that was not verified, and until 2026-08-17 that fact
+// reached the exit code not at all: `process.exit(failed ? 1 : 0)`. Run without a
+// token, ten of eleven routes skipped and this process exited 0 — a verification tool
+// reporting success for a run that verified one page (etappe 49, DESIGN §4.48).
+//
+// The output above was always honest. Only the status was not, and the status is what
+// a Makefile, a CI job or a shell `&&` actually reads.
+if (skipped && !ALLOW_SKIP) {
+  console.log(
+    `\nNOT VERIFIED: ${skipped} of ${results.length} route(s) never rendered.\n` +
+    "  Set MATRIXCTRL_TOKEN to check them, or pass --allow-skip to accept a\n" +
+    "  partial run. This is a failure by default because a check that skips\n" +
+    "  almost everything and exits 0 is worse than no check at all.");
+  process.exit(1);
+}
+if (skipped) {
+  console.log(`\nPartial run accepted (--allow-skip): ${results.length - skipped} of ${results.length} route(s) verified.`);
+}
 process.exit(failed ? 1 : 0);

@@ -14,7 +14,7 @@ GO         ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 GOFLAGS    :=
 BUILD_DIR  := bin
 
-.PHONY: all build test check lint web-build web-dev dev clean docker
+.PHONY: all build test check lint verify-ui web-build web-dev dev clean docker
 
 all: web-build build
 
@@ -55,6 +55,24 @@ check:
 
 lint:
 	golangci-lint run ./...
+
+# Post-deploy UI check: every functional route in a real browser (PROZESS §4).
+#
+# A target because until 2026-08-17 this existed only as an incantation copied out
+# of a plan file from E13, so it was effectively never run — and the four Phase 2
+# screens had drifted out of its route list unnoticed (§4.48).
+#
+#   make verify-ui BASE=https://panel.example.com
+#   make verify-ui BASE=… ROOM_ID='!abc:example.org'   # adds the room detail screen
+#
+# MATRIXCTRL_TOKEN must be set to reach the authenticated routes; without it the
+# run exits non-zero rather than passing on a handful of skips.
+verify-ui:
+	@test -n "$(BASE)" || (echo "BASE is required, e.g. make verify-ui BASE=https://panel.example.com" && exit 2)
+	cd web && node scripts/verify-ui.mjs --base "$(BASE)" \
+		$(if $(ROOM_ID),--room-id "$(ROOM_ID)") \
+		$(if $(OUT),--out "$(OUT)") \
+		$(VERIFY_FLAGS)
 
 clean:
 	rm -rf $(BUILD_DIR) web/dist
