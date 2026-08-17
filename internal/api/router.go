@@ -92,6 +92,9 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/reports", deps.Reports.List)
 			r.Get("/api/v1/reports/{id}", deps.Reports.Detail)
 			r.Put("/api/v1/reports/{id}/disposition", deps.Reports.SetDisposition)
+			// Media quarantine lives on the reports handler because that is the
+			// screen it serves, and it shares the same Synapse client.
+			r.Put("/api/v1/media/{server}/{id}/quarantine", deps.Reports.Quarantine)
 		}
 
 		if deps.Audit != nil {

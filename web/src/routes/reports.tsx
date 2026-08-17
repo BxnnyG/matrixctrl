@@ -38,10 +38,93 @@ interface ReportList {
   next_token?: number | null;
 }
 
+interface MediaRow {
+  server: string;
+  id: string;
+  kind: "media" | "thumbnail" | "encrypted";
+  mxc: string;
+  quarantined: boolean;
+  by?: string;
+  protected: boolean;
+  unknown?: boolean;
+}
+
+interface QuarantineResult {
+  requested: boolean;
+  quarantined: boolean;
+  by?: string;
+  /** False when Synapse accepted the request and changed nothing — which it does,
+   *  with a 200 and an empty body, for protected media. */
+  changed: boolean;
+  protected: boolean;
+}
+
 interface ReportDetail {
   report: Report;
   body: string;
   event_type: string;
+  media: MediaRow[] | null;
+}
+
+const KIND_LABEL: Record<MediaRow["kind"], string> = {
+  media: "Datei",
+  thumbnail: "Vorschaubild",
+  encrypted: "Datei (verschlüsselt)",
+};
+
+/** One media item from the reported event, with the state Synapse actually holds.
+ *
+ *  The quarantine endpoint answers `200 {}` whatever it did, and silently skips
+ *  media marked safe_from_quarantine — so this panel never echoes the request back.
+ *  Every state shown here was read from Synapse after the write (E47). */
+function MediaItem({ m, onDone }: { m: MediaRow; onDone: () => void }) {
+  const [result, setResult] = useState<QuarantineResult | null>(null);
+
+  const act = useMutation({
+    mutationFn: (quarantine: boolean) =>
+      api.put<QuarantineResult>(`/api/v1/media/${encodeURIComponent(m.server)}/${encodeURIComponent(m.id)}/quarantine`, { quarantine }),
+    onSuccess: (r) => { setResult(r); onDone(); },
+  });
+
+  const quarantined = result ? result.quarantined : m.quarantined;
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderTop: "1px solid var(--border-soft)" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{KIND_LABEL[m.kind]}</span>
+          {quarantined && <Badge tone="err" size="sm">gesperrt</Badge>}
+          {m.protected && <Badge tone="neutral" size="sm">geschützt</Badge>}
+          {m.unknown && <Badge tone="neutral" size="sm">Status unbekannt</Badge>}
+        </div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--text-faint)", overflowWrap: "anywhere", marginTop: 2 }}>
+          {m.mxc}
+        </div>
+
+        {/* The whole point of the etappe: Synapse answers 200 either way, so when
+            nothing changed the operator has to be told, or they walk away believing
+            they took something down. */}
+        {result && !result.changed && (
+          <div style={{ fontSize: 11.5, color: "var(--status-warn)", marginTop: 4, lineHeight: 1.5 }}>
+            {result.protected
+              ? "Synapse hat die Anfrage angenommen und nichts geändert — diese Datei ist vor Quarantäne geschützt."
+              : "Synapse hat die Anfrage angenommen, der Status ist danach aber unverändert."}
+          </div>
+        )}
+        {result?.changed && result.by && (
+          <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 4 }}>gesperrt von {result.by}</div>
+        )}
+      </div>
+
+      <Button
+        variant={quarantined ? "outline" : "soft"}
+        size="sm"
+        disabled={act.isPending || m.unknown}
+        onClick={() => act.mutate(!quarantined)}>
+        {act.isPending ? "…" : quarantined ? "Freigeben" : "Sperren"}
+      </Button>
+    </div>
+  );
 }
 
 interface MatrixState { connected: boolean; reason?: string }
@@ -139,6 +222,24 @@ function ReportRow({ r, last }: { r: Report; last: boolean }) {
                     ? "Verschlüsselt — der Server kann den Inhalt nicht lesen, MatrixCtrl also auch nicht."
                     : "Kein Textinhalt (z. B. Bild, Reaktion oder Zustandsänderung)."}
                 </div>
+              )}
+            </div>
+          )}
+
+          {detail.data && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", marginBottom: 2 }}>
+                Dateien im gemeldeten Ereignis
+              </div>
+              {(detail.data.media ?? []).length === 0 ? (
+                // An event with no media is the common case, and must not look like
+                // a panel that failed to load.
+                <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Keine Dateien.</div>
+              ) : (
+                (detail.data.media ?? []).map((m) => (
+                  <MediaItem key={m.mxc + m.kind} m={m}
+                    onDone={() => qc.invalidateQueries({ queryKey: ["reports", "detail", r.id] })} />
+                ))
               )}
             </div>
           )}

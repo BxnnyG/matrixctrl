@@ -15,6 +15,42 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.47] — 2026-08-16
+
+### Added
+
+- **Media quarantine, from the report queue.** The files a reported event references
+  — the item, its thumbnail, and the encrypted-room variant — each with the
+  quarantine state read from Synapse, and a button that blocks or releases it.
+
+- **And it tells you when Synapse accepted the request and did nothing.** This is the
+  point of the etappe. `POST /media/quarantine/...` returns `200 {}` in every case:
+  not whether the media exists, not whether anything changed. And the store skips
+  protected media:
+
+  ```python
+  if quarantined_by is not None:
+      hash_sql += " AND safe_from_quarantine = FALSE"
+  ```
+
+  So quarantining a protected file looks exactly like success. Every write is
+  followed by a read of `GET /media/<server>/<id>`, and the panel reports the state
+  it found rather than the one it asked for — including "accepted and changed
+  nothing", which the API itself cannot express.
+
+  Note the condition: the filter applies on quarantine and not on release, so the two
+  directions genuinely behave differently. Releasing protected media works.
+
+### Notes
+
+- Deleting media, and protect/unprotect, are deliberately out. Deletion has no
+  inverse; protection is a control aimed at *other admins* and belongs with a
+  permissions story that does not exist yet.
+- Reading Synapse's source for this turned up a **second report queue** —
+  `/_synapse/admin/v1/user_reports`, for reported users rather than events — that
+  yesterday's moderation screen knows nothing about. Recorded as P2-30 rather than
+  bolted on.
+
 ## [0.1.46] — 2026-08-16
 
 ### Added

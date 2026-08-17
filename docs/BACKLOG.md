@@ -474,6 +474,54 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
+- **P2-31 · An unknown `/api/` path answers 200 with the SPA, not 404 (S9).**
+  Found 2026-08-16 while verifying E47's route registration: `PUT
+  /api/v1/media/x/y/nonesuch` and `GET /api/v1/definitely-not-a-route` both return
+  **200 `text/html`** — the index.html fallback catches everything the router did not
+  match, including API paths. So a misspelled endpoint in the frontend passes
+  `res.ok`, then dies in `JSON.parse` with a message that points at parsing rather
+  than at the wrong URL.
+  *Why it matters beyond tidiness:* it is §4.40's failure class in the routing layer —
+  a 200 that means "no such thing". It also weakens every future probe of the form
+  "does this route exist?", because only a *guarded* route is distinguishable
+  (401 vs 200); an unguarded new route would be indistinguishable from a typo.
+  *Shape:* mount an explicit `NotFound` (and `MethodNotAllowed`) handler on the `/api`
+  subrouter returning the standard JSON error, and leave the SPA fallback to
+  everything else. Small, but it changes a response code, so it wants its own
+  before/after check rather than a drive-by edit during a ship.
+  *Not a regression from E47* — true since the SPA fallback was introduced.
+
+- **P2-32 · E47's protected-media case is source-verified, not live-verified (S13).**
+  E47 ships on a finding read from Synapse's source: `quarantine_media_by_id` filters
+  `AND safe_from_quarantine = FALSE`, so quarantining protected media returns
+  `200 {}` and changes nothing. That reasoning drives `QuarantineResult.Changed` and
+  is covered by unit tests, but the **HTTP round trip was never exercised against
+  live Synapse**, so the definition of done in
+  [the E47 plan](plans/etappe-47-media-quarantine.md) is not fully met.
+  *Why it was not done:* the admin API needs authority, and under MSC3861 this
+  deployment has **no service-level admin credential** — `users.admin=1` is 0 across
+  all 4 accounts and authority comes from a MAS scope on the *operator's own* token,
+  which MatrixCtrl stores per user. Verifying would have meant reading that stored
+  credential out of the database to act as the operator, plus writing to production
+  media and marking a real file protected. That is a bigger step than a verification
+  warrants, and it is the operator's call, not mine.
+  *Cheapest path:* the operator opens a report with an attachment and clicks the
+  button — the round trip is then exercised by the intended path. Live media today:
+  65 items, 0 quarantined, 0 protected, so the protected branch has no natural
+  test subject until one is created deliberately.
+
+- **P2-30 · Synapse has a second report queue that MatrixCtrl does not know about
+  (S13).** Found 2026-08-16 while reading Synapse's admin source for E47:
+  `rest/admin/user_reports.py` serves `GET /_synapse/admin/v1/user_reports` and
+  `/user_reports/<id>` — reports about **users**, not events. E46 shipped the event
+  queue and is silent about this one, so an admin clearing "Moderation" may have an
+  untouched second queue behind it.
+  *Why it was not folded into E47:* it is a queue with its own detail view and its own
+  disposition semantics, not a footnote on a media etappe. Bolting it on would have
+  given it exactly the shallow treatment E47's plan refused for quarantine.
+  *Shape:* the same disposition table works — `event_report_dispositions` would need a
+  kind column, or a sibling table — and the same connect gate applies.
+
 - **P2-29 · Calls show no audit, no connections and no statistics (S14).**
   **Two of four done 2026-08-16 (E44, [DESIGN.md §4.42](DESIGN.md)):** live rooms and
   participants, and a recorded history of calls, talk time and SFU restarts that

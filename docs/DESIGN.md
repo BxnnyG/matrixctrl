@@ -1570,3 +1570,56 @@ give the reversible-pair reasoning a fraction of the attention it needs. The Mat
 connect panel became shared at the same time, because the authorization is per
 operator rather than per page: one token serves rooms and moderation alike (§3).
 Affects S13.
+
+### §4.45 — A 200 that carries no information at all (2026-08-16, agent, etappe 47)
+
+§4.20 established that a successful write says the request was accepted, not that the
+state changed, and E41 acted on it by reading a room's block flag back. Synapse's
+media quarantine is the strongest case of that rule this project has met, and it was
+found by reading Synapse's source out of the running container rather than its
+documentation — which does not mention two of the relevant endpoints.
+
+The handler, in full:
+
+```python
+await self.store.quarantine_media_by_id(server_name, media_id, requester.user.to_string())
+return HTTPStatus.OK, {}
+```
+
+An empty body, every time. Not whether the media exists, not whether it was already
+quarantined, not whether anything changed. And in the store:
+
+```python
+if quarantined_by is not None:
+    hash_sql += " AND safe_from_quarantine = FALSE"
+```
+
+Media marked safe is **silently skipped**, and the caller gets `200 {}` — byte for
+byte what success looks like. An admin quarantining a protected file would see a
+green result and walk away believing they had taken it down.
+
+Note which side the condition is on. The filter applies when `quarantined_by is not
+None`, i.e. on quarantine and **not** on release, so the two directions are not
+symmetric: protected media cannot be quarantined and can be released. A panel that
+assumed a reversible pair behaves reversibly would be wrong in one direction only —
+the harder kind of wrong to notice.
+
+So every write is followed by `GET /media/<server>/<id>` and the panel reports
+`quarantined_by` as found. `Changed` is computed by comparing the read-back with the
+request rather than from `safe_from_quarantine`, so a future reason to silently no-op
+is caught by the same code without anyone having to predict it.
+
+**What was left out, and why it is not laziness.** Deleting media has no inverse —
+same treatment as room deletion and GDPR erasure. Protect/unprotect *is* a reversible
+pair and would have been four lines, but "protected" is a flag one admin sets to stop
+*other* admins acting; shipping that toggle beside the quarantine button invites using
+it to win an argument, and it belongs with a permissions model this project does not
+have.
+
+**Consequences:** three reference sites are read from an event — `content.url`,
+`content.info.thumbnail_url`, and `content.file.url` for encrypted rooms — and the
+kind travels with each, because quarantining a thumbnail while the full image stays
+served is not what the admin meant. Media ids containing a slash are refused rather
+than escaped, since they become a URL path segment. Reading the source also turned up
+`/_synapse/admin/v1/user_reports`, an entire second report queue that E46 does not
+know exists; it is recorded as P2-30 rather than folded in. Affects S13.
