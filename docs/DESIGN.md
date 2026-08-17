@@ -1822,3 +1822,52 @@ narrowing the privileges of (E37, E40). Naming what it cannot change is the corr
 scope here, unlike P1-14 where the same posture was called half a feature — the
 difference is that here the remedy is one documented command and the panel's value is
 knowing it is needed *before* the first call drops. Affects S14.
+
+### §4.51 — A redirect target is a security input, and a retry is a loop (2026-08-17, agent, etappe 52)
+
+Two operator-reported defects in the shared Matrix-admin authorization, both about
+what happens *around* the flow rather than inside it.
+
+**The callback had one destination.** `finishSynapseAdmin` ended in
+`http.Redirect(w, r, "/rooms", …)`, hardcoded on the success path and in its `fail`
+closure. Correct in E36, when rooms was the only caller; wrong the moment E46 reused
+the flow for the report queue and nothing carried the origin. Connecting from
+Moderation worked and then abandoned the operator on a different screen — and the
+failure case was worse, showing an error beside a connect button for a feature they
+were not using.
+
+The return path now travels in the `oidc_states` row, for the same reason the purpose
+already did: the state is consumed from the database precisely because a value the
+browser carries is not one to branch authorization on. It is then mapped through an
+**allowlist**, not validated by a rule. "Starts with a slash" is the rule people reach
+for and it is not sufficient — `//evil.example.com` is protocol-relative and browsers
+follow it off-site. Two screens use this flow; enumerating them cannot be got subtly
+wrong later, and a predicate can.
+
+**"Connect once and it runs" versus a credential at rest.** The operator asked why
+rooms needs reconnecting. It is not a bug: E36 deliberately keeps the refresh token in
+memory, because persisting it leaves a Synapse-admin-capable credential in Postgres per
+operator. The complaint was still legitimate — measured, the audit log holds four
+connects ever, and the reason it *felt* constant is that seven panel versions shipped
+that day, each restart discarding the token.
+
+Offered as a decision rather than assumed, per rule 6. The operator chose to keep
+nothing at rest and make the reconnect invisible instead: when the token is missing the
+panel starts the authorization itself and returns to the screen in hand. Encrypted
+persistence remains the recorded alternative, not a rejected idea nobody wrote down.
+
+**The guard is the feature.** An automatic redirect triggered by a failing condition is
+a redirect loop unless something stops it, and the obvious guard is the wrong one. The
+dangerous case is not a *failed* authorization — that returns with `?error=`, whose
+presence suppresses the retry — but a *successful* one whose token is refused again
+immediately, which would bounce through MAS forever with no error to show. Hence a
+session-scoped timer as well, and one that fails closed when storage is unavailable.
+
+The subtler trap was in clearing it. Clearing on `connected == true` is the natural
+reading and re-arms the loop exactly when it matters: a reconnect can succeed, flip
+`connected`, and have the very next request answer 409. The guard is cleared only on a
+**successful data load**, because that is the only evidence the token actually works —
+the same distinction as §4.45, where the state was read back rather than inferred from
+an accepted request. And `403` never triggers any of it: reconnecting cannot grant a
+permission Matrix has not given, so a retry there is an infinite loop against a
+condition no click can fix. Affects S13, S6.

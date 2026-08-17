@@ -1,0 +1,17 @@
+-- Where to send the browser after the Synapse-admin authorization (etappe 52).
+--
+-- The flow was built in E36 when rooms was its only caller, so the callback redirected
+-- to a hardcoded /rooms. E46 reused it for the report queue and nothing carried the
+-- origin, so connecting from Moderation worked and then dropped the operator on a
+-- different screen.
+--
+-- It lives with the state rather than in a query parameter for the same reason the
+-- purpose does: the state is a CSRF token consumed from this table precisely because a
+-- value the browser carries is not one to branch authorization on. A redirect target
+-- taken from the client is also the classic shape of an open redirect. The callback
+-- additionally checks it against an allowlist before using it — the column is where
+-- the value is *kept*, not what makes it safe.
+--
+-- Nullable: rows written before this migration, and any flow that does not care, mean
+-- "use the default".
+ALTER TABLE oidc_states ADD COLUMN IF NOT EXISTS return_to TEXT;

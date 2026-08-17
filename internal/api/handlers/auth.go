@@ -304,14 +304,14 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	// and the static client is registered with exactly one. Which flow this is comes
 	// from the database row the state consumed, never from anything the browser
 	// carried (E36).
-	purpose, err := o.StatePurpose(r.Context(), state)
+	purpose, returnTo, err := o.StatePurpose(r.Context(), state)
 	if err != nil {
 		log.Printf("OIDC callback error: %v", err)
 		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
 		return
 	}
 	if purpose == auth.PurposeSynapseAdmin {
-		h.finishSynapseAdmin(w, r, o, code)
+		h.finishSynapseAdmin(w, r, o, code, returnTo)
 		return
 	}
 
@@ -389,9 +389,15 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 // requests actually look up.
 //
 // The refresh token goes into memory and nowhere else. Nothing here logs any of it.
-func (h *AuthHandler) finishSynapseAdmin(w http.ResponseWriter, r *http.Request, o *auth.OIDCService, code string) {
+//
+// returnTo is the screen the operator started from, carried in the state row. Both the
+// success and the failure redirect use it — landing the failure on the *other* screen
+// would show the error next to a connect button for a feature they were not using
+// (etappe 52).
+func (h *AuthHandler) finishSynapseAdmin(w http.ResponseWriter, r *http.Request, o *auth.OIDCService, code, returnTo string) {
+	dest := connectReturnTo(returnTo)
 	fail := func(msg string) {
-		http.Redirect(w, r, "/rooms?error="+url.QueryEscape(msg), http.StatusFound)
+		http.Redirect(w, r, dest+"?error="+url.QueryEscape(msg), http.StatusFound)
 	}
 
 	access, refresh, expiresIn, err := o.SynapseAdminTokens(r.Context(), code)
@@ -416,7 +422,24 @@ func (h *AuthHandler) finishSynapseAdmin(w http.ResponseWriter, r *http.Request,
 	}
 
 	h.matrixTokens.Put(userID, access, refresh, expiresIn)
-	http.Redirect(w, r, "/rooms", http.StatusFound)
+	http.Redirect(w, r, dest, http.StatusFound)
+}
+
+// connectReturnTo maps a requested return path onto the screens this authorization
+// actually serves, defaulting to rooms.
+//
+// An allowlist rather than a validation rule. A redirect target that originates with
+// the client is the classic open redirect, and "starts with a slash" is not enough —
+// `//evil.example.com` is a protocol-relative URL that browsers follow off-site. The
+// set of screens that use this flow is two, so enumerating them costs nothing and
+// cannot be got subtly wrong later.
+func connectReturnTo(requested string) string {
+	switch requested {
+	case "/rooms", "/reports":
+		return requested
+	default:
+		return "/rooms"
+	}
 }
 
 // OIDC returns the current OIDC service, or nil in bootstrap mode.

@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner, Tabs } from "@/components/mc";
-import { MatrixConnect } from "@/components/MatrixConnect";
+import { MatrixConnect, clearConnectAttempt } from "@/components/MatrixConnect";
 
 export const Route = createFileRoute("/reports")({
   component: Reports,
@@ -424,6 +424,11 @@ function Reports() {
     placeholderData: keepPreviousData,
   });
 
+  // See rooms.tsx: a successful load is the only proof the token works.
+  useEffect(() => {
+    if (list.isSuccess) clearConnectAttempt();
+  }, [list.isSuccess]);
+
   if (state.isLoading) {
     return <div style={{ padding: 28, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>;
   }
@@ -432,7 +437,7 @@ function Reports() {
     return (
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <SectionTitle sub="Gemeldete Ereignisse">Moderation</SectionTitle>
-        <MatrixConnect reason="Für gemeldete Ereignisse wird einmalig der Matrix-Admin-Zugriff verbunden." error={error} />
+        <MatrixConnect reason="Für gemeldete Ereignisse wird einmalig der Matrix-Admin-Zugriff verbunden." error={error} returnTo="/reports" auto />
       </div>
     );
   }
@@ -494,7 +499,7 @@ function Reports() {
       )}
 
       {needsConnect && (
-        <MatrixConnect reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." />
+        <MatrixConnect reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." returnTo="/reports" auto />
       )}
 
       {!notAdmin && !needsConnect && (

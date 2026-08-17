@@ -1042,3 +1042,15 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   several files by hand today.
 - **P3-4 · Validate config against the running Synapse,** not only the JSON
   Schema — schema-valid values can still be rejected at runtime.
+
+- **P2-34 · Persisting the Matrix refresh token, encrypted (S13).** Offered to the
+  operator on 2026-08-17 while fixing the reconnect (E52) and **declined in favour of
+  the silent reconnect**, which keeps nothing at rest. Recorded so the option is not
+  re-derived from scratch next time the question comes up.
+  *Shape if it is ever wanted:* AES-GCM in Postgres with the key held in the k8s
+  Secret rather than the database, so a DB dump alone does not yield Synapse-admin
+  authority — the holder of both Secret and database would. That is a real widening of
+  the blast radius and is the reason E36 declined it in the first place.
+  *What it would buy:* survival across restarts with no redirect at all, including
+  when the MAS session itself has ended. The silent reconnect covers everything except
+  that last case, where it costs one login.

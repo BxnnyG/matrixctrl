@@ -236,12 +236,12 @@ func main() {
 			})
 		},
 		matrixTokens.Has,
-		func(ctx context.Context) (string, error) {
+		func(ctx context.Context, returnTo string) (string, error) {
 			o := authHandler.OIDC()
 			if o == nil {
 				return "", fmt.Errorf("OIDC is not configured")
 			}
-			return o.SynapseAdminAuthURL(ctx)
+			return o.SynapseAdminAuthURL(ctx, returnTo)
 		},
 	)
 

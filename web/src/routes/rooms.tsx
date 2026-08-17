@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Card, Badge, EmptyState, Button, SectionTitle, Spinner } from "@/components/mc";
-import { MatrixConnect } from "@/components/MatrixConnect";
+import { MatrixConnect, clearConnectAttempt } from "@/components/MatrixConnect";
 
 export const Route = createFileRoute("/rooms")({
   component: Rooms,
@@ -73,6 +73,13 @@ function Rooms() {
     placeholderData: keepPreviousData,
   });
 
+  // Cleared on a *successful load*, never merely on `connected`. A reconnect can
+  // succeed and have its token refused by the next request, and clearing the guard at
+  // that moment would re-arm the automatic attempt into a loop (etappe 52).
+  useEffect(() => {
+    if (rooms.isSuccess) clearConnectAttempt();
+  }, [rooms.isSuccess]);
+
   if (state.isLoading) {
     return <div style={{ padding: 28, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>;
   }
@@ -81,7 +88,7 @@ function Rooms() {
     return (
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <SectionTitle sub="Räume auf diesem Server">Räume</SectionTitle>
-        <MatrixConnect reason={state.data?.reason} error={error} />
+        <MatrixConnect reason={state.data?.reason} error={error} returnTo="/rooms" auto />
       </div>
     );
   }
@@ -116,7 +123,7 @@ function Rooms() {
           "never connected", which is why the report read as "the button does
           nothing" — it had in fact worked, and the token was being refused (E42). */}
       {needsConnect && (
-        <MatrixConnect reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." />
+        <MatrixConnect reason="Der Matrix-Zugriff wurde abgelehnt oder ist abgelaufen. Ein erneutes Verbinden fordert die Rechte neu an." returnTo="/rooms" auto />
       )}
 
       {!notAdmin && !needsConnect && (

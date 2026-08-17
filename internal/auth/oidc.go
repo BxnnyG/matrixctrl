@@ -127,20 +127,23 @@ const (
 
 // AuthURL generates a state, persists it, and returns the MAS authorization URL.
 func (o *OIDCService) AuthURL(ctx context.Context) (string, error) {
-	return o.authURL(ctx, loginScope, purposeLogin)
+	return o.authURL(ctx, loginScope, purposeLogin, "")
 }
 
 // SynapseAdminAuthURL starts the separate authorization that grants the panel the
 // operator's Synapse admin authority, for rooms and moderation (E36).
-func (o *OIDCService) SynapseAdminAuthURL(ctx context.Context) (string, error) {
-	return o.authURL(ctx, "openid "+clientAPIScope+" "+SynapseAdminScope, PurposeSynapseAdmin)
+// returnTo is the screen the operator started from, so the callback can put them
+// back. Validated by the caller against an allowlist; an empty value means the
+// default.
+func (o *OIDCService) SynapseAdminAuthURL(ctx context.Context, returnTo string) (string, error) {
+	return o.authURL(ctx, "openid "+clientAPIScope+" "+SynapseAdminScope, PurposeSynapseAdmin, returnTo)
 }
 
-func (o *OIDCService) authURL(ctx context.Context, scope, purpose string) (string, error) {
+func (o *OIDCService) authURL(ctx context.Context, scope, purpose, returnTo string) (string, error) {
 	state := uuid.New().String()
 	_, err := o.db.Exec(ctx,
-		`INSERT INTO oidc_states(state, expires_at, purpose) VALUES($1,$2,$3)`,
-		state, time.Now().Add(5*time.Minute), purpose,
+		`INSERT INTO oidc_states(state, expires_at, purpose, return_to) VALUES($1,$2,$3,NULLIF($4,''))`,
+		state, time.Now().Add(5*time.Minute), purpose, returnTo,
 	)
 	if err != nil {
 		return "", fmt.Errorf("store oidc state: %w", err)
@@ -163,22 +166,27 @@ func (o *OIDCService) authURL(ctx context.Context, scope, purpose string) (strin
 // editing ESS's MAS config to add a page. The purpose is read from the database, not
 // from anything the browser carried, because the state is a CSRF token and a value the
 // client could edit is not one to branch authorization on.
-func (o *OIDCService) StatePurpose(ctx context.Context, state string) (string, error) {
+// Returns the return path alongside it, empty when the flow did not record one.
+func (o *OIDCService) StatePurpose(ctx context.Context, state string) (string, string, error) {
 	var purpose string
+	var returnTo *string
 	err := o.db.QueryRow(ctx,
-		`DELETE FROM oidc_states WHERE state=$1 AND expires_at > NOW() RETURNING purpose`,
+		`DELETE FROM oidc_states WHERE state=$1 AND expires_at > NOW() RETURNING purpose, return_to`,
 		state,
-	).Scan(&purpose)
+	).Scan(&purpose, &returnTo)
 	if err != nil {
-		return "", fmt.Errorf("invalid or expired state — please try again")
+		return "", "", fmt.Errorf("invalid or expired state — please try again")
 	}
-	return purpose, nil
+	if returnTo == nil {
+		return purpose, "", nil
+	}
+	return purpose, *returnTo, nil
 }
 
 // ExchangeCode validates the state, exchanges the code for a token, and returns
 // the Matrix user ID extracted from userinfo.
 func (o *OIDCService) ExchangeCode(ctx context.Context, code, state string) (string, error) {
-	purpose, err := o.StatePurpose(ctx, state)
+	purpose, _, err := o.StatePurpose(ctx, state)
 	if err != nil {
 		return "", err
 	}

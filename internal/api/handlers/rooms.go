@@ -27,13 +27,13 @@ type RoomsHandler struct {
 	// connected reports whether this process holds a Matrix session for the user.
 	connected func(userID string) bool
 	// authURL starts the separate authorization that grants the scope.
-	authURL func(ctx context.Context) (string, error)
+	authURL func(ctx context.Context, returnTo string) (string, error)
 }
 
 func NewRoomsHandler(
 	client func(userID string) *synapse.Client,
 	connected func(userID string) bool,
-	authURL func(ctx context.Context) (string, error),
+	authURL func(ctx context.Context, returnTo string) (string, error),
 ) *RoomsHandler {
 	return &RoomsHandler{client: client, connected: connected, authURL: authURL}
 }
@@ -72,7 +72,14 @@ func (h *RoomsHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusNotImplemented, "Matrix-Login ist nicht konfiguriert")
 		return
 	}
-	url, err := h.authURL(r.Context())
+	// Which screen asked. Sent by the caller and never trusted: the callback maps it
+	// onto an allowlist before redirecting anywhere (etappe 52).
+	var body struct {
+		ReturnTo string `json:"return_to"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	url, err := h.authURL(r.Context(), body.ReturnTo)
 	if err != nil {
 		Error(w, http.StatusBadGateway, "Die Anmeldung bei Matrix konnte nicht gestartet werden")
 		return

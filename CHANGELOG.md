@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.50] — 2026-08-17
+
+### Fixed
+
+- **Connecting from Moderation dropped you on Rooms.** The callback redirected to a
+  hardcoded `/rooms` — on success *and* on failure — because the flow was built when
+  rooms was its only caller. The origin now travels with the OAuth state and is mapped
+  through a server-side allowlist, so a redirect target coming from the browser cannot
+  become an open redirect.
+
+### Changed
+
+- **The Matrix admin access reconnects by itself.** It is still never written to disk —
+  that stays deliberate — but a missing token no longer means a button to press: the
+  panel restarts the authorization and returns you to the screen you were on. With a
+  live Matrix session that is a redirect and back, no clicks.
+- The connect panel's wording follows: the access is still *not stored*, and is now
+  *automatically re-established* rather than something you must reconnect by hand.
+
+### Notes
+
+- The automatic attempt is refused when the previous one failed (`?error=` in the URL),
+  when one was made in the last 30 seconds, and when session storage is unavailable —
+  an automatic redirect on a failing condition is a redirect loop without them. It
+  never fires on `403`: reconnecting cannot grant a permission Matrix has not given.
+- The guard clears only after data actually loads, not when the connection reports
+  itself established. A reconnect can succeed and have the next request refused, and
+  clearing it there would re-arm the loop.
+
 ## [0.1.49] — 2026-08-17
 
 ### Added
