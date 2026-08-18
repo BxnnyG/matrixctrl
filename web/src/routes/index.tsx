@@ -53,6 +53,11 @@ interface ComponentStatus {
   /** Container carrying most of `restarts`, when one does. Empty means the
    *  total is the honest answer — see internal/k8s/health.go podRestarts. */
   restarts_by?: string;
+  /** Whether something is in CrashLoopBackOff *right now*. `restarts` cannot
+   *  answer that — it only ever grows (E53). */
+  looping?: boolean;
+  /** When the most recent restart happened, absent if nothing has restarted. */
+  last_restart?: string;
 }
 interface NodeInfo { name: string; cpu_used_millis: number; cpu_total_millis: number; mem_used_mi: number; mem_total_mi: number }
 interface StatusResponse {
@@ -68,6 +73,22 @@ interface SysInfoResponse {
 
 const pct = (u: number, t: number) => (t ? Math.round((u / t) * 100) : 0);
 const shortName = (n: string) => n.replace(/^ess-/, "").replace(/-main$/, "");
+
+/** "vor 17 Stunden" — coarse on purpose.
+ *
+ *  The banner's job is to let the operator judge whether a restart count is current
+ *  or historical, and minute precision does not help with that while making a stable
+ *  component look like it is being watched second by second (E53). */
+function sinceText(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "unbekannt";
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 60) return `vor ${mins} Minute${mins === 1 ? "" : "n"}`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `vor ${hours} Stunde${hours === 1 ? "" : "n"}`;
+  const days = Math.round(hours / 24);
+  return `vor ${days} Tagen`;
+}
 
 // Backend reports healthy | degraded | down | scaled-zero.
 const isHealthy = (c: ComponentStatus) => c.status === "healthy";
@@ -197,7 +218,20 @@ function Dashboard() {
   const mem = node ? pct(node.mem_used_mi, node.mem_total_mi) : 0;
   const attention = data.components.filter(needsAttention);
   const totalRestarts = data.components.reduce((n, c) => n + c.restarts, 0);
-  const hotComponents = data.components.filter((c) => c.restarts > 20);
+  // Two different questions, and the banner used to ask only the first.
+  //
+  // `restarts > 20` is a lifetime count: it cannot tell a container dying every
+  // thirty seconds from one that misbehaved a fortnight ago and has been fine since.
+  // Measured on the live cluster: postgres-exporter at 64 restarts over twelve days,
+  // stable for the last seventeen hours, rendered as "postgres in Restart-Schleife"
+  // — a red alert claiming the database was crash-looping, when postgres itself has
+  // restarted exactly zero times (E53, §4.42 and §4.43 together).
+  const loopingComponents = data.components.filter((c) => c.looping);
+  const hotComponents = data.components.filter((c) => c.restarts > 20 && !c.looping);
+
+  // What actually restarted. `restarts_by` is deliberately empty when no single
+  // container carries the count, and the workload name is then the honest answer.
+  const culprit = (c: ComponentStatus) => c.restarts_by || shortName(c.name);
   const warnEvents = (events ?? []).filter((e) => e.type === "Warning");
   const rel = data.release;
   const ver = rel?.chart_version?.replace(/^matrix-stack-/, "") || "—";
@@ -247,18 +281,45 @@ function Dashboard() {
           {node && <span style={{ fontSize: 10.5, color: "var(--text-faint)", fontFamily: "var(--mono)" }}>{node.mem_used_mi} / {node.mem_total_mi} MiB</span>}
         </Card>
         <MiniStat label="Pods (ess)" value={essPods ?? data.components.reduce((n, c) => n + c.ready, 0)} unit={`/ ${boundPvcs} PVCs`} icon="server" />
-        <MiniStat label="Restarts gesamt" value={totalRestarts} unit={hotComponents.length ? `· ${hotComponents.length} kritisch` : ""} icon="rotate" tone={hotComponents.length ? "err" : totalRestarts > 0 ? "warn" : undefined} />
+        {/* "kritisch" means looping now, not merely high. A lifetime total above a
+            threshold is not a critical condition, and colouring it red spends the
+            operator's attention on something that already stopped (E53). */}
+        <MiniStat label="Restarts gesamt" value={totalRestarts}
+          unit={loopingComponents.length ? `· ${loopingComponents.length} kritisch` : ""}
+          icon="rotate"
+          tone={loopingComponents.length ? "err" : totalRestarts > 0 ? "warn" : undefined} />
         <MiniStat label="Warn-Events" value={warnEvents.length} icon="alert" tone={warnEvents.length > 0 ? "warn" : undefined} />
       </div>
 
-      {/* Restart-loop banner — the "why did it restart 1191 times" entry point */}
-      {hotComponents.length > 0 && (
+      {/* An actual restart loop: something is in CrashLoopBackOff right now. Red,
+          because this one is happening as the page is being read. */}
+      {loopingComponents.length > 0 && (
         <Card style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-err) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-err) 28%, var(--border))" }}>
           <Icon name="alert" size={18} style={{ color: "var(--status-err)" }} />
           <span style={{ flex: 1, minWidth: 220, fontSize: 13, color: "var(--text)" }}>
-            <strong>{hotComponents.map((c) => shortName(c.name)).join(", ")}</strong> in Restart-Schleife — Ursache ansehen.
+            <strong>{loopingComponents.map(culprit).join(", ")}</strong> startet gerade wiederholt neu — Ursache ansehen.
           </span>
-          <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => setDrawer(hotComponents[0].name)}>Diagnose</Button>
+          <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => setDrawer(loopingComponents[0].name)}>Diagnose</Button>
+        </Card>
+      )}
+
+      {/* A high count that is *not* looping. Worth knowing, not worth alarming: 64
+          restarts over twelve days is history, and rendering history in red is how
+          red banners come to be ignored. Names the container, and says when — a
+          count with no time in it cannot be judged (E53). */}
+      {hotComponents.length > 0 && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-warn) 8%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 26%, var(--border))" }}>
+          <Icon name="rotate" size={18} style={{ color: "var(--status-warn)" }} />
+          <span style={{ flex: 1, minWidth: 220, fontSize: 13, color: "var(--text)" }}>
+            <strong>{hotComponents.map(culprit).join(", ")}</strong>{" "}
+            {hotComponents.length === 1 ? "ist" : "sind"} häufig neu gestartet
+            {hotComponents.length === 1 && hotComponents[0].restarts ? ` (${hotComponents[0].restarts}×)` : ""}
+            {hotComponents.length === 1 && hotComponents[0].last_restart
+              ? `, zuletzt ${sinceText(hotComponents[0].last_restart)}`
+              : ""}
+            {" "}— läuft aktuell stabil.
+          </span>
+          <Button variant="ghost" size="sm" iconRight="chevRight" onClick={() => setDrawer(hotComponents[0].name)}>Ansehen</Button>
         </Card>
       )}
 

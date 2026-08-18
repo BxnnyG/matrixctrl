@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,6 +20,15 @@ type ComponentHealth struct {
 	// RestartsBy names the container carrying most of Restarts, when one does.
 	// Empty means the total is the honest answer (P2-8, see podRestarts).
 	RestartsBy string `json:"restarts_by,omitempty"`
+	// Looping is the present-tense question, and the only field here that answers it.
+	// Restarts only ever grows, so it cannot tell a container dying every thirty
+	// seconds from one that misbehaved a fortnight ago — the dashboard called both a
+	// "Restart-Schleife" until etappe 53. Kubernetes states it outright as
+	// CrashLoopBackOff.
+	Looping bool `json:"looping"`
+	// LastRestart is when the most recent restart happened, absent when nothing has
+	// restarted. It is what turns a bare count into something an operator can judge.
+	LastRestart *time.Time `json:"last_restart,omitempty"`
 }
 
 // ComponentHealth reports every ESS workload. StatefulSets matter as much as
@@ -35,15 +46,17 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		if d.Spec.Replicas != nil {
 			desired = *d.Spec.Replicas
 		}
-		restarts, by := c.podRestarts(ctx, namespace, d.Spec.Selector.MatchLabels)
+		restarts, by, looping, lastRestart := c.podRestarts(ctx, namespace, d.Spec.Selector.MatchLabels)
 		result = append(result, ComponentHealth{
-			Name:       d.Name,
-			Kind:       "Deployment",
-			Status:     workloadStatus(d.Status.ReadyReplicas, desired),
-			Ready:      d.Status.ReadyReplicas,
-			Desired:    desired,
-			Restarts:   restarts,
-			RestartsBy: by,
+			Name:        d.Name,
+			Kind:        "Deployment",
+			Status:      workloadStatus(d.Status.ReadyReplicas, desired),
+			Ready:       d.Status.ReadyReplicas,
+			Desired:     desired,
+			Restarts:    restarts,
+			RestartsBy:  by,
+			Looping:     looping,
+			LastRestart: lastRestart,
 		})
 	}
 
@@ -56,15 +69,17 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		if s.Spec.Replicas != nil {
 			desired = *s.Spec.Replicas
 		}
-		restarts, by := c.podRestarts(ctx, namespace, s.Spec.Selector.MatchLabels)
+		restarts, by, looping, lastRestart := c.podRestarts(ctx, namespace, s.Spec.Selector.MatchLabels)
 		result = append(result, ComponentHealth{
-			Name:       s.Name,
-			Kind:       "StatefulSet",
-			Status:     workloadStatus(s.Status.ReadyReplicas, desired),
-			Ready:      s.Status.ReadyReplicas,
-			Desired:    desired,
-			Restarts:   restarts,
-			RestartsBy: by,
+			Name:        s.Name,
+			Kind:        "StatefulSet",
+			Status:      workloadStatus(s.Status.ReadyReplicas, desired),
+			Ready:       s.Status.ReadyReplicas,
+			Desired:     desired,
+			Restarts:    restarts,
+			RestartsBy:  by,
+			Looping:     looping,
+			LastRestart: lastRestart,
 		})
 	}
 
@@ -97,22 +112,33 @@ func workloadStatus(ready, desired int32) string {
 //
 // Container names are stable across the pods of one workload, so attributing by
 // name is meaningful even when the total spans several pods.
-func (c *Client) podRestarts(ctx context.Context, namespace string, matchLabels map[string]string) (int32, string) {
+// Returns the total, the container carrying most of it, whether anything is looping
+// right now, and when the last restart actually happened. The last two exist because
+// the first two cannot answer "is this happening now" — see ComponentHealth.Looping.
+func (c *Client) podRestarts(ctx context.Context, namespace string, matchLabels map[string]string) (int32, string, bool, *time.Time) {
 	pods, err := c.Static.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelsToSelector(matchLabels),
 	})
 	if err != nil {
-		return 0, ""
+		return 0, "", false, nil
 	}
 	var restarts int32
+	var looping bool
+	var last *time.Time
 	byContainer := map[string]int32{}
 	for _, p := range pods.Items {
 		for _, cs := range p.Status.ContainerStatuses {
 			restarts += cs.RestartCount
 			byContainer[cs.Name] += cs.RestartCount
 		}
+		if isLooping(p.Status.ContainerStatuses) {
+			looping = true
+		}
+		if at := lastRestartAt(p.Status.ContainerStatuses); at != nil && (last == nil || at.After(*last)) {
+			last = at
+		}
 	}
-	return restarts, DominantContributor(byContainer, restarts)
+	return restarts, DominantContributor(byContainer, restarts), looping, last
 }
 
 func labelsToSelector(labels map[string]string) string {
@@ -129,4 +155,38 @@ func labelsToSelector(labels map[string]string) string {
 		result += "," + p
 	}
 	return result
+}
+
+// isLooping reports whether a container is waiting between crashes *right now*.
+//
+// Kubernetes answers the present-tense question directly, and the dashboard spent
+// months inferring it from a restart count instead — a number that only grows and so
+// can never say a loop has stopped (etappe 53).
+func isLooping(statuses []corev1.ContainerStatus) bool {
+	for _, cs := range statuses {
+		if w := cs.State.Waiting; w != nil && w.Reason == "CrashLoopBackOff" {
+			return true
+		}
+	}
+	return false
+}
+
+// lastRestartAt is when the most recent restart happened, or nil if nothing has
+// restarted.
+//
+// nil rather than the zero time: a zero time renders as year 1 and reads as "restarted
+// a very long time ago", which is the opposite of what it means.
+func lastRestartAt(statuses []corev1.ContainerStatus) *time.Time {
+	var last *time.Time
+	for _, cs := range statuses {
+		t := cs.LastTerminationState.Terminated
+		if t == nil || t.FinishedAt.IsZero() {
+			continue
+		}
+		at := t.FinishedAt.Time
+		if last == nil || at.After(*last) {
+			last = &at
+		}
+	}
+	return last
 }

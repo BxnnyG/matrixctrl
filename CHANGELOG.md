@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.51] — 2026-08-17
+
+### Fixed
+
+- **The dashboard's restart alert named the wrong thing and called an old count a
+  loop.** It read "postgres in Restart-Schleife" while the row below it correctly said
+  `63× postgres-exporter` — and postgres has restarted **zero** times. The alert now
+  names the container that actually restarted, using the attribution that already
+  existed and was rendered two elements away.
+- **"Restart-Schleife" is now a present-tense claim with present-tense evidence.** The
+  trigger was `restarts > 20`, a lifetime counter with no time in it, so a container
+  that misbehaved a fortnight ago looked identical to one dying every thirty seconds.
+  An active loop (`CrashLoopBackOff`) stays a red alert; a high count that is not
+  currently looping is amber and says when the last restart was. The "kritisch" counter
+  follows the same split.
+- `make check` now runs `gofmt`, which CI has always enforced and `make check` never
+  did — so a green local check did not imply a green pipeline. Verified by introducing
+  drift and watching it fail.
+
+### Added
+
+- `looping` and `last_restart` on each component in `/api/v1/status`.
+
 ## [0.1.50] — 2026-08-17
 
 ### Fixed

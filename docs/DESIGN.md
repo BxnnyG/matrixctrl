@@ -1871,3 +1871,44 @@ the same distinction as §4.45, where the state was read back rather than inferr
 an accepted request. And `403` never triggers any of it: reconnecting cannot grant a
 permission Matrix has not given, so a retry there is an infinite loop against a
 condition no click can fix. Affects S13, S6.
+
+### §4.52 — The loudest element on the screen was wrong twice (2026-08-17, agent, etappe 53)
+
+Found in a dashboard screenshot the operator sent while reporting something else. The
+red alert at the top read:
+
+> **postgres** in Restart-Schleife — Ursache ansehen.
+
+while the component row six lines below it read `63× ⚠ postgres-exporter`. Two claims
+about one fact, on one screen, and the louder one was wrong in both halves.
+
+**Wrong subject.** Measured: `postgres` 0 restarts, `postgres-ess-updater` 0,
+`postgres-exporter` 64. The database under the whole homeserver has never restarted,
+and the banner said it was crash-looping. This is P2-8 / §4.43 exactly — and E38
+*already fixed it*, in the table row and the drawer badge. `ComponentHealth.RestartsBy`
+was populated, correct, and rendered two elements away. The banner never read it. **A
+fix applied to some of the places that render a value has a half-life**, and the place
+most likely to be missed is the one added at a different time — a banner, an alert, an
+export — because it does not look like the thing that was fixed.
+
+**Wrong tense.** The trigger was `restarts > 20`: a lifetime counter, with no time in
+it anywhere. It cannot distinguish a container dying every thirty seconds from one that
+misbehaved a fortnight ago. Live numbers: 64 restarts across twelve days, stable for
+the last seventeen hours, rendered as an emergency. §4.42 said a counter that resets is
+not a history; the mirror image is that **a counter that only accumulates is not a
+present state**.
+
+Kubernetes answers the present-tense question outright and was never asked:
+`state.waiting.reason == "CrashLoopBackOff"` means it is happening now, and
+`lastState.terminated.finishedAt` says when the last one was. Both were one field away
+the entire time.
+
+The screen now carries two different statements: an active loop stays red and names the
+container, while a high count that is not looping is amber and reads as history, with
+when it last happened. That split is the point. **Rendering history in red is how red
+banners come to be ignored** — and the operator had been looking at this one for weeks.
+
+A tail with the same shape: `make check` did not run `gofmt`, which CI does, so "check
+green" never implied "CI green" — and E51 shipped unformatted code that only the
+pipeline would have caught. Added to `make check`, and verified by introducing drift
+and watching it fail rather than trusting that it would. Affects S4, S9.

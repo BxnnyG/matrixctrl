@@ -853,6 +853,13 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   Worth surfacing on `/rtc` as a pre-flight check, since it is read-only and
   knowable from inside.
 - ~~**P2-8 · The dashboard sums restarts across containers, which misleads (S4).**~~
+  **Finished 2026-08-17 (E53, [DESIGN.md §4.52](DESIGN.md)).** The half that was
+  missing was not a missing feature but a missed *call site*: E38 attributed the count
+  in the table row and the drawer badge, and the dashboard's red alert — the loudest
+  element on the page — went on naming the workload. It read "postgres in
+  Restart-Schleife" for weeks while postgres had restarted zero times. Fixed together
+  with the tense: the trigger was a lifetime counter, so it could not tell an active
+  loop from history.
   **Half done 2026-08-15 (E38, `v0.1.39`).** The total stays — it is what `kubectl`
   shows and what an operator compares against — but it no longer travels alone: when
   one container carries at least two thirds of it, the row and the drawer badge name

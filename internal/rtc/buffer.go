@@ -131,8 +131,8 @@ func AssessUDPBuffer(buf UDPBuffer, found bool, dropped int, droppedKnown bool) 
 	}
 
 	return Finding{
-		Level: LevelWarn,
-		Title: "Der UDP-Empfangspuffer ist kleiner als die SFU anfordert",
+		Level:  LevelWarn,
+		Title:  "Der UDP-Empfangspuffer ist kleiner als die SFU anfordert",
 		Detail: detail,
 		// Explicitly a host-level change: MatrixCtrl has no privileged access to the
 		// node and this is one of the things it deliberately cannot do for you.
