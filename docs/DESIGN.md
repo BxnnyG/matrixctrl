@@ -1912,3 +1912,46 @@ A tail with the same shape: `make check` did not run `gofmt`, which CI does, so 
 green" never implied "CI green" — and E51 shipped unformatted code that only the
 pipeline would have caught. Added to `make check`, and verified by introducing drift
 and watching it fail rather than trusting that it would. Affects S4, S9.
+
+### §4.53 — A reservation larger than the machine is an outage waiting for a reboot (2026-08-18, agent + operator, incident)
+
+The managed homeserver was **down for 37 hours** and this is the write-up, because the
+failure mode is one this project will meet again.
+
+**What happened.** The node was resized from 32 cores to 6. Nothing broke at that
+moment: Kubernetes never re-schedules a *running* pod, so postgres and Synapse carried
+on with reservations the machine could no longer honour. The host then rebooted, every
+pod was re-scheduled from scratch, and postgres could not be placed —
+`FailedScheduling … Insufficient cpu`, repeated 423 times over 35 hours. Synapse waited
+on the database, haproxy crash-looped against absent backends (450 restarts), and the
+homeserver answered nothing.
+
+**Why the arithmetic was so far off.** Two multipliers that are easy to miss:
+
+1. `postgres.resources` is applied to **postgres *and* postgres-ess-updater** — the
+   config comment said so and it was still surprising in practice. 4000m written once
+   reserved 8000m.
+2. A pod's CPU request is `max(sum(containers), max(initContainers))`. Synapse's
+   `render-config` and `db-wait` inherited 4000m each, so Synapse reserved 4000m the
+   whole time it was merely *waiting for the database*.
+
+4000 + 4000 + 500 for the postgres pod, 4000 for Synapse: **12.5 cores demanded of a
+6-core node**, against a measured whole-node usage of 773m.
+
+**The rule.** A resource request is a claim on a machine, and it is only ever valid
+relative to a machine that exists. E34 chose these numbers deliberately and correctly
+*for the node it was written on*, recorded its reasoning in the config, and still
+produced a latent outage — because the reasoning was never re-evaluated when the
+premise changed. **Generous requests are not free caution; they are a scheduling
+constraint that fails closed, silently, at the next restart.**
+
+**The product gap, and it is the important part.** MatrixCtrl reported all four
+affected components as `down` — correctly, immediately, for 37 hours. What it never
+said was **why**. "Unschedulable because requests exceed node capacity" was sitting in
+a `FailedScheduling` event the whole time, one API call away, and the panel showed a
+red status with no cause. That is the difference between a monitor and an admin tool,
+and closing it is worth an etappe: a component that is `down` because it *cannot be
+placed* is a different fault from one that is crashing, and the arithmetic that proves
+it (requests vs allocatable) is available locally.
+
+Recorded as **P1-16**. Affects S4, S14.

@@ -1061,3 +1061,22 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *What it would buy:* survival across restarts with no redirect at all, including
   when the MAS session itself has ended. The silent reconnect covers everything except
   that last case, where it costs one login.
+
+- **P1-16 · A component can be `down` for 37 hours without the panel saying why (S4).**
+  From the outage of 2026-08-16…18 ([DESIGN.md §4.53](DESIGN.md)): postgres was
+  unschedulable after the node shrank from 32 cores to 6, and MatrixCtrl reported
+  `down` — correctly and immediately — with no cause attached. The reason was in a
+  `FailedScheduling` event for 35 hours and nothing surfaced it.
+  *Why it is P1:* the product's stated job is Day-2 operations. "It is broken" is what
+  `kubectl get pods` already says; "it cannot be placed, because it asks for 8500m on a
+  6000m node" is the part an admin tool is for, and it is computable from data already
+  fetched.
+  *Shape:* when a pod is Pending, read its `FailedScheduling` event and, for the
+  `Insufficient cpu|memory` case, render the arithmetic — the pod's effective request
+  against the node's allocatable. The effective request must be
+  `max(sum(containers), max(initContainers))`, which is exactly the subtlety that hid
+  4000m of Synapse's reservation inside an init container that was only waiting.
+  *Second half, cheaper and preventive:* warn at config-save time when a slice's
+  requests exceed what the cluster can schedule. The panel writes those values; it is
+  the last place that can catch the number before it becomes an outage at the next
+  reboot.
