@@ -1068,10 +1068,14 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   against the node's allocatable — `max(sum(containers), max(initContainers))`, which
   is what hid 4000m of Synapse's reservation inside an init container. Verified against
   a live unschedulable probe pod, not only by unit test.
-  *Still open as **P1-16b**: the preventive half* — warning at config-save time. It
-  needs the chart's container topology (which containers share a `resources` block,
-  which init containers inherit it), so it means rendering the chart with the Helm SDK
-  rather than reading the values file. Recorded rather than guessed.
+  ✅ **Second half done 2026-08-31 (E55, [DESIGN.md §4.55](DESIGN.md)).** The apply path
+  renders the chart and measures every workload against the largest node before the
+  upgrade runs. Proven by rendering the real config of 2026-08-06: `ess-postgres` at
+  8250m against a 6000m node, out of a values file that says 4000m.
+  *Now open as **P1-16c**: should it refuse?* E55 warns and applies anyway. Blocking is
+  the obvious next step and deliberately not taken yet — a false positive would stop
+  every deployment, and the check has not run in anger. Revisit once it has been right
+  a few times in production.
   *Original entry:*
   From the outage of 2026-08-16…18 ([DESIGN.md §4.53](DESIGN.md)): postgres was
   unschedulable after the node shrank from 32 cores to 6, and MatrixCtrl reported

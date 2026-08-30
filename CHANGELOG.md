@@ -15,6 +15,33 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.53] — 2026-08-31
+
+### Added
+
+- **Applying a config now checks whether it fits the cluster first.** The values that
+  took the homeserver down for 37 hours were written through this panel; it is the last
+  place they can be measured before they reach the cluster. Every workload the chart
+  would create is measured against the largest node, and the result goes into the apply
+  stream before the upgrade runs.
+- Two levels, because they are different problems: a pod larger than any node can never
+  be scheduled, while one larger than what is currently free may be placed later.
+
+### Notes
+
+- The check **renders the chart** (dry run, hooks disabled) rather than reading the
+  values file. It has to: `postgres.resources` covers two containers and Synapse's init
+  containers inherit it, so `4000m` in the file is 8250m in the cluster. Verified by
+  rendering the real config as it was on 2026-08-06 — reported `ess-postgres` at
+  **8250m against a 6000m node**, from a file that says 4000m.
+- It warns, it does not refuse. A false positive would block every deployment and this
+  check has not yet run in anger; the option to refuse is recorded as P1-16c rather
+  than taken by default.
+- CPU only. Memory overcommit is normal and a warning tuned like this one would cry
+  wolf.
+- An apply now pulls the chart twice (once to render, once to upgrade) — about twenty
+  seconds ahead of a multi-minute operation.
+
 ## [0.1.52] — 2026-08-30
 
 ### Added

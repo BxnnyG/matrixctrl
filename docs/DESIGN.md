@@ -1999,3 +1999,47 @@ share a block, which init containers inherit it), which is a property of the cha
 not of the YAML being edited. MatrixCtrl has the Helm SDK and can render it; inferring
 it from the values file would be exactly the guessing this project refuses. P1-16b.
 Affects S4.
+
+### §4.55 — The last place that can catch the number (2026-08-31, agent, etappe 55)
+
+E54 explains an outage after it has happened. This is the ten seconds before it starts.
+
+The values that took the managed homeserver down for 37 hours were written **through
+this panel**. MatrixCtrl is the last thing that sees them before they reach the
+cluster, and it had nothing to say about `cpu: 4000m` on a node with six cores.
+
+**Why reading the values file would not have worked.** The obvious implementation
+checks the numbers in the YAML being edited. It misses both halves of the real fault:
+`postgres.resources` is one block covering *two* containers, and Synapse's init
+containers *inherit* it while a pod's request is
+`max(sum(containers), max(initContainers))`. Neither fact is in the values file. Both
+are properties of the chart. So the check renders the chart — `action.NewUpgrade` with
+`DryRun`, hooks disabled — and measures the pods that would actually exist.
+
+Proven against the live cluster by rendering the real config twice:
+
+| config | verdict |
+|---|---|
+| as it stands today | 0 findings |
+| as it was on 2026-08-06 | `ess-postgres` **8250m vs 6000m — blocked**, `ess-synapse-main` 4000m — warn |
+
+**8250m out of a file that says 4000m.** That number is the whole justification for
+rendering rather than reading.
+
+Two deliberate limits, both of the same kind — knowing what *not* to claim:
+
+**It warns; it does not refuse.** A config that can schedule nothing is exactly the
+thing to block, and E49 established that a skipped check should fail rather than pass
+quietly. It is left out anyway, because a false positive here blocks *every*
+deployment, and this check has never run in anger. Warn first, watch it be right, then
+decide (P1-16c). The precedent cuts both ways and the difference is the blast radius of
+being wrong.
+
+**CPU only.** The same arithmetic carries memory and the plumbing already does, but
+memory overcommit is normal and the kernel reclaims; a warning tuned like the CPU one
+would cry wolf, and a check nobody believes is worse than none. CPU is what caused the
+outage and CPU is what ships checked.
+
+Cost worth knowing: the preflight pulls the chart, so an apply now pulls it twice —
+about twenty seconds added ahead of a multi-minute upgrade. Correct before fast; if it
+ever matters, the pulled chart can be handed to the upgrade that follows. Affects S1, S4.

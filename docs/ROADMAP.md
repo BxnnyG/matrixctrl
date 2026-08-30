@@ -59,6 +59,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
+| 55 | Die Zahl abfangen, bevor sie zum Ausfall wird — Chart rendern statt Values lesen | 🔄 gebaut 2026-08-31 · `v0.1.53` · [plan](plans/etappe-55-capacity-preflight.md) |
 | 54 | „down" ist ein Status, keine Diagnose — warum ein Pod nicht eingeplant werden kann, mit der Rechnung dahinter | ✅ 2026-08-30 · `v0.1.52` · [plan](plans/etappe-54-why-it-cannot-be-placed.md) |
 | 53 | Das lauteste Element der Seite war doppelt falsch — „postgres in Restart-Schleife", obwohl postgres nie neu gestartet ist | ✅ 2026-08-17 · `v0.1.51` · [plan](plans/etappe-53-restart-banner.md) |
 | 52 | Einmal verbinden, und da landen wo man war — der Rücksprung hing am State, der Auto-Reconnect an seiner Schleifenbremse | ✅ 2026-08-17 · `v0.1.50` · [plan](plans/etappe-52-silent-reconnect.md) |

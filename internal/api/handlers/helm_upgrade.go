@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/capacity"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
 	"github.com/bxnnyg/matrixctrl/internal/rollout"
@@ -228,6 +229,13 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Capacity preflight, before anything is applied (etappe 55). The values that
+		// took this homeserver down for 37 hours were written through this panel; this
+		// is the last moment they can be measured against the cluster they are about
+		// to reach. It renders the chart rather than reading the values, because the
+		// multipliers that matter live in the chart (§4.53).
+		h.emitCapacityPreflight(ctx, stream, name, currentVersion, values)
+
 		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
 		stream.setPhase(rollout.PhaseApply)
 		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
@@ -294,4 +302,48 @@ func (h *HelmHandler) GetUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 		"logs":   stream.logs,
 		"done":   stream.done,
 	})
+}
+
+// emitCapacityPreflight renders the pending config and reports any workload that would
+// not fit, into the stream the operator is already watching.
+//
+// Deliberately not a refusal. A config that can schedule nothing is exactly the thing
+// to block, and E49 set the precedent that a skipped check is a failure unless someone
+// says otherwise — but a false positive here would block every deployment, and this
+// check has never run in anger. Warn first, watch it be right, then decide (P1-16c).
+func (h *HelmHandler) emitCapacityPreflight(ctx context.Context, stream *upgradeStream,
+	releaseName, version string, values map[string]interface{}) {
+
+	if h.helm == nil || h.k8s == nil {
+		return
+	}
+	manifest, err := h.helm.Render(ctx, releaseName, version, values)
+	if err != nil {
+		// Not checked is not the same as fine, and saying so costs one line.
+		stream.emit("NOTE: capacity preflight skipped — the chart could not be rendered: " + err.Error())
+		return
+	}
+	nodes, err := h.k8s.NodeInfo(ctx)
+	if err != nil {
+		stream.emit("NOTE: capacity preflight skipped — node capacity unavailable: " + err.Error())
+		return
+	}
+
+	findings := capacity.Check(manifest, capacity.FromNodeInfo(nodes))
+	for _, f := range findings {
+		switch f.Level {
+		case capacity.LevelBlocked:
+			stream.emit("WARNING: " + f.Message)
+		case capacity.LevelWarn:
+			stream.emit("NOTE: " + f.Message)
+		case capacity.LevelUnknown:
+			stream.emit("NOTE: " + f.Message)
+		}
+	}
+	if capacity.Blocking(findings) {
+		stream.emit("WARNING: Diese Konfiguration wird angewendet, aber mindestens ein Pod " +
+			"kann danach auf keinem Node laufen. Genau so entstand der Ausfall vom 16.–18.08.")
+	} else if len(findings) == 0 {
+		stream.emit("Capacity preflight: every workload fits the cluster.")
+	}
 }
