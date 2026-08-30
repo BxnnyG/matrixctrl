@@ -29,6 +29,10 @@ type ComponentHealth struct {
 	// LastRestart is when the most recent restart happened, absent when nothing has
 	// restarted. It is what turns a bare count into something an operator can judge.
 	LastRestart *time.Time `json:"last_restart,omitempty"`
+	// Unschedulable says *why* a down component is down, when the answer is "the
+	// scheduler refused it". Nil for every other kind of failure — a component that is
+	// crashing must not be described as unplaceable (etappe 54).
+	Unschedulable *Unschedulable `json:"unschedulable,omitempty"`
 }
 
 // ComponentHealth reports every ESS workload. StatefulSets matter as much as
@@ -47,16 +51,21 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 			desired = *d.Spec.Replicas
 		}
 		restarts, by, looping, lastRestart := c.podRestarts(ctx, namespace, d.Spec.Selector.MatchLabels)
+		var why *Unschedulable
+		if workloadStatus(d.Status.ReadyReplicas, desired) == "down" {
+			why = c.WhyUnschedulable(ctx, namespace, d.Spec.Selector.MatchLabels)
+		}
 		result = append(result, ComponentHealth{
-			Name:        d.Name,
-			Kind:        "Deployment",
-			Status:      workloadStatus(d.Status.ReadyReplicas, desired),
-			Ready:       d.Status.ReadyReplicas,
-			Desired:     desired,
-			Restarts:    restarts,
-			RestartsBy:  by,
-			Looping:     looping,
-			LastRestart: lastRestart,
+			Name:          d.Name,
+			Kind:          "Deployment",
+			Status:        workloadStatus(d.Status.ReadyReplicas, desired),
+			Ready:         d.Status.ReadyReplicas,
+			Desired:       desired,
+			Restarts:      restarts,
+			RestartsBy:    by,
+			Looping:       looping,
+			LastRestart:   lastRestart,
+			Unschedulable: why,
 		})
 	}
 
@@ -70,16 +79,21 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 			desired = *s.Spec.Replicas
 		}
 		restarts, by, looping, lastRestart := c.podRestarts(ctx, namespace, s.Spec.Selector.MatchLabels)
+		var why *Unschedulable
+		if workloadStatus(s.Status.ReadyReplicas, desired) == "down" {
+			why = c.WhyUnschedulable(ctx, namespace, s.Spec.Selector.MatchLabels)
+		}
 		result = append(result, ComponentHealth{
-			Name:        s.Name,
-			Kind:        "StatefulSet",
-			Status:      workloadStatus(s.Status.ReadyReplicas, desired),
-			Ready:       s.Status.ReadyReplicas,
-			Desired:     desired,
-			Restarts:    restarts,
-			RestartsBy:  by,
-			Looping:     looping,
-			LastRestart: lastRestart,
+			Name:          s.Name,
+			Kind:          "StatefulSet",
+			Status:        workloadStatus(s.Status.ReadyReplicas, desired),
+			Ready:         s.Status.ReadyReplicas,
+			Desired:       desired,
+			Restarts:      restarts,
+			RestartsBy:    by,
+			Looping:       looping,
+			LastRestart:   lastRestart,
+			Unschedulable: why,
 		})
 	}
 

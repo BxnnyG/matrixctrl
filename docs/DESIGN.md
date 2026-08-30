@@ -1955,3 +1955,47 @@ placed* is a different fault from one that is crashing, and the arithmetic that 
 it (requests vs allocatable) is available locally.
 
 Recorded as **P1-16**. Affects S4, S14.
+
+### §4.54 — "down" is a status, not a diagnosis (2026-08-30, agent, etappe 54)
+
+Built directly from §4.53. During that outage the panel reported four components
+`down` — correctly, within seconds, for 37 hours — and never said *why*. The scheduler
+had been publishing the reason in a `FailedScheduling` event the entire time.
+
+`kubectl get pods` already answers "is it broken". The reason an admin tool exists is
+to answer **"it cannot be placed, because it asks for 8500m on a 6000m node"**. The gap
+between those two sentences is where 37 hours went.
+
+What makes this more than printing an event message is the arithmetic, and the
+arithmetic has two traps that this project met the hard way:
+
+**A pod's request is not the sum of its containers.** It is
+`max(sum(containers), max(initContainers))`, because init containers run alone and
+first. Synapse's `render-config` and `db-wait` had each inherited 4000m while the
+`synapse` container asked for 1000m — so Synapse reserved 4000m the whole time it was
+*merely waiting for the database*. A naive sum reports 1000m and makes the diagnosis
+look wrong.
+
+**One `resources` block can cover several containers.** `postgres.resources` applied to
+postgres *and* postgres-ess-updater, so 4000m written once reserved 8000m. A
+per-container number understates the pod by half.
+
+Verified end to end rather than by unit test alone: a deliberately unschedulable probe
+pod, whose 40000m request sat in an *init* container behind a 100m app container, was
+diagnosed live at 40000m against 6000m allocatable — the max-of-init path exercised on
+real cluster data, then the probe deleted.
+
+Two deliberate limits. `ExceedsNode` separates "larger than any node" from "the cluster
+is full right now", because only the second one can resolve itself — telling an
+operator to wait for a pod that can never fit is worse than saying nothing. And the
+panel does not propose a number: what postgres *should* request depends on what else
+the operator intends to run, so naming the arithmetic is the job and choosing the value
+is theirs.
+
+The preventive half — warning at config-save time, before the value becomes an outage
+at the next reboot — is **not** here, and the reason is worth recording: knowing what a
+config *would* request means knowing the chart's container topology (which containers
+share a block, which init containers inherit it), which is a property of the chart and
+not of the YAML being edited. MatrixCtrl has the Helm SDK and can render it; inferring
+it from the values file would be exactly the guessing this project refuses. P1-16b.
+Affects S4.

@@ -58,6 +58,17 @@ interface ComponentStatus {
   looping?: boolean;
   /** When the most recent restart happened, absent if nothing has restarted. */
   last_restart?: string;
+  /** Why a `down` component is down, when the answer is "the scheduler refused it".
+   *  Absent for every other kind of failure (E54). */
+  unschedulable?: {
+    pod: string;
+    reason: string;
+    cpu_request_millis?: number;
+    cpu_allocatable_millis?: number;
+    mem_request_mi?: number;
+    mem_allocatable_mi?: number;
+    exceeds_node: boolean;
+  };
 }
 interface NodeInfo { name: string; cpu_used_millis: number; cpu_total_millis: number; mem_used_mi: number; mem_total_mi: number }
 interface StatusResponse {
@@ -232,6 +243,10 @@ function Dashboard() {
   // What actually restarted. `restarts_by` is deliberately empty when no single
   // container carries the count, and the workload name is then the honest answer.
   const culprit = (c: ComponentStatus) => c.restarts_by || shortName(c.name);
+
+  // Components the scheduler refused. "down" is what kubectl already says; this is
+  // the sentence that was missing for 37 hours during the outage of 2026-08-16…18.
+  const unplaceable = data.components.filter((c) => c.unschedulable);
   const warnEvents = (events ?? []).filter((e) => e.type === "Warning");
   const rel = data.release;
   const ver = rel?.chart_version?.replace(/^matrix-stack-/, "") || "—";
@@ -290,6 +305,40 @@ function Dashboard() {
           tone={loopingComponents.length ? "err" : totalRestarts > 0 ? "warn" : undefined} />
         <MiniStat label="Warn-Events" value={warnEvents.length} icon="alert" tone={warnEvents.length > 0 ? "warn" : undefined} />
       </div>
+
+      {/* Cannot be placed at all. Above the restart banners on purpose: a component
+          the scheduler refused is not going to recover on its own, and the arithmetic
+          is the whole diagnosis (E54). */}
+      {unplaceable.map((c) => {
+        const u = c.unschedulable!;
+        const cpuReq = u.cpu_request_millis ?? 0;
+        const cpuCap = u.cpu_allocatable_millis ?? 0;
+        return (
+          <Card key={c.name} style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-err) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-err) 28%, var(--border))" }}>
+            <Icon name="alert" size={18} style={{ color: "var(--status-err)", marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontSize: 13, color: "var(--text)" }}>
+                <strong>{shortName(c.name)}</strong> kann nicht eingeplant werden.
+                {cpuReq > 0 && cpuCap > 0 && (
+                  <> Der Pod fordert <strong>{cpuReq}m CPU</strong> an, der größte Node hat <strong>{cpuCap}m</strong>.</>
+                )}
+              </div>
+              {u.exceeds_node && (
+                <div style={{ fontSize: 12.5, color: "var(--status-err)", marginTop: 4, lineHeight: 1.55 }}>
+                  Mehr, als ein einzelner Node bereitstellen kann — das löst sich nicht
+                  von selbst, weder durch Warten noch durch Verschieben anderer Pods.
+                </div>
+              )}
+              {/* The scheduler's own words, verbatim. It is what a search engine and
+                  every Kubernetes answer will match on. */}
+              <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6, fontFamily: "var(--mono)", overflowWrap: "anywhere", lineHeight: 1.5 }}>
+                {u.reason}
+              </div>
+            </div>
+            <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => setDrawer(c.name)}>Diagnose</Button>
+          </Card>
+        );
+      })}
 
       {/* An actual restart loop: something is in CrashLoopBackOff right now. Red,
           because this one is happening as the page is being read. */}

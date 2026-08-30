@@ -15,6 +15,32 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.52] — 2026-08-30
+
+### Added
+
+- **A component that is `down` now says why, when the reason is the scheduler.** The
+  panel showed four components down for 37 hours during the outage of 2026-08-16…18
+  without once mentioning that postgres was asking for more CPU than the node had —
+  the scheduler had been saying so in a `FailedScheduling` event the whole time. The
+  dashboard now carries the scheduler's own words plus the arithmetic: the pod's
+  effective request against the largest node's allocatable.
+- Pods that ask for more than any single node can provide are called out separately.
+  A full cluster may place them later; these never will, and telling someone to wait
+  is worse than saying nothing.
+
+### Notes
+
+- The effective request is `max(sum(containers), max(initContainers))`, not the sum of
+  the containers. Synapse's init containers had inherited 4000m each while its own
+  container asked for 1000m, so it reserved 4000m while merely waiting for the
+  database — a naive sum would have reported 1000m and made the diagnosis look wrong.
+- No suggested value. What a component *should* request depends on what else is meant
+  to run on the node; naming the arithmetic is the panel's job, choosing the number is
+  the operator's.
+- Verified against a live unschedulable pod whose 40000m request sat in an init
+  container behind a 100m app container, not by unit test alone.
+
 ## [0.1.51] — 2026-08-17
 
 ### Fixed

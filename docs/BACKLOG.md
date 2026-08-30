@@ -1063,6 +1063,16 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   that last case, where it costs one login.
 
 - **P1-16 · A component can be `down` for 37 hours without the panel saying why (S4).**
+  ✅ **First half done 2026-08-30 (E54, [DESIGN.md §4.54](DESIGN.md)).** A Pending
+  component now says why, with the scheduler's own words and the effective request
+  against the node's allocatable — `max(sum(containers), max(initContainers))`, which
+  is what hid 4000m of Synapse's reservation inside an init container. Verified against
+  a live unschedulable probe pod, not only by unit test.
+  *Still open as **P1-16b**: the preventive half* — warning at config-save time. It
+  needs the chart's container topology (which containers share a `resources` block,
+  which init containers inherit it), so it means rendering the chart with the Helm SDK
+  rather than reading the values file. Recorded rather than guessed.
+  *Original entry:*
   From the outage of 2026-08-16…18 ([DESIGN.md §4.53](DESIGN.md)): postgres was
   unschedulable after the node shrank from 32 cores to 6, and MatrixCtrl reported
   `down` — correctly and immediately — with no cause attached. The reason was in a
