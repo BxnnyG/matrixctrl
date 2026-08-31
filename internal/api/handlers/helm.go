@@ -6,12 +6,14 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
@@ -246,7 +248,38 @@ func (h *HelmHandler) Rollback(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// A rollback recreates every object from the old revision's manifests, which drops
+	// manual patches for exactly the same reason an upgrade does — and dropping them
+	// is the failure this project exists to prevent. Until etappe 61 nothing fired
+	// post-rollback hooks at all, while the hook editor offered the trigger: a hook
+	// could be created, saved, listed as enabled, and never run.
+	//
+	// Only on success. If Helm could not complete the rollback the cluster is in a
+	// state nobody described, and re-applying patches on top of it is guessing — the
+	// upgrade path draws the same line.
+	userID := authmw.UserIDFromContext(r.Context())
+	runIDs, hookErr := h.engine.RunTrigger(r.Context(), hooks.TriggerPostRollback,
+		"rollback:"+name+":"+strconv.Itoa(req.Revision), userID)
+
+	if hookErr != nil {
+		// Not a 500: the rollback itself worked and the release *is* on the older
+		// revision. Reporting failure would send the operator to undo something that
+		// succeeded. What failed is the patching afterwards, and that is what the
+		// message says.
+		JSON(w, http.StatusOK, map[string]any{
+			"status":    "hooks-failed",
+			"revision":  req.Revision,
+			"hook_runs": runIDs,
+			"message":   "Das Rollback war erfolgreich, aber mindestens ein Hook danach nicht — manuelle Patches fehlen jetzt möglicherweise.",
+		})
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"status":    "rolled-back",
+		"revision":  req.Revision,
+		"hook_runs": runIDs,
+	})
 }
 
 // ReleaseNotes answers GET /api/v1/helm/versions/{version}/notes.

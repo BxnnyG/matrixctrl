@@ -2170,3 +2170,51 @@ that was never shown.
 And per node, never aggregated. A two-node cluster whose total stays flat while one
 node halves is exactly the case an average hides — §4.43's rule, applied before it
 could bite rather than after.
+
+### §4.60 — Writing the documentation found the bug (2026-08-31, agent, etappes 60 & 61)
+
+P2-14 said the docs have no user-facing layer: 1242 lines written for maintainers, and
+a README that explains how to run the container but never what a hook *is*. Verified
+before acting on it — because the entry immediately above it, P2-4, described a feature
+that already existed and was nearly built a second time.
+
+Three claims were checked against the README: hooks explained (the word appears six
+times, never defined), the config editor (absent), what to do when an upgrade fails
+(absent). All three hold, and all three are the reason the project exists rather than
+incidental features.
+
+Then, while writing one sentence about hook triggers, the guide's own rule caught
+something. The sentence was going to be "currently `post-upgrade`". Checking it:
+
+```
+$ grep -rn 'RunTrigger(' internal/ | grep -v _test
+  RunTrigger(ctx, hooks.TriggerPostUpgrade, "deploy:"+h.essRelease, userID)
+  RunTrigger(ctx, hooks.TriggerPostUpgrade, upgradeUUID.String(), userID)
+```
+
+`TriggerPostRollback` is declared, **offered in the hook editor's dropdown**, labelled
+in the list view — and fired by nothing. An operator could create a hook, set it to run
+after a rollback, save it, watch it appear as enabled, and it would never run.
+
+The dead dropdown entry is the small half. The large half is what it implies: **a Helm
+rollback recreates every object from the old revision's manifests**, which drops manual
+patches for exactly the same reason an upgrade does. Rolling ESS back therefore removed
+the SFU's `hostNetwork` and `externalTrafficPolicy` patches, broke Element Call's media
+path, and left a green dashboard — the precise failure this project was built to
+prevent, on the one operation an operator reaches for *when something is already wrong*.
+
+The fix is not a second copy of every hook. A rollback now runs `post-rollback` hooks
+**and** `post-upgrade` ones, because almost every hook in existence means "re-apply my
+patch after the chart overwrote it" and both operations overwrite. The reverse does not
+hold — a rollback-specific hook after an ordinary upgrade would be a surprise. The UI
+labels changed to match ("Nach Upgrade und Rollback"), because the stored value stays
+`post-upgrade` and a name that undersells what it does is how the next reader gets it
+wrong.
+
+The lesson is about documentation rather than hooks. **Writing down what the software
+does, honestly, is a test of the software** — the guide's rule was "every technical
+claim checked against the source while writing", and the first sentence that rule was
+applied to turned out to be false. Two prior documents in this repo described features
+that did not exist (§4.17's audit trail, documented for two months before it was
+built). This is the same class of gap found from the other direction, by prose rather
+than by a bug report. Affects S3, S12.

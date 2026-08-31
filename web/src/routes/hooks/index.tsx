@@ -13,7 +13,7 @@ const RUN_TONE: Record<string, "ok" | "err" | "warn" | "info"> = {
   success: "ok", failed: "err", partial: "warn", running: "info",
 };
 const TRIGGER_LABEL: Record<string, string> = {
-  "post-upgrade": "Nach Upgrade", "post-rollback": "Nach Rollback", manual: "Nur manuell",
+  "post-upgrade": "Nach Upgrade & Rollback", "post-rollback": "Nur nach Rollback", manual: "Nur manuell",
 };
 
 function HooksList() {

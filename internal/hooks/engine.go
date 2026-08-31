@@ -101,10 +101,27 @@ func (e *Engine) runHook(ctx context.Context, h Hook, trigger TriggerType, trigg
 	return runID, err
 }
 
+// triggeredBy returns the hook triggers that must run for one event.
+//
+// A rollback runs `post-rollback` hooks **and** `post-upgrade` ones. Both operations
+// recreate objects from a chart, so both undo manual patches, and almost every hook
+// that exists is "re-apply my patch after the chart overwrote it". Requiring the
+// operator to duplicate each of those under a second trigger would be two copies of
+// the same intent that drift apart the first time one is edited (rule 3, etappe 61).
+//
+// The reverse does not hold: a `post-rollback` hook is for something specific to
+// rolling back, and running it after an ordinary upgrade would be a surprise.
+func triggeredBy(trigger TriggerType) []TriggerType {
+	if trigger == TriggerPostRollback {
+		return []TriggerType{TriggerPostRollback, TriggerPostUpgrade}
+	}
+	return []TriggerType{trigger}
+}
+
 func (e *Engine) listByTrigger(ctx context.Context, trigger TriggerType) ([]Hook, error) {
 	rows, err := e.db.Query(ctx, `
 		SELECT id, name, description, trigger, enabled, priority, actions, builtin, created_at, updated_at, created_by
-		FROM hooks WHERE trigger=$1 AND enabled=TRUE ORDER BY priority`, trigger)
+		FROM hooks WHERE trigger = ANY($1) AND enabled=TRUE ORDER BY priority`, triggeredBy(trigger))
 	if err != nil {
 		return nil, err
 	}

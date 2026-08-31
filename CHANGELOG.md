@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.57] — 2026-08-31
+
+### Fixed
+
+- **Rolling back a release silently dropped every manual patch.** A Helm rollback
+  recreates objects from the old revision's manifests, exactly as an upgrade does — so
+  it removed the SFU's `hostNetwork` and `externalTrafficPolicy` patches, broke Element
+  Call's media path, and left a healthy-looking dashboard. Nothing ran hooks after a
+  rollback at all, although the hook editor offered "Nach Rollback" as a trigger: a hook
+  could be created, saved, listed as enabled, and never run.
+  A rollback now runs `post-rollback` hooks **and** `post-upgrade` ones, since almost
+  every hook means "re-apply my patch after the chart overwrote it" and both operations
+  overwrite. The trigger labels say so.
+- A rollback whose hooks fail now reports `hooks-failed` rather than plain success —
+  the release *is* on the older revision, but the patches that make it work may be gone.
+
+### Added
+
+- **[`docs/GUIDE.md`](docs/GUIDE.md) — a guide for using the product**, not maintaining
+  it. What a hook is and why you want one, how the config editor's sections and
+  comment-preserving edits work, and what to do when an upgrade ends in `failed` or
+  `hooks-failed`. The README explained how to run the container and never what the
+  container does.
+
+### Notes
+
+- The rollback bug was found *by writing that guide* — checking a sentence about
+  triggers against the code instead of writing what seemed obvious.
+
 ## [0.1.56] — 2026-08-31
 
 ### Added

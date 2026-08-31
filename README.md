@@ -334,6 +334,13 @@ and survives regardless.
 To remove ESS as well — only if you really mean it — that is a separate,
 destructive step: `helm uninstall ess -n ess`, which takes your homeserver with it.
 
+## Using it
+
+Installing is above; the three things that make this more than a dashboard —
+**hooks** (patches that survive `helm upgrade`), the **config editor** (ESS values as
+sections, comments intact), and **recovering a failed upgrade** — are explained in
+[`docs/GUIDE.md`](docs/GUIDE.md).
+
 ## Configuration (Helm values)
 
 | Key | Default | Notes |
@@ -391,6 +398,7 @@ committing it** — the flag protects against the string you thought of.
 
 | Document | What it answers |
 |---|---|
+| [`docs/GUIDE.md`](docs/GUIDE.md) | **Using it** — hooks, the config editor, and recovering a failed upgrade |
 | [`docs/VISION.md`](docs/VISION.md) | Where this is going, and what it deliberately won't do |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | What already exists — systems, gaps, dated decisions |
 | [`docs/PROZESS.md`](docs/PROZESS.md) | How changes are planned, verified and shipped |

@@ -970,9 +970,17 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   somebody happened to take.
   *Original entry:* The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
-- **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and
-  `breaking_changes` exist in the schema and are never populated — the upgrade
-  wizard asks the operator to jump versions with no information.
+- **P2-4 · Release notes per ESS version.** ⚠️ **Mostly stale, corrected 2026-08-31.**
+  The problem this described is gone: E32 shipped release notes on the upgrade page,
+  fetched from the published releases (`internal/helm/releasenotes.go`,
+  `GET /api/v1/helm/versions/{version}/notes`, `NotesPanel` in upgrade.tsx). Nobody is
+  asked to jump versions blind any more.
+  *What is still true, and is now a tidiness item rather than a feature gap:*
+  `ess_versions.changelog` and `breaking_changes` from migration 003 are dead columns —
+  never read, never written. Either drop them or stop carrying them in the schema.
+  *Caught because it was nearly built again* — the entry read as an open feature and
+  the feature exists. Same failure as the eight entries E38 found; the defence is the
+  same, which is to verify an entry against the code before acting on it.
 - **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
   now covers most of it. Keep, merge, or delete.
 - ~~**P2-16 · An upgrade that finished still reads `running-hooks` (S2).**~~
@@ -1011,7 +1019,12 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   the changelog. Three empty tabs read as an abandoned project — Discussions is the
   one worth keeping, since a wiki becomes a second documentation that rots next to
   `docs/`.
-- **P2-14 · The documentation has no user-facing layer (S12).** 1242 lines in
+- **P2-14 · The documentation has no user-facing layer (S12).** ✅ **Done 2026-08-31
+  (E60, [DESIGN.md §4.60](DESIGN.md)).** [`docs/GUIDE.md`](GUIDE.md) covers the three
+  things the README never did: what a hook is and why, the config editor's model, and
+  recovering a failed upgrade. Writing it found a real bug — the `post-rollback` trigger
+  was offered and fired by nothing, so a rollback dropped every manual patch (E61).
+  *Original entry:* 1242 lines in
   `docs/` and every one of them is written for a maintainer or an agent: DESIGN,
   PROZESS, ROADMAP, BACKLOG. A *user* gets exactly one file, the README. Nothing
   explains how to actually use the config editor, what a hook is and why you want

@@ -41,8 +41,8 @@ const ACTION_TYPES = [
 ] as const;
 
 const TRIGGERS = [
-  { id: "post-upgrade", label: "Nach Upgrade" },
-  { id: "post-rollback", label: "Nach Rollback" },
+  { id: "post-upgrade", label: "Nach Upgrade und Rollback" },
+  { id: "post-rollback", label: "Nur nach Rollback" },
   { id: "manual", label: "Nur manuell" },
 ] as const;
 
