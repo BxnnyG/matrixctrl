@@ -137,3 +137,89 @@ func TestMessageCarriesBothNumbers(t *testing.T) {
 		t.Errorf("message must name request and capacity: %q", f[0].Message)
 	}
 }
+
+// --- memory (etappe 56) ---
+
+func nodeMem(cpuAlloc, cpuUsed, memAlloc int64) []Node {
+	return []Node{{Name: "n1", CPUAllocatableMillis: cpuAlloc, CPUUsedMillis: cpuUsed, MemAllocatableMi: memAlloc}}
+}
+
+const hungryMemManifest = `
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ess-postgres
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources: {requests: {cpu: 500m, memory: 64Gi}}
+`
+
+// Arithmetic, not tuning: no node has it, so no waiting places it.
+func TestMemoryLargerThanAnyNodeBlocks(t *testing.T) {
+	f := Check(hungryMemManifest, nodeMem(6000, 1000, 36086))
+	if len(f) != 1 || f[0].Level != LevelBlocked {
+		t.Fatalf("want one blocked finding, got %+v", f)
+	}
+	if f[0].MemRequestMi != 65536 {
+		t.Errorf("mem = %dMi, want 65536Mi", f[0].MemRequestMi)
+	}
+	if !strings.Contains(f[0].Message, "Speicher") {
+		t.Errorf("message must name memory: %q", f[0].Message)
+	}
+	if strings.Contains(f[0].Message, "CPU") {
+		t.Errorf("500m CPU is fine here and must not be mentioned: %q", f[0].Message)
+	}
+}
+
+// The case E55 refused to warn about, and still refuses: a node with 36 GiB and most
+// of it requested is ordinary Kubernetes. Only "larger than the node" counts.
+func TestMemoryPressureIsNotReported(t *testing.T) {
+	m := `
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ess-postgres
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources: {requests: {cpu: 500m, memory: 30Gi}}
+`
+	if f := Check(m, nodeMem(6000, 500, 36086)); len(f) != 0 {
+		t.Errorf("30Gi on a 36Gi node must produce nothing, got %+v", f)
+	}
+}
+
+// Both over: one finding naming both, not two the reader has to correlate.
+func TestBothResourcesOverIsOneFinding(t *testing.T) {
+	m := `
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ess-postgres
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources: {requests: {cpu: "40", memory: 64Gi}}
+`
+	f := Check(m, nodeMem(6000, 0, 36086))
+	if len(f) != 1 {
+		t.Fatalf("want exactly one finding, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "CPU") || !strings.Contains(f[0].Message, "Speicher") {
+		t.Errorf("message must name both resources: %q", f[0].Message)
+	}
+}
+
+// A node with no memory reading must not make every pod look impossible.
+func TestUnknownMemoryCapacityBlocksNothing(t *testing.T) {
+	if f := Check(hungryMemManifest, node(6000, 0)); len(f) != 0 {
+		t.Errorf("without a memory reading nothing may be blocked on memory: %+v", f)
+	}
+}

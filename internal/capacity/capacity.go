@@ -36,9 +36,13 @@ type Finding struct {
 	Kind     string `json:"kind,omitempty"`
 	// CPURequestMillis is the *effective* request of the pod the chart would create —
 	// max(sum(containers), max(initContainers)), not the number in the values file.
-	CPURequestMillis     int64  `json:"cpu_request_millis,omitempty"`
-	CPUAllocatableMillis int64  `json:"cpu_allocatable_millis,omitempty"`
-	Message              string `json:"message"`
+	CPURequestMillis     int64 `json:"cpu_request_millis,omitempty"`
+	CPUAllocatableMillis int64 `json:"cpu_allocatable_millis,omitempty"`
+	// Memory is measured only against the largest node, never against what is free —
+	// see Check for why the two resources get different treatment (etappe 56).
+	MemRequestMi     int64  `json:"mem_request_mi,omitempty"`
+	MemAllocatableMi int64  `json:"mem_allocatable_mi,omitempty"`
+	Message          string `json:"message"`
 }
 
 // Node is the capacity to measure against.
@@ -46,13 +50,19 @@ type Node struct {
 	Name                 string
 	CPUAllocatableMillis int64
 	CPUUsedMillis        int64
+	MemAllocatableMi     int64
 }
 
 // FromNodeInfo adapts what the k8s package already reports.
 func FromNodeInfo(in []k8s.NodeInfo) []Node {
 	out := make([]Node, 0, len(in))
 	for _, n := range in {
-		out = append(out, Node{Name: n.Name, CPUAllocatableMillis: n.CPUTotalMillis, CPUUsedMillis: n.CPUUsedMillis})
+		out = append(out, Node{
+			Name:                 n.Name,
+			CPUAllocatableMillis: n.CPUTotalMillis,
+			CPUUsedMillis:        n.CPUUsedMillis,
+			MemAllocatableMi:     n.MemTotalMi,
+		})
 	}
 	return out
 }
@@ -119,40 +129,68 @@ func Check(manifest string, nodes []Node) []Finding {
 		}}
 	}
 
-	var largest, freeOnLargest int64
+	var largestCPU, freeCPUOnLargest, largestMem int64
 	for _, n := range nodes {
-		if n.CPUAllocatableMillis > largest {
-			largest = n.CPUAllocatableMillis
-			freeOnLargest = n.CPUAllocatableMillis - n.CPUUsedMillis
+		if n.CPUAllocatableMillis > largestCPU {
+			largestCPU = n.CPUAllocatableMillis
+			freeCPUOnLargest = n.CPUAllocatableMillis - n.CPUUsedMillis
+		}
+		if n.MemAllocatableMi > largestMem {
+			largestMem = n.MemAllocatableMi
 		}
 	}
 
 	var findings []Finding
 	for name, w := range podSpecs(manifest) {
-		cpu, _ := k8s.EffectiveRequest(w.Spec)
-		if cpu == 0 {
+		cpu, mem := k8s.EffectiveRequest(w.Spec)
+		if cpu == 0 && mem == 0 {
 			continue // no request declared: the scheduler will place it anywhere
 		}
-		switch {
-		case cpu > largest:
+
+		// Larger than any node, in either resource. This is arithmetic rather than
+		// tuning — no eviction and no waiting places such a pod — so memory belongs
+		// here and nowhere else (etappe 56).
+		overCPU := largestCPU > 0 && cpu > largestCPU
+		overMem := largestMem > 0 && mem > largestMem
+		if overCPU || overMem {
 			findings = append(findings, Finding{
 				Level: LevelBlocked, Workload: name, Kind: w.Kind,
-				CPURequestMillis: cpu, CPUAllocatableMillis: largest,
-				Message: fmt.Sprintf(
-					"%s würde %dm CPU anfordern — mehr als der größte Node überhaupt hat (%dm). "+
-						"Dieser Pod kann nach dem Anwenden auf keinem Node laufen.", name, cpu, largest),
+				CPURequestMillis: cpu, CPUAllocatableMillis: largestCPU,
+				MemRequestMi: mem, MemAllocatableMi: largestMem,
+				Message: blockedMessage(name, cpu, largestCPU, mem, largestMem, overCPU, overMem),
 			})
-		case freeOnLargest > 0 && cpu > freeOnLargest:
+			continue
+		}
+
+		// Merely more than is free right now. CPU only, deliberately: a node with
+		// 36 GiB and 30 GiB requested is ordinary Kubernetes, and a memory warning
+		// tuned like this one would fire constantly and be ignored — which is worse
+		// than not warning, because it teaches the operator to skip the whole panel.
+		if freeCPUOnLargest > 0 && cpu > freeCPUOnLargest {
 			findings = append(findings, Finding{
 				Level: LevelWarn, Workload: name, Kind: w.Kind,
-				CPURequestMillis: cpu, CPUAllocatableMillis: largest,
+				CPURequestMillis: cpu, CPUAllocatableMillis: largestCPU,
 				Message: fmt.Sprintf(
 					"%s würde %dm CPU anfordern; auf dem größten Node sind derzeit etwa %dm frei. "+
-						"Das kann sich von selbst lösen, sobald anderes weicht.", name, cpu, freeOnLargest),
+						"Das kann sich von selbst lösen, sobald anderes weicht.", name, cpu, freeCPUOnLargest),
 			})
 		}
 	}
 	return findings
+}
+
+// blockedMessage names whichever resources are actually over, so a pod that exceeds
+// both is one sentence rather than two findings the reader has to correlate.
+func blockedMessage(name string, cpu, largestCPU, mem, largestMem int64, overCPU, overMem bool) string {
+	var parts []string
+	if overCPU {
+		parts = append(parts, fmt.Sprintf("%dm CPU (größter Node: %dm)", cpu, largestCPU))
+	}
+	if overMem {
+		parts = append(parts, fmt.Sprintf("%d Mi Speicher (größter Node: %d Mi)", mem, largestMem))
+	}
+	return fmt.Sprintf("%s würde %s anfordern — mehr, als ein einzelner Node bereitstellen kann. "+
+		"Dieser Pod kann nach dem Anwenden auf keinem Node laufen.", name, strings.Join(parts, " und "))
 }
 
 // Blocking reports whether any finding says a pod could never be scheduled — the case

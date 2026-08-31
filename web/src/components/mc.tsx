@@ -7,6 +7,10 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 export const ICONS: Record<string, string> = {
   dashboard: "M3 13h8V3H3zM13 21h8V3h-8zM3 21h8v-6H3z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  // Added for the mobile drawer (etappe 57). `sliders` was the closest existing icon
+  // and means settings; a button that opens navigation must not look like one that
+  // opens preferences.
+  menu: "M3 6h18M3 12h18M3 18h18",
   helm: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7L12 12l8.7-5 M12 22V12",
   hook: "M18 6.5a4.5 4.5 0 1 0-9 0v9a3 3 0 1 1-6 0v-1 M18 6.5V13",
   rocket: "M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2 0-2.8a2 2 0 0 0-3 0z M12 15l-3-3a22 22 0 0 1 8-10c2.5 0 4 1.5 4 4a22 22 0 0 1-10 8z M9 12H4s.5-3 2-4 5 0 5 0 M12 15v5s3-.5 4-2 0-5 0-5",
@@ -284,4 +288,25 @@ export function ConfirmDialog({ open, title, children, confirmLabel, confirmIcon
       </div>
     </div>
   );
+}
+
+/** Whether the viewport is phone-sized.
+ *
+ *  A hook rather than a media query because this codebase styles inline, and a CSS
+ *  rule cannot reach an inline style without `!important` and a selector that matches
+ *  on the style string itself — clever, fragile, and unreadable six months later.
+ *
+ *  860px rather than a device: a narrow window on a laptop has exactly the same
+ *  problem as a phone, and the layout should not care which one it is. */
+export function useIsMobile(query = "(max-width: 860px)"): boolean {
+  const get = () => typeof window !== "undefined" && window.matchMedia(query).matches;
+  const [mobile, setMobile] = useState(get);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMobile(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return mobile;
 }

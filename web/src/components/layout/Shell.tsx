@@ -1,9 +1,9 @@
 import { useRouterState, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
-import { Icon, StatusDot, Avatar, Kbd } from "@/components/mc";
+import { Icon, StatusDot, Avatar, Kbd, useIsMobile } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
 interface NavItem { id: string; label: string; icon: string; to?: string; phase?: string }
@@ -104,13 +104,15 @@ function activeId(path: string): string {
   return "";
 }
 
-function Sidebar({ path }: { path: string }) {
+function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }) {
   const [t] = useTweaks();
   const navigate = useNavigate();
   const cur = activeId(path);
-  const go = (to: string) => navigate({ to });
+  const go = (to: string) => { navigate({ to }); onNavigate?.(); };
   return (
-    <aside style={{ width: "var(--rail-w)", flexShrink: 0, background: "var(--rail)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0 }}>
+    // 100dvh, not 100vh: on a phone the browser chrome slides away and 100vh keeps
+    // reserving the space it used to occupy, leaving a strip that scrolls nowhere.
+    <aside style={{ width: "var(--rail-w)", flexShrink: 0, background: "var(--rail)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100dvh", position: "sticky", top: 0, paddingTop: "env(safe-area-inset-top)" }}>
       <div style={{ padding: "18px 16px 14px" }}><Logo /></div>
       <nav className="mc-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV.filter((g) => !g.phase || t.showPhaseTags).map((g) => (
@@ -142,29 +144,46 @@ interface StatusResp { release?: { chart_version?: string }; components?: { stat
 // neither healthy nor deliberately scaled to zero needs the operator's attention.
 const isDegraded = (s: string) => s === "degraded" || s === "down";
 
-function Topbar({ path }: { path: string }) {
+function Topbar({ path, onMenu }: { path: string; onMenu?: () => void }) {
   const [title, sub] = TITLES[path] || (path.startsWith("/config/") ? ["Konfiguration", "YAML-Editor"] : ["MatrixCtrl", ""]);
   const { data } = useQuery({ queryKey: ["status"], queryFn: () => api.get<StatusResp>("/api/v1/status"), staleTime: 15_000, refetchInterval: 30_000 });
   const warns = (data?.components || []).filter((c) => isDegraded(c.status)).length;
   const healthy = !!data && warns === 0;
   const ver = data?.release?.chart_version?.replace(/^matrix-stack-/, "") || "—";
   return (
-    <header style={{ position: "sticky", top: 0, zIndex: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 26px", height: 60, background: "color-mix(in oklch, var(--bg) 82%, transparent)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)" }}>
-      <div style={{ minWidth: 0 }}>
+    <header style={{ position: "sticky", top: 0, zIndex: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: onMenu ? 10 : 16, padding: onMenu ? "0 14px" : "0 26px", height: 60, background: "color-mix(in oklch, var(--bg) 82%, transparent)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)" }}>
+      {onMenu && (
+        // 40px square: the smallest reliable touch target, and the reason the rail
+        // can disappear at all.
+        <button aria-label="Menü" onClick={onMenu}
+          style={{ flexShrink: 0, width: 40, height: 40, display: "grid", placeItems: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text)", cursor: "pointer" }}>
+          <Icon name="menu" size={18} />
+        </button>
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: "var(--head-tracking)", color: "var(--text)", whiteSpace: "nowrap" }}>{title}</h1>
         <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, background: "var(--surface)", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>
           <StatusDot status={healthy ? "ok" : "warn"} pulse size={7} />
-          <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{healthy ? "Cluster gesund" : warns ? `${warns} Warnung${warns > 1 ? "en" : ""}` : "Status…"}</span>
-          <span style={{ width: 1, height: 14, background: "var(--border)" }} />
-          <span style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{ver}</span>
+          {/* On a phone the dot and the warning count carry the message; the words and
+              the chart version are what has to give when 360px is all there is. */}
+          <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+            {onMenu
+              ? (healthy ? "OK" : warns ? String(warns) : "…")
+              : (healthy ? "Cluster gesund" : warns ? `${warns} Warnung${warns > 1 ? "en" : ""}` : "Status…")}
+          </span>
+          {!onMenu && <span style={{ width: 1, height: 14, background: "var(--border)" }} />}
+          {!onMenu && <span style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{ver}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-faint)", cursor: "default" }}>
-          <Icon name="search" size={15} /><Kbd>⌘K</Kbd>
-        </div>
-        <TweaksButton />
+        {/* A keyboard shortcut hint on a device with no keyboard is pure noise. */}
+        {!onMenu && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-faint)", cursor: "default" }}>
+            <Icon name="search" size={15} /><Kbd>⌘K</Kbd>
+          </div>
+        )}
+        {!onMenu && <TweaksButton />}
       </div>
     </header>
   );
@@ -173,20 +192,48 @@ function Topbar({ path }: { path: string }) {
 export function Shell({ children }: { children: ReactNode }) {
   const state = useRouterState();
   const [t] = useTweaks();
+  const mobile = useIsMobile();
+  const [drawer, setDrawer] = useState(false);
   const path = state.location.pathname;
+
+  // Closing on navigation is handled by Sidebar's onNavigate; this closes it when the
+  // viewport grows back, so a drawer left open on a rotated phone does not reappear as
+  // a floating panel next to the rail it turned back into.
+  useEffect(() => {
+    if (!mobile) setDrawer(false);
+  }, [mobile]);
+
   if (path.startsWith("/auth")) return <>{children}</>;
   // Full-bleed: settings + per-section YAML editor manage their own height. History stays centered.
   const fullBleed = path === "/config" || (path.startsWith("/config/") && path !== "/config/history");
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font)", letterSpacing: "var(--tracking)", fontSize: "var(--fs)", backgroundImage: t.gridBg ? "radial-gradient(var(--bg-grid) 1px, transparent 1px)" : "none", backgroundSize: "22px 22px" }}>
-      <Sidebar path={path} />
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-        <Topbar path={path} />
+    <div style={{ display: "flex", minHeight: "100dvh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font)", letterSpacing: "var(--tracking)", fontSize: "var(--fs)", backgroundImage: t.gridBg ? "radial-gradient(var(--bg-grid) 1px, transparent 1px)" : "none", backgroundSize: "22px 22px" }}>
+      {/* On a phone the rail is a drawer: 240px of permanent navigation on a 360px
+          screen leaves no room for the thing being navigated to (etappe 57). */}
+      {!mobile && <Sidebar path={path} />}
+      {mobile && drawer && (
+        <>
+          <div onClick={() => setDrawer(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 40, background: "color-mix(in oklch, black 55%, transparent)", backdropFilter: "blur(2px)" }} />
+          <div style={{ position: "fixed", insetInlineStart: 0, top: 0, bottom: 0, zIndex: 41, boxShadow: "0 0 40px -8px black" }}>
+            <Sidebar path={path} onNavigate={() => setDrawer(false)} />
+          </div>
+        </>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
+        <Topbar path={path} onMenu={mobile ? () => setDrawer(true) : undefined} />
         {fullBleed ? (
           <main style={{ flex: 1, overflow: "hidden" }}>{children}</main>
         ) : (
-          <main className="mc-scroll" style={{ flex: 1, overflowY: "auto", padding: 26 }}>
+          <main className="mc-scroll" style={{
+            flex: 1, overflowY: "auto",
+            padding: mobile ? 0 : 26,
+            // The home-screen app paints under the rounded corners and the home
+            // indicator; without this the last row of every page sits under it.
+            paddingBottom: mobile ? "env(safe-area-inset-bottom)" : 26,
+          }}>
             <div style={{ maxWidth: 1340, margin: "0 auto" }}>{children}</div>
           </main>
         )}

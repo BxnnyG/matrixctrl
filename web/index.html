@@ -1,10 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web</title>
+
+    <!-- viewport-fit=cover lets the app paint into the notch area; the layout then
+         keeps its distance with env(safe-area-inset-*) instead of a fixed margin. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Installable on a phone home screen (etappe 57). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0b0f" />
+
+    <!-- iOS ignores the manifest for both of these. Without the touch icon Safari puts
+         a screenshot of the page on the home screen; without the status-bar style the
+         standalone window gets a light bar over a dark app. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MatrixCtrl" />
+
+    <title>MatrixCtrl</title>
   </head>
   <body>
     <div id="root"></div>

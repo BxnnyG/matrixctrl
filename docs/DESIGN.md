@@ -2043,3 +2043,60 @@ outage and CPU is what ships checked.
 Cost worth knowing: the preflight pulls the chart, so an apply now pulls it twice —
 about twenty seconds added ahead of a multi-minute upgrade. Correct before fast; if it
 ever matters, the pulled chart can be handed to the upgrade that follows. Affects S1, S4.
+
+### §4.56 — Two resources, two thresholds (2026-08-31, agent, etappe 56)
+
+E55 shipped the capacity preflight for CPU only and gave a reason: a memory warning
+tuned like the CPU one would fire constantly and be ignored. The operator asked for
+memory anyway, and was right — that reasoning argued against *one particular
+threshold*, not against measuring memory at all.
+
+The check already reported two different things, and the split is what makes memory
+safe to add:
+
+| | CPU | memory |
+|---|---|---|
+| larger than any node | blocked | **blocked** |
+| larger than what is free now | warn | *not reported* |
+
+"Larger than any node" is arithmetic: no eviction and no waiting places that pod, and
+that is as true of 64 GiB on a 36 GiB machine as it is of CPU. "Larger than what is
+free" is a judgement about pressure, and memory behaves differently under it —
+a node with 36 GiB and 30 GiB requested is ordinary Kubernetes, not a problem, and
+saying so every time would teach the operator to skip the whole panel. **A check nobody
+believes is worse than no check**, which is the same reason §4.48 refused to let a
+skipped route pass quietly.
+
+The general form is worth keeping: when a limit is declined, record whether the
+objection is to *measuring the thing* or to *the threshold proposed for it*. The two
+have different fixes, and E55 wrote down the wrong one.
+
+### §4.57 — The panel on a phone (2026-08-31, agent, etappe 57)
+
+Nothing here was subtle; it is recorded for the two decisions that were.
+
+**A hook, not a media query.** This codebase styles inline. Reaching an inline style
+from CSS needs `!important` plus a selector matching the style string
+(`[style*="padding: 28px"]`), which works and is exactly the sort of clever-fragile
+thing that is unreadable six months later. `useIsMobile()` is `matchMedia` with a
+listener and reads as what it is. The breakpoint is 860px and deliberately not a
+device: a narrow window on a laptop has the same problem and the layout should not care
+which it is.
+
+**Icons without a rasteriser.** A manifest needs PNGs; the build host has no
+`rsvg-convert`, no ImageMagick, no Pillow, and nothing in `node_modules`. The choices
+were to add a dependency for three files that change roughly never, ship SVG-only icons
+and accept that iOS falls back to a screenshot of the page, or draw them. `make-icons.py`
+draws them — path flattening including a proper elliptical-arc conversion (the mark has
+one; approximating it as a straight line would visibly cut a corner), a supersampled
+nonzero scanline fill, white on the brand square.
+
+Committed together with the generator. §4.49 says a generated artefact under version
+control is a second source of truth that will eventually disagree with its source; the
+defence is not to refuse to commit it but to make regenerating it one documented
+command, and to pick artefacts that change roughly never.
+
+And it was verified by **looking at it**. A 512px PNG produced by 200 lines of
+hand-written rasteriser is exactly the thing that can be subtly wrong — a filled
+counter, an inverted winding rule — while every test one would think to write passes.
+The same argument as P2-20, where the screenshots were the check. Affects S9.
