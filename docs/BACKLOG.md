@@ -961,7 +961,14 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   superseded, so a decoded one never needs re-reading), or accept the cost for a
   page nobody polls. Deliberately left out of E20 rather than guessed at inside it.
   *Found 2026-08-02 while measuring E20; not yet measured on its own.*
-- **P2-3 · Persist dashboard metrics.** The CPU/RAM sparklines live in memory and
+- **P2-3 · Persist dashboard metrics.** ✅ **Done 2026-08-31 (E59,
+  [DESIGN.md §4.59](DESIGN.md)).** Recorded server-side once a minute with ninety days
+  of retention. The entry undersold it: the history did not merely reset, it *pre-filled
+  a fresh page with the current value*, drawing a flat line that read as an hour of
+  stability. And `allocatable` is now recorded next to usage, which is what makes a node
+  shrinking from 32 cores to 6 visible after the fact rather than only in a screenshot
+  somebody happened to take.
+  *Original entry:* The CPU/RAM sparklines live in memory and
   reset on reload, so "is this getting worse?" cannot be answered.
 - **P2-4 · Release notes per ESS version.** `ess_versions.changelog` and
   `breaking_changes` exist in the schema and are never populated — the upgrade

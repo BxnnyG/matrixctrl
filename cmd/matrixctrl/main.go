@@ -23,6 +23,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
 	builtin "github.com/bxnnyg/matrixctrl/internal/hooks/builtin"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/nodehist"
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
@@ -296,6 +297,15 @@ func main() {
 	// deletes the SFU pod on every ESS upgrade. Unrecorded, the call history does
 	// not merely have gaps — it is destroyed several times a week (E44).
 	go rtc.NewSampler(rtcStore, rtcHandler.MetricsReader(), 0).Start(context.Background())
+
+	// Node usage *and* capacity on a timer (etappe 59). The capacity half is why this
+	// exists: when the node went from 32 cores to 6 nothing recorded it, and the only
+	// surviving evidence was a screenshot the operator happened to have taken (§4.53).
+	if k8sClient != nil {
+		nodeStore := nodehist.NewStore(pool)
+		statusHandler.SetNodeHistory(nodeStore)
+		go nodehist.NewSampler(nodeStore, k8sClient.NodeInfo).Run(context.Background())
+	}
 
 	// Both of the above append forever. On a single-node cluster sharing a disk with
 	// Synapse's database and media, that is a real trap — and the sampler above adds

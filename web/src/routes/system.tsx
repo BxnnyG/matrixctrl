@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { Card, Icon, Badge, SectionTitle, Meter, EmptyState } from "@/components/mc";
 
@@ -33,7 +33,6 @@ interface SysInfoResponse {
   pod_counts: Record<string, number>;
 }
 
-const MAX_HISTORY = 40;
 
 function toneColor(v: number, base: string) {
   return v >= 90 ? "var(--status-err)" : v >= 70 ? "var(--status-warn)" : base;
@@ -95,39 +94,77 @@ function ConditionBadge({ type, status }: { type: string; status: string }) {
   return <Badge tone={isOK ? "ok" : "err"} size="sm" icon={isOK ? "check" : "x"}>{type}</Badge>;
 }
 
-function SystemPage() {
-  const historyRef = useRef<Record<string, { cpu: number[]; mem: number[] }>>({});
-  const [, forceUpdate] = useState(0);
+/** One recorded reading, as the server stored it. */
+interface NodeSample {
+  at: string; node: string;
+  cpu_used_millis: number; cpu_alloc_millis: number;
+  mem_used_mi: number; mem_alloc_mi: number;
+}
+interface CapacityChange {
+  node: string;
+  from_cpu_millis: number; to_cpu_millis: number;
+  from_mem_mi: number; to_mem_mi: number;
+  at: string;
+}
+interface NodeHistory {
+  samples: NodeSample[] | null;
+  capacity_changes: CapacityChange[] | null;
+}
 
+function SystemPage() {
   const { data: sysinfo } = useQuery({
     queryKey: ["sysinfo"],
     queryFn: () => api.get<SysInfoResponse>("/api/v1/status/sysinfo"),
     refetchInterval: 15_000,
   });
 
-  useEffect(() => {
-    if (!sysinfo?.node_metrics) return;
-    sysinfo.node_metrics.forEach((n) => {
-      const cpuP = pctF(n.cpu_used_millis, n.cpu_total_millis);
-      const memP = pctF(n.mem_used_mi, n.mem_total_mi);
-      if (!historyRef.current[n.name]) {
-        historyRef.current[n.name] = { cpu: new Array(MAX_HISTORY).fill(cpuP), mem: new Array(MAX_HISTORY).fill(memP) };
-      } else {
-        const h = historyRef.current[n.name];
-        h.cpu.push(cpuP); h.mem.push(memP);
-        if (h.cpu.length > MAX_HISTORY) h.cpu.splice(0, h.cpu.length - MAX_HISTORY);
-        if (h.mem.length > MAX_HISTORY) h.mem.splice(0, h.mem.length - MAX_HISTORY);
-      }
-    });
-    forceUpdate((v) => v + 1);
-  }, [sysinfo?.node_metrics]);
+  // Recorded server-side (etappe 59). This used to be a useRef that died on reload
+  // and, on a fresh page, pre-filled itself with the current value — a flat line that
+  // read as an hour of stability and was one reading repeated forty times.
+  const { data: history } = useQuery({
+    queryKey: ["node-history"],
+    queryFn: () => api.get<NodeHistory>("/api/v1/status/nodes/history?hours=6"),
+    refetchInterval: 60_000,
+  });
+
+  const seriesFor = (node: string) => {
+    const rows = (history?.samples ?? []).filter((s) => s.node === node);
+    return {
+      cpu: rows.map((s) => pctF(s.cpu_used_millis, s.cpu_alloc_millis)),
+      mem: rows.map((s) => pctF(s.mem_used_mi, s.mem_alloc_mi)),
+    };
+  };
 
   const conditionOrder = ["Ready", "MemoryPressure", "DiskPressure", "PIDPressure"];
 
+  const changes = history?.capacity_changes ?? [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 920 }}>
+      {/* The reason the capacity columns are recorded at all. On 2026-08-16 this node
+          went from 32 cores to 6; every reservation on it became unschedulable at the
+          next reboot, and nothing in the panel could say the machine had changed. */}
+      {changes.map((c) => (
+        <Card key={c.node} style={{ display: "flex", alignItems: "flex-start", gap: 12, background: "color-mix(in oklch, var(--status-warn) 8%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 26%, var(--border))" }}>
+          <Icon name="alert" size={18} style={{ color: "var(--status-warn)", marginTop: 2 }} />
+          <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6 }}>
+            <strong>Die Kapazität von {c.node} hat sich geändert.</strong>
+            <div style={{ marginTop: 4, color: "var(--text-dim)" }}>
+              {c.from_cpu_millis !== c.to_cpu_millis && (
+                <>CPU: {c.from_cpu_millis}m → <strong>{c.to_cpu_millis}m</strong>. </>
+              )}
+              {c.from_mem_mi !== c.to_mem_mi && (
+                <>Speicher: {c.from_mem_mi} Mi → <strong>{c.to_mem_mi} Mi</strong>. </>
+              )}
+              Reservierungen, die vorher passten, passen danach womöglich nicht mehr —
+              und laufende Pods merken das erst beim nächsten Neustart.
+            </div>
+          </div>
+        </Card>
+      ))}
+
       {sysinfo?.node_metrics?.map((node) => {
-        const h = historyRef.current[node.name] ?? { cpu: [], mem: [] };
+        const h = seriesFor(node.name);
         const cpuPct = pct(node.cpu_used_millis, node.cpu_total_millis);
         const memPct = pct(node.mem_used_mi, node.mem_total_mi);
         const cond = sysinfo.nodes?.find((n) => n.name === node.name);

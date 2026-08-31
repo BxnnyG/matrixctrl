@@ -2134,3 +2134,39 @@ the chevron is displayed, whether name and status share a line, and whether the 
 scrolls horizontally. Desktop unchanged, phone folded to three columns, no overflow at
 either. The authenticated screens still cannot be rendered here, so this reduces
 guessing without replacing the operator's eyes.
+
+### §4.59 — The sparkline that invented its own past (2026-08-31, agent, etappe 59)
+
+P2-3 filed it as "the CPU/RAM sparklines live in memory and reset on reload". Reading
+the code found something worse than a reset:
+
+```js
+historyRef.current[n.name] = { cpu: new Array(MAX_HISTORY).fill(cpuP), ... }
+```
+
+A freshly loaded page **pre-filled its history with the current value**. The chart drew
+a flat line that reads as "stable for the past hour" and was one reading repeated forty
+times. Not blank, not obviously missing — confidently wrong, which is the failure this
+project keeps meeting (§4.42, §4.48, §4.52). An empty chart would have been better: it
+says nothing, and nothing was known.
+
+The fix is E44's shape reused rather than reinvented: a table, a sampler on a timer,
+retention with the number in code. What is new is the column, and it comes from the
+outage rather than from the entry:
+
+**`allocatable` is recorded alongside `used`.** Usage answers "is this getting worse".
+Allocatable answers "did the machine change under us" — the question that cost 37 hours
+on 2026-08-16, when the node went from 32 cores to 6 and the only surviving evidence
+was a screenshot the operator happened to have taken beforehand (§4.53). A change
+between two samples is now a sentence on the page, with both numbers.
+
+Worth separating, because they look alike and are not: usage swings every minute and
+means nothing on its own, while capacity changes almost never and means everything when
+it does. The detector compares each node's newest sample against its oldest *differing*
+one, so the change is still reported hours later instead of only inside the single
+interval it happened in — a warning that expires before anyone looks at it is a warning
+that was never shown.
+
+And per node, never aggregated. A two-node cluster whose total stays flat while one
+node halves is exactly the case an average hides — §4.43's rule, applied before it
+could bite rather than after.

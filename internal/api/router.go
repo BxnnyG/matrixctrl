@@ -119,6 +119,8 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/release", deps.Status.Release)
 			r.Delete("/evicted-pods", deps.Status.DeleteEvictedPods)
 			r.Get("/sysinfo", deps.Status.SysInfo)
+			// Recorded node usage and capacity (etappe 59).
+			r.Get("/nodes/history", deps.Status.NodeHistory)
 			r.Get("/events", deps.Status.Events)
 			r.Get("/components/{name}/pods", deps.Status.ComponentDetail)
 			r.Get("/pods/{deployment}", deps.Status.DeploymentPods)

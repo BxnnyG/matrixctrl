@@ -15,6 +15,33 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.56] — 2026-08-31
+
+### Added
+
+- **Node usage and capacity are recorded server-side**, once a minute, surviving
+  restarts. The system page's sparklines are drawn from them.
+- **A change in node capacity is now visible.** When a node's allocatable CPU or memory
+  differs from what it was, the page says so with both numbers. That is the question
+  nobody could answer during the outage of 2026-08-16…18: the node went from 32 cores
+  to 6 and the only surviving evidence was a screenshot taken beforehand.
+
+### Fixed
+
+- **The sparkline no longer invents its own past.** It kept history in a browser ref
+  that died on reload and — worse — pre-filled a fresh page with the current value, so
+  the chart drew a flat line that read as an hour of stability and was one reading
+  repeated forty times. An empty chart would have been more honest; a recorded one is
+  better still.
+
+### Notes
+
+- Ninety days of retention, the same reasoning as the RTC tables: operational telemetry
+  with no duty to answer for anything, unlike the audit log whose retention stays an
+  open question for the operator (P2-19).
+- Per node, never aggregated. A two-node cluster whose total stays flat while one node
+  halves is exactly what an average hides.
+
 ## [0.1.55] — 2026-08-31
 
 ### Changed

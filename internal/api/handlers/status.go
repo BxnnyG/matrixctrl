@@ -9,6 +9,7 @@ import (
 
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	"github.com/bxnnyg/matrixctrl/internal/nodehist"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -22,6 +23,39 @@ type StatusHandler struct {
 	// Empty outside the cluster, which the diagnostics page treats as "one
 	// namespace to report instead of two" rather than as an error (etappe 40).
 	selfNS string
+	// nodes serves the recorded node history. Nil disables the endpoint rather than
+	// making it answer with an empty series, which would read as "nothing happened".
+	nodes *nodehist.Store
+}
+
+// SetNodeHistory wires the recorded node samples (etappe 59).
+func (h *StatusHandler) SetNodeHistory(s *nodehist.Store) { h.nodes = s }
+
+// GET /api/v1/status/nodes/history — recorded node usage and capacity.
+//
+// Replaces a browser-side ref that died on reload and, worse, pre-filled itself with
+// the current value so a fresh page drew a flat line that read as an hour of stability
+// (P2-3). What is returned here was measured; a gap in it is a gap.
+func (h *StatusHandler) NodeHistory(w http.ResponseWriter, r *http.Request) {
+	if h.nodes == nil {
+		Error(w, http.StatusServiceUnavailable, "Für diese Installation wird kein Node-Verlauf aufgezeichnet.")
+		return
+	}
+	hours := 6
+	if v, err := strconv.Atoi(r.URL.Query().Get("hours")); err == nil && v > 0 && v <= 24*90 {
+		hours = v
+	}
+	samples, err := h.nodes.Since(r.Context(), time.Now().Add(-time.Duration(hours)*time.Hour))
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Der Node-Verlauf konnte nicht gelesen werden.")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"samples": samples,
+		// The reason the capacity columns exist at all (§4.53).
+		"capacity_changes": nodehist.DetectCapacityChanges(samples),
+		"interval_seconds": int(nodehist.SamplerInterval.Seconds()),
+	})
 }
 
 func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, essRelease string, frontendFS http.Handler) *StatusHandler {
