@@ -2100,3 +2100,37 @@ And it was verified by **looking at it**. A 512px PNG produced by 200 lines of
 hand-written rasteriser is exactly the thing that can be subtly wrong — a filled
 counter, an inverted winding rule — while every test one would think to write passes.
 The same argument as P2-20, where the screenshots were the check. Affects S9.
+
+### §4.58 — The convention was already there (2026-08-31, agent, etappe 58)
+
+E57's plan rejected CSS for the phone layout: "a CSS rule cannot reach an inline style
+without `!important` and a selector matching on the style string itself — clever,
+fragile, unreadable in six months." So it built `useIsMobile()`.
+
+`index.css` already contained:
+
+```css
+@media (max-width: 920px) { .mc-dash-grid { grid-template-columns: 1fr !important; } }
+```
+
+A class, a media query and an `!important`, overriding an inline style, written months
+earlier for exactly this purpose. E57's objection was to matching on the *style string*
+(`[style*="padding: 28px"]`) — which is a genuinely bad idea and a different one. Having
+conflated them, it invented a second mechanism next to a working one.
+
+Both now exist and the split that fell out is the right one, so it is written down
+rather than left to be rediscovered: **CSS classes for layout, the hook for behaviour.**
+A padding does not need to know it is on a phone in order to exist; the navigation
+drawer does — it has to not be rendered at all.
+
+The audit that opened this etappe is the other half of the lesson. Grepping for what
+breaks at 360px found three suspects and the most obvious one — the dashboard's
+`minmax(300px, 1fr)` two-column grid — **was already fixed**. Starting from the
+assumption instead would have "fixed" it twice and left the real ones alone.
+
+Verified by measuring the built stylesheet rather than reading the source: a headless
+browser at 1280px and 360px, reporting computed padding, resolved grid columns, whether
+the chevron is displayed, whether name and status share a line, and whether the document
+scrolls horizontally. Desktop unchanged, phone folded to three columns, no overflow at
+either. The authenticated screens still cannot be rendered here, so this reduces
+guessing without replacing the operator's eyes.

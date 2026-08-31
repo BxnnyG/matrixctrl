@@ -142,7 +142,7 @@ function ComponentRow({ c, last, onClick }: { c: ComponentStatus; last: boolean;
   const dot = STATUS_DOT[c.status] ?? "idle";
   const hot = c.restarts > 20;
   return (
-    <button onClick={onClick} className="mc-row"
+    <button onClick={onClick} className="mc-row mc-comp-row"
       style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 26px", alignItems: "center", gap: 14, padding: "11px 16px", width: "100%", textAlign: "left", border: "none", background: "transparent", cursor: "pointer", borderBottom: last ? "none" : "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <div style={{ display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color: "var(--text-dim)", flexShrink: 0 }}><Icon name={compIcon(c.name)} size={17} /></div>
@@ -454,7 +454,7 @@ function Dashboard() {
             </div>
             <span style={{ fontSize: 11, color: "var(--text-faint)" }}>Zeile klicken für Pods, Restart-Grund & Logs</span>
           </div>
-          <div style={{ padding: "0 6px 8px", display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 26px", gap: 14, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-faint)" }}>
+          <div className="mc-comp-row" style={{ padding: "0 6px 8px", display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 26px", gap: 14, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-faint)" }}>
             <span style={{ paddingLeft: 16 }}>Komponente</span><span>Status</span><span>Ready</span><span>Restarts</span><span />
           </div>
           <div style={{ padding: "0 6px 8px" }}>

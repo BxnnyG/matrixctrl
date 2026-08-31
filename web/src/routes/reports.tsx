@@ -435,7 +435,7 @@ function Reports() {
 
   if (!connected) {
     return (
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="mc-page">
         <SectionTitle sub="Gemeldete Ereignisse">Moderation</SectionTitle>
         <MatrixConnect reason="Für gemeldete Ereignisse wird einmalig der Matrix-Admin-Zugriff verbunden." error={error} returnTo="/reports" auto />
       </div>
@@ -463,7 +463,7 @@ function Reports() {
   const nextToken = active.data?.next_token;
 
   return (
-    <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="mc-page">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <SectionTitle sub="Gemeldete Ereignisse und gemeldete Nutzer">Moderation</SectionTitle>
         {hidden > 0 || showAll ? (

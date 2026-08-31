@@ -175,3 +175,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 @media (max-width: 920px) {
   .mc-dash-grid { grid-template-columns: 1fr !important; }
 }
+
+/* --- phone layout (etappe 58) -------------------------------------------------
+   Layout lives here rather than in useIsMobile(): a padding does not need to know
+   whether it is on a phone in order to exist, while the navigation drawer does.
+   CSS for layout, the hook for behaviour. */
+
+/* The page frame every route sits in. Routes used to set `padding: 28` themselves,
+   which on a 360px screen spends 16% of the width on margins. */
+.mc-page { padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+
+@media (max-width: 860px) {
+  .mc-page { padding: 14px; gap: 14px; }
+
+  /* Five columns across 360px leaves each metric about forty pixels. The name takes
+     the first line, the three numbers share the second — same information, no
+     horizontal scroll, and nothing hidden from the operator. */
+  .mc-comp-row { grid-template-columns: repeat(3, 1fr) !important; row-gap: 8px !important; }
+  .mc-comp-row > :first-child { grid-column: 1 / -1; }
+  .mc-comp-row > :last-child { display: none; }
+}

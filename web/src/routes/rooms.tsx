@@ -86,7 +86,7 @@ function Rooms() {
 
   if (!connected) {
     return (
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="mc-page">
         <SectionTitle sub="Räume auf diesem Server">Räume</SectionTitle>
         <MatrixConnect reason={state.data?.reason} error={error} returnTo="/rooms" auto />
       </div>
@@ -104,7 +104,7 @@ function Rooms() {
   const total = rooms.data?.total_rooms ?? 0;
 
   return (
-    <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="mc-page">
       <SectionTitle sub={total > 0 ? `${total} Räume` : "Räume auf diesem Server"}>Räume</SectionTitle>
 
       {notAdmin && (

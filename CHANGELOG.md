@@ -15,6 +15,25 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.55] — 2026-08-31
+
+### Changed
+
+- **The phone layout stops at the shell no longer.** Routes no longer set their own
+  28px page padding — on a 360px screen that spent 16% of the width on margins. Below
+  860px it is 14px, above it unchanged.
+- **Component rows fold instead of squeezing.** Five columns across 360px left each
+  metric about forty pixels; the name now takes the first line and the three numbers
+  share the second. Same information, no horizontal scroll, nothing hidden.
+
+### Notes
+
+- Measured against the built stylesheet in a headless browser at 1280px and 360px:
+  padding 28→14, five columns → three, no horizontal overflow at either width, desktop
+  untouched.
+- The dashboard's two-column grid was *already* responsive and needed nothing — found
+  by auditing rather than assuming, which is the only reason it was not "fixed" twice.
+
 ## [0.1.54] — 2026-08-31
 
 ### Added

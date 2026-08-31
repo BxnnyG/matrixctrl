@@ -147,7 +147,7 @@ function RoomDetail() {
   const err = room.error instanceof ApiError ? room.error : null;
   if (err) {
     return (
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="mc-page" style={{ gap: 16 }}>
         <Link to="/rooms" style={{ fontSize: 13, color: "var(--text-dim)", textDecoration: "none" }}>← Räume</Link>
         <Card>
           <div style={{ padding: 20, fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>
@@ -173,7 +173,7 @@ function RoomDetail() {
   const total = members.data?.total ?? 0;
 
   return (
-    <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="mc-page">
       <Link to="/rooms" style={{ fontSize: 13, color: "var(--text-dim)", textDecoration: "none" }}>← Räume</Link>
 
       <SectionTitle sub={r.canonical_alias || r.room_id}>
