@@ -2218,3 +2218,53 @@ applied to turned out to be false. Two prior documents in this repo described fe
 that did not exist (§4.17's audit trail, documented for two months before it was
 built). This is the same class of gap found from the other direction, by prose rather
 than by a bug report. Affects S3, S12.
+
+### §4.61 — A list of declared constants reads exactly like a list of features (2026-08-31, agent, etappe 62)
+
+E61 found a trigger that was declared, offered in the UI, and fired by nothing. That is
+a *shape*, not an incident, so it was worth sweeping for: constants whose only
+occurrences are their own declaration and a dispatch that goes nowhere.
+
+The sweep counted references per constant, outside its declaration:
+
+```
+ActionHTTPRequest        1
+TriggerManual            1
+ActionWaitRollout        2
+TriggerPostRollback      3   ← E61, already fixed
+ActionKubectlPatch       6
+```
+
+`TriggerManual` at 1 is fine — it is the value recorded when an operator runs a hook by
+hand. `ActionHTTPRequest` at 1 was the third instance of the family:
+
+```go
+func (r *Runner) runHTTP(_ context.Context, _ HookAction) error {
+	return fmt.Errorf("http_request actions not yet implemented (Phase 1)")
+}
+```
+
+Declared, dispatched, offered in the hook editor with a complete form — method, URL,
+body — and guaranteed to fail. Saving worked; the failure arrived the first time the
+hook ran, which is during an upgrade.
+
+Three in one session, all the same: **something is declared, something renders it, and
+nothing performs it.** The reason this class survives review is in the title. Reading
+`types.go` shows three action types and two triggers, and that reads as a capability
+list; the absence lives in a different file, in a default branch or a stub, where
+nobody looking at the feature looks. Both defects were found by counting *consumers*,
+never by reading declarations — and that is the technique worth keeping.
+
+**I produced an instance of it myself, in the same session.** E60's guide listed
+`http_request` as one of three working action types, written from `types.go` without
+checking the runner — one paragraph after that guide's own rule ("every technical claim
+checked against the source while writing") had caught the rollback bug. Applying a rule
+once does not make it a habit; the guide is corrected in the same commit as the fix.
+
+Implementing it rather than removing it was the right end, because the form had already
+promised it and the notification it enables is a real want (the idea box asks for an
+alert when a hook run fails). It is deliberately narrow: one request, 2xx or the hook
+fails, a bounded timeout because hooks run inside an upgrade phase an operator is
+watching, no retries because a silent retry hides a broken endpoint, and **no header
+field** — which is the interesting omission, since a header field is where a secret
+would end up stored in plain text in the hooks table. Affects S3.

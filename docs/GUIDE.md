@@ -51,6 +51,10 @@ Three action types:
 | `wait_rollout` | waits for a workload to become ready before the next action |
 | `http_request` | calls a URL — for notifying something outside the cluster |
 
+`http_request` is the newest of the three and the narrowest: one request, a two-hundred
+range is success, anything else fails the hook. It exists to tell something outside the
+cluster that a patch was re-applied, not to orchestrate.
+
 ### What ships built in
 
 Two hooks are seeded on first start, both for Element Call's media path:

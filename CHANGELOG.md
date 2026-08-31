@@ -15,6 +15,32 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.58] — 2026-08-31
+
+### Added
+
+- **`http_request` hook actions actually work.** The action type was declared, offered
+  in the hook editor with a full form for method, URL and body, and returned
+  "not yet implemented" the first time it ran — which is during an upgrade. It now
+  performs the request: 2xx is success, anything else fails the hook with the status
+  code in the run log, a bounded timeout so a dead endpoint cannot stall an upgrade's
+  hook phase, and no retries, because a silent retry hides a broken endpoint.
+
+### Fixed
+
+- `docs/GUIDE.md` described `http_request` as a working action type. It was written
+  from the type declarations without checking the runner — corrected here, in the same
+  change that makes the claim true.
+
+### Notes
+
+- No header field, deliberately: it is where a secret would end up stored in plain text
+  in the hooks table. An endpoint needing auth can carry a token in its URL, which is
+  the caller's decision rather than something this feature encourages.
+- Found by sweeping for the shape 0.1.57 had just produced — constants that are
+  declared and rendered but performed by nothing. Three such defects turned up in one
+  session, all found by counting consumers rather than by reading declarations.
+
 ## [0.1.57] — 2026-08-31
 
 ### Fixed
