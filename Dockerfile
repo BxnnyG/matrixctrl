@@ -19,7 +19,7 @@ RUN npm run build
 #
 # Also native: Go cross-compiles, so GOARCH does the work that emulation would
 # otherwise do far more slowly. TARGETARCH is supplied automatically by BuildKit.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS backend
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
