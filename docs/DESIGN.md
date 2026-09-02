@@ -2344,3 +2344,45 @@ check answers its own question, never the one being asked (§4.40, §4.48, §4.5
 The pure part — the ordering and the first-seen decision — was then moved to `lib/`, so
 it is testable without rendering a component. Seven tests, including the one that would
 have caught the naive seen-set: going back to page 0 must still show page 0.
+
+### §4.64 — Erasure, and what it does not erase (2026-09-02, agent, etappe 65)
+
+P2-25: MatrixCtrl could not GDPR-erase an account at all. E28 sends `skip_erase: true`
+on every deactivation — a deliberate choice, because a one-click irreversible erasure is
+the wrong default. But "not the default" and "not available" are different things, and
+for a homeserver in the EU the second is a compliance problem: an operator answering a
+legal request had to leave the panel.
+
+The feature is four lines. The etappe is what the confirmation says, and that came from
+reading Synapse rather than the word "erase".
+
+`deactivate_account.py` with `erase_data` true deletes displayname, avatar and custom
+profile fields — with Synapse's own caveat that they *"may persist as historical state
+events in rooms"* — and marks the user erased. The flag is then consulted in
+`visibility.py`:
+
+```python
+if sender_erased and not membership_result.joined:
+    event = prune_event(event)
+```
+
+**Message content is pruned only for viewers who were not joined at the time.** Everyone
+who was in the room still reads it, permanently. Uploaded media is untouched, and the
+old display name survives inside historical state events.
+
+So a button labelled "Löschen" that stops at the verb would be a false statement made by
+software — the same shape as a 200 that changed nothing (§4.45), a check that checked
+nothing (§4.48), and a sparkline that invented its past (§4.59). The difference here is
+that the false statement would be made to someone answering a legal request, who may
+still need to redact events or delete media and would have been told the job was done.
+
+The confirmation therefore has three paragraphs — removed, remaining, irreversible —
+and the dialog renders `pre-line` so they stay three paragraphs. A wall of text is
+skimmed, which defeats the reason for writing it.
+
+Two further decisions worth keeping: erasure is its own action rather than a checkbox on
+deactivate, because a parameter lets someone perform an irreversible operation while
+reading a label that says "deactivate"; and it is offered whether or not the account is
+already deactivated, since an erasure request usually arrives after the account is gone.
+Bulk erasure is deliberately absent — a loop over a selection is how an irreversible
+action reaches the wrong rows. Affects S13.

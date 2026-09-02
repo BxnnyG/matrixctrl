@@ -43,7 +43,7 @@ const FILTERS: { id: string; label: string }[] = [
   { id: "deactivated", label: "deaktiviert" },
 ];
 
-type ActionId = "lock" | "unlock" | "deactivate" | "reactivate" | "grant-admin" | "revoke-admin" | "set-password";
+type ActionId = "lock" | "unlock" | "deactivate" | "erase" | "reactivate" | "grant-admin" | "revoke-admin" | "set-password";
 
 /**
  * The consequence, not "are you sure?".
@@ -68,6 +68,24 @@ const ACTIONS: Record<ActionId, { label: string; title: string; body: string; da
     label: "Deaktivieren", icon: "power", danger: true,
     title: "Konto deaktivieren?",
     body: "Alle Sitzungen werden beendet und der Benutzer verlässt sämtliche Räume. MatrixCtrl fordert dabei ausdrücklich KEINE Löschung der Daten an (skip_erase), obwohl MAS das von sich aus täte — eine Reaktivierung bleibt so möglich.",
+  },
+  // The only action here that cannot be undone. Its body names what erasure does *not*
+  // reach, because a button called "Löschen" that leaves message content readable by
+  // every witness is a false statement made by software (etappe 65).
+  //
+  // Read from Synapse's source rather than from the word "erase": visibility.py prunes
+  // an erased sender's events only `if sender_erased and not membership_result.joined`.
+  erase: {
+    label: "Endgültig löschen", icon: "trash", danger: true,
+    title: "Konto endgültig löschen?",
+    body:
+      "GELÖSCHT WIRD: Anzeigename, Avatar und Profilfelder; das Konto wird deaktiviert, " +
+      "alle Sitzungen beendet, Kontodaten und Schlüssel-Backups entfernt.\n\n" +
+      "ES BLEIBT: der Inhalt der Nachrichten für alle, die zum Zeitpunkt im Raum waren — " +
+      "Synapse kürzt sie nur für Nicht-Anwesende. Der alte Anzeigename bleibt außerdem in " +
+      "den historischen Raum-Ereignissen stehen, und hochgeladene Dateien bleiben liegen; " +
+      "die müssen getrennt gesperrt oder gelöscht werden.\n\n" +
+      "Das lässt sich NICHT rückgängig machen — auch nicht durch Reaktivieren.",
   },
   reactivate: {
     label: "Reaktivieren", icon: "refresh", danger: false,
@@ -146,6 +164,9 @@ function Users() {
     const out: ActionId[] = [];
     out.push(u.locked_at ? "unlock" : "lock");
     out.push(u.deactivated_at ? "reactivate" : "deactivate");
+    // Available whether or not the account is already deactivated — an erasure request
+    // usually arrives after the account is gone — but always as its own choice.
+    out.push("erase");
     out.push(u.admin ? "revoke-admin" : "grant-admin");
     out.push("set-password");
     return out;
@@ -298,7 +319,10 @@ function Users() {
             <div style={{ marginBottom: 10 }}>
               Konto <code style={{ fontFamily: "var(--mono)", color: "var(--accent)" }}>{pending.user.username}</code>
             </div>
-            <div>{ACTIONS[pending.action].body}</div>
+            {/* pre-line, because the erase text is deliberately three paragraphs —
+                what is removed, what remains, and that it cannot be undone. Rendered
+                as one blob it would be skimmed, which is the opposite of the point. */}
+            <div style={{ whiteSpace: "pre-line" }}>{ACTIONS[pending.action].body}</div>
             {pending.action === "set-password" && (
               <input
                 type="password"

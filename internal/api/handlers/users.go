@@ -121,6 +121,7 @@ func (h *UsersHandler) List(w http.ResponseWriter, r *http.Request) {
 var selfProtected = map[string]string{
 	"lock":         "Du würdest dich selbst sperren und könntest MatrixCtrl nicht mehr benutzen.",
 	"deactivate":   "Du würdest dein eigenes Konto deaktivieren und dich damit aus MatrixCtrl aussperren.",
+	"erase":        "Du würdest dein eigenes Konto löschen — das lässt sich nicht rückgängig machen.",
 	"revoke-admin": "Du würdest dir selbst die Admin-Rechte entziehen — danach lässt MatrixCtrl dich nicht mehr herein.",
 	"set-password": "", // allowed: changing your own password does not lock you out
 }
@@ -169,6 +170,8 @@ func (h *UsersHandler) Act(action string) http.HandlerFunc {
 			err = client.Unlock(ctx, id)
 		case "deactivate":
 			err = client.Deactivate(ctx, id)
+		case "erase":
+			err = client.Erase(ctx, id)
 		case "reactivate":
 			err = client.Reactivate(ctx, id)
 		case "grant-admin":

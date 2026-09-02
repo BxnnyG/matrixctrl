@@ -15,6 +15,28 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.61] — 2026-09-02
+
+### Added
+
+- **GDPR erasure for a single account.** MatrixCtrl previously sent `skip_erase: true`
+  on every deactivation, so it could not erase at all and an operator answering a legal
+  request had to leave the panel. Erasure is now its own action — never a checkbox on
+  deactivate, because a parameter lets someone perform an irreversible operation while
+  reading a label that says something reversible.
+
+### Notes
+
+- **The confirmation says what erasure does not reach**, which is the substance of the
+  change. Read from Synapse's source: message content is pruned only for viewers who
+  were *not* in the room at the time, so everyone who was there still reads it. The old
+  display name survives in historical room events, and uploaded media is untouched and
+  must be quarantined or deleted separately.
+- Offered whether or not the account is already deactivated, since an erasure request
+  usually arrives after the account is gone.
+- No bulk erasure. A loop over a selection is how an irreversible action reaches the
+  wrong rows.
+
 ## [0.1.60] — 2026-09-02
 
 ### Fixed

@@ -588,7 +588,11 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   1:1, which the page had no way to see. A statistics panel built on whatever happens
   to be readable would repeat that.
 
-- **P2-25 · GDPR erasure on deactivation is not offered (S13).** MAS's `deactivate`
+- **P2-25 · GDPR erasure on deactivation is not offered (S13).** ✅ **Done 2026-09-02
+  (E65, [DESIGN.md §4.64](DESIGN.md)).** Its own action, never a flag on deactivate, with
+  a confirmation that names what erasure does *not* reach — message content stays
+  readable for everyone who was in the room, since Synapse prunes only for non-members.
+  *Original entry:* MAS's `deactivate`
   defaults to `skip_erase: false`, i.e. it asks the homeserver to erase the account.
   E28 always sends `skip_erase: true`, so MatrixCtrl currently cannot erase at all.
   *Why it was left out:* a one-click irreversible erasure is the wrong default for a

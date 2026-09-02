@@ -60,6 +60,30 @@ func (c *Client) Deactivate(ctx context.Context, id string) error {
 	return c.post(ctx, id, "deactivate", map[string]any{"skip_erase": true})
 }
 
+// Erase deactivates the account *and* asks the homeserver to GDPR-erase it.
+//
+// Separate from Deactivate rather than a flag on it, because the two differ in exactly
+// one way that matters: this one cannot be undone. A parameter would let a caller
+// perform an irreversible action while reading a line that says "deactivate".
+//
+// What Synapse actually does with `erase_data`, read from its source (etappe 65):
+//
+//   - deletes displayname, avatar URL and custom profile fields — which Synapse itself
+//     notes "may persist as historical state events in rooms"
+//
+//   - marks the user erased, which in visibility.py causes:
+//
+//     if sender_erased and not membership_result.joined:
+//     event = prune_event(event)
+//
+// So their messages are pruned **only for viewers who were not joined at the time**.
+// Everyone who was in the room still sees the full content. The caller is expected to
+// say so; a function named Erase that silently means "partly" is the same defect this
+// project keeps finding elsewhere.
+func (c *Client) Erase(ctx context.Context, id string) error {
+	return c.post(ctx, id, "deactivate", map[string]any{"skip_erase": false})
+}
+
 // Reactivate re-enables a deactivated account. It does **not** unlock a locked one.
 func (c *Client) Reactivate(ctx context.Context, id string) error {
 	return c.post(ctx, id, "reactivate", nil)

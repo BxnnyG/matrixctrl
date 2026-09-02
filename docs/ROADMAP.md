@@ -59,6 +59,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
+| 65 | Löschung — und was sie nicht löscht | 🔄 gebaut 2026-09-02 · `v0.1.61` · [plan](plans/etappe-65-gdpr-erasure.md) |
 | 64 | Blättern über eine Reihenfolge, die es nicht gibt — zwei von drei Hälften behoben, die dritte benannt | ✅ 2026-09-02 · `v0.1.60` · [plan](plans/etappe-64-stable-paging.md) |
 | 63 | Das Schema versprach eine Funktion, die niemand gebaut hat — acht tote Spalten, eine davon wert, gefüllt zu werden | ✅ 2026-09-02 · `v0.1.59` · [plan](plans/etappe-63-schema-promises.md) |
 | 62 | Der dritte Aktionstyp, angeboten und nicht implementiert — und die Suche nach dieser Form | ✅ 2026-08-31 · `v0.1.58` · [plan](plans/etappe-62-http-hook-action.md) |

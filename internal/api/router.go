@@ -149,7 +149,7 @@ func NewRouter(deps Deps) http.Handler {
 		// overnight. POST so it lands in the audit log like every other mutation.
 		// Verb-in-path on purpose: the audit middleware records no request body, so
 		// the path is the only place the meaning of the change can live.
-		for _, action := range []string{"lock", "unlock", "deactivate", "reactivate", "grant-admin", "revoke-admin", "set-password"} {
+		for _, action := range []string{"lock", "unlock", "deactivate", "erase", "reactivate", "grant-admin", "revoke-admin", "set-password"} {
 			r.Post("/api/v1/users/{id}/"+action, deps.Users.Act(action))
 		}
 
