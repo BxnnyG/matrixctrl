@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -234,7 +235,7 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		// is the last moment they can be measured against the cluster they are about
 		// to reach. It renders the chart rather than reading the values, because the
 		// multipliers that matter live in the chart (§4.53).
-		h.emitCapacityPreflight(ctx, stream, name, currentVersion, values)
+		h.emitCapacityPreflight(ctx, stream, name, currentVersion, values, upgradeUUID)
 
 		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
 		stream.setPhase(rollout.PhaseApply)
@@ -312,7 +313,7 @@ func (h *HelmHandler) GetUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 // says otherwise — but a false positive here would block every deployment, and this
 // check has never run in anger. Warn first, watch it be right, then decide (P1-16c).
 func (h *HelmHandler) emitCapacityPreflight(ctx context.Context, stream *upgradeStream,
-	releaseName, version string, values map[string]interface{}) {
+	releaseName, version string, values map[string]interface{}, upgradeID uuid.UUID) {
 
 	if h.helm == nil || h.k8s == nil {
 		return
@@ -345,5 +346,22 @@ func (h *HelmHandler) emitCapacityPreflight(ctx context.Context, stream *upgrade
 			"kann danach auf keinem Node laufen. Genau so entstand der Ausfall vom 16.–18.08.")
 	} else if len(findings) == 0 {
 		stream.emit("Capacity preflight: every workload fits the cluster.")
+	}
+
+	// Recorded, not only streamed (etappe 63). Until now the preflight's verdict existed
+	// solely in a WebSocket, so once the tab closed "were we warned before applying
+	// that?" had no answer — and that is precisely when the question gets asked.
+	//
+	// An empty findings list is stored as an empty array rather than left NULL: "checked
+	// and nothing was wrong" and "never checked" are different answers, and NULL is
+	// reserved for the second (§4.59's rule against inventing a past).
+	if findings == nil {
+		findings = []capacity.Finding{}
+	}
+	if blob, err := json.Marshal(findings); err == nil {
+		if _, err := h.db.Exec(ctx,
+			"UPDATE upgrade_history SET pre_flight=$1 WHERE id=$2", blob, upgradeID); err != nil {
+			log.Printf("preflight: could not record findings: %v", err)
+		}
 	}
 }

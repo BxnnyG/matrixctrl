@@ -975,9 +975,11 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   fetched from the published releases (`internal/helm/releasenotes.go`,
   `GET /api/v1/helm/versions/{version}/notes`, `NotesPanel` in upgrade.tsx). Nobody is
   asked to jump versions blind any more.
-  *What is still true, and is now a tidiness item rather than a feature gap:*
-  `ess_versions.changelog` and `breaking_changes` from migration 003 are dead columns —
-  never read, never written. Either drop them or stop carrying them in the schema.
+  *The dead columns are gone as of 2026-09-02 (E63, [DESIGN.md §4.62](DESIGN.md)).* A
+  sweep for columns with no readers found eight of them plus an entirely unused
+  `config_snapshots` table, all verified empty on the live database before being
+  dropped. One was kept and filled instead: `upgrade_history.pre_flight`, which now
+  records the capacity check's verdict.
   *Caught because it was nearly built again* — the entry read as an open feature and
   the feature exists. Same failure as the eight entries E38 found; the defence is the
   same, which is to verify an entry against the code before acting on it.

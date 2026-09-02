@@ -2268,3 +2268,43 @@ fails, a bounded timeout because hooks run inside an upgrade phase an operator i
 watching, no retries because a silent retry hides a broken endpoint, and **no header
 field** — which is the interesting omission, since a header field is where a secret
 would end up stored in plain text in the hooks table. Affects S3.
+
+### §4.62 — The schema promised a feature nobody built (2026-09-02, agent, etappe 63)
+
+Third pass of the sweep behind E61 and E62. Those counted consumers of declared
+*constants*; this one counted consumers of **columns**. Eight columns and a whole table
+with no Go code reading or writing them.
+
+Checked on the running database before touching anything, because "nothing in the
+repository writes it" and "it is empty" are different claims and only the second one
+licenses a `DROP`: `config_snapshots` held 0 rows, and every column removed was NULL in
+every row of its table — 7 upgrades, 175 versions.
+
+They were not all the same thing, and sorting them was the work:
+
+**Superseded.** `config_snapshots` and the `values_snapshot` key into it were a second
+home for config history; the real one is the git repository on the config volume, which
+gives diffs and rollback for free. An unused snapshot table sitting beside it is exactly
+the second source of truth §4.49 warns about, waiting for somebody to wire it up and
+disagree with git. Likewise `ess_versions.changelog`, `breaking_changes`, `chart_digest`
+and `published_at`: release notes come from the published releases (E32) and dates from
+the release index (E43).
+
+**Never built, and one had become worth building.** `upgrade_history.pre_flight` has
+existed since migration 003 and never held a row. E55 then added a capacity preflight
+whose findings went to the **live log stream and nowhere else** — a WebSocket, gone when
+the tab closes. So after this month's outage, "did the panel warn us before we applied
+that?" had no answer, while the column designed to hold exactly that answer sat empty
+two migrations away.
+
+The distinction that makes it useful is between *absent* and *empty*. A NULL means the
+upgrade ran before the check existed, or the check could not run. An empty array means
+checked and clean. Collapsing them would let an old upgrade look as though it had
+passed a check that did not exist — §4.59's fabricated sparkline, in a different table.
+The seven historical rows are deliberately not backfilled for the same reason.
+
+The broader point, after three passes: **a schema is a design document that keeps
+running.** Columns outlive the intention that created them, and unlike a stale comment
+they look like capability — someone reading `upgrade_history` sees a system that records
+its Helm output and its preflight, and neither was true. The fix is the same as for the
+constants: count who reads it, not who declared it.

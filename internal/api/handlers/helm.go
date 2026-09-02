@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/capacity"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
@@ -188,7 +190,7 @@ func (h *HelmHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	// MatrixCtrl upgrade history
 	rows, err := h.db.Query(r.Context(), `
-		SELECT id, from_version, to_version, status, ts_initiated, helm_revision
+		SELECT id, from_version, to_version, status, ts_initiated, helm_revision, pre_flight
 		FROM upgrade_history WHERE true ORDER BY ts_initiated DESC LIMIT 20`)
 	if err != nil {
 		JSON(w, http.StatusOK, helmHistory)
@@ -203,13 +205,24 @@ func (h *HelmHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		Status       string    `json:"status"`
 		TsInitiated  time.Time `json:"ts_initiated"`
 		HelmRevision *int      `json:"helm_revision,omitempty"`
+		// PreFlight is the capacity check's verdict, recorded at the time (etappe 63).
+		// Absent means the upgrade ran before the check existed or it could not run —
+		// deliberately different from an empty list, which means checked and clean.
+		PreFlight []capacity.Finding `json:"pre_flight,omitempty"`
+		Checked   bool               `json:"preflight_checked"`
 	}
 
 	var result []entry
 	for rows.Next() {
 		var e entry
-		if err := rows.Scan(&e.ID, &e.FromVersion, &e.ToVersion, &e.Status, &e.TsInitiated, &e.HelmRevision); err != nil {
+		var pf []byte
+		if err := rows.Scan(&e.ID, &e.FromVersion, &e.ToVersion, &e.Status, &e.TsInitiated, &e.HelmRevision, &pf); err != nil {
 			continue
+		}
+		if len(pf) > 0 {
+			if json.Unmarshal(pf, &e.PreFlight) == nil {
+				e.Checked = true
+			}
 		}
 		result = append(result, e)
 	}

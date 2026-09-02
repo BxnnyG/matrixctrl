@@ -15,6 +15,34 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.59] — 2026-09-02
+
+### Added
+
+- **The capacity preflight's verdict is recorded on the upgrade.** It previously went
+  only to the live log stream — a WebSocket, gone once the tab closed — so "did the
+  panel warn us before we applied that?" had no answer afterwards, which is exactly when
+  the question gets asked. The upgrade history now carries it.
+- An upgrade that was never checked is distinguishable from one that was checked and
+  found nothing. Absent and empty are different answers; old upgrades are not backfilled
+  with a verdict they never received.
+
+### Removed
+
+- `config_snapshots` (whole table, 0 rows) and `upgrade_history.values_snapshot`.
+  Config history is git-backed, and a second unused snapshot table beside it is a second
+  source of truth waiting to disagree with the first.
+- `upgrade_history.helm_output` — `error_message` already carries what a failed upgrade
+  said; the rest was a blob nobody would query.
+- `ess_versions.changelog`, `breaking_changes`, `chart_digest`, `published_at` —
+  superseded by release notes fetched from the published releases and dates from the
+  release index.
+
+### Notes
+
+- Every column removed was verified NULL in every row on the live database first, and
+  the table verified empty. "Nothing writes it" and "it is empty" are different claims.
+
 ## [0.1.58] — 2026-08-31
 
 ### Added
