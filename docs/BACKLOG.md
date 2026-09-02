@@ -486,7 +486,12 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
   README does not currently say the image is amd64-only.
 
-- **P2-33 · Both report queues page on an unstable sort (S13).** Found 2026-08-17
+- **P2-33 · Both report queues page on an unstable sort (S13).** ✅ **Two of three halves
+  done 2026-09-02 (E64, [DESIGN.md §4.63](DESIGN.md)).** Ordering is now deterministic
+  and duplicates are gone. *Still open, and unfixable from this side:* a row the server
+  never returns cannot be recovered without walking the whole queue. At `limit=50` a
+  typical queue has no page boundary, so it does not bite here.
+  *Original entry:* Found 2026-08-17
   reading `get_user_reports_paginate`: Synapse orders both queues by `received_ts`
   alone, never by id. Reports sharing a timestamp therefore have no defined order
   between two queries, so paging can show one twice and skip another — most likely
@@ -906,7 +911,18 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Found 2026-08-01 while answering "why is calling broken" — the answer was not
   visible anywhere in the product.*
 
-- **P2-19 · The audit log grows without bound (S10).** E17 added the writes; nothing
+- **P2-19 · The audit log grows without bound (S10).** ⚠️ **Measured 2026-09-02 and the
+  premise does not hold at this scale.** The table is **22 rows / 64 kB**, spanning a
+  month, growing by 1–8 rows on days anything happens. The whole database is 13 MB.
+  For comparison, `node_samples` (E59) writes **1440 rows a day** and `rtc_samples` the
+  same — both already bounded. The table flagged as the operational trap is the
+  slowest-growing one in the database by two orders of magnitude.
+  *So this is not built, deliberately.* Retention machinery plus a compliance decision
+  the operator must make is real effort, and at 8 rows a day it buys nothing for years.
+  The entry stays open because the *reasoning* is still right for a busy multi-operator
+  install — it is the urgency that was wrong, and it should be re-measured before anyone
+  acts on it rather than taken on faith.
+  *Original entry:* E17 added the writes; nothing
   ever removes them. On a 32 GB single-node cluster sharing its disk with Synapse's
   database and media, an unbounded append-only table is a real operational trap.
   *Deliberately not guessed at while building the writer:* the right retention for

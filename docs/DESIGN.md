@@ -2308,3 +2308,39 @@ running.** Columns outlive the intention that created them, and unlike a stale c
 they look like capability — someone reading `upgrade_history` sees a system that records
 its Helm output and its preflight, and neither was true. The fix is the same as for the
 constants: count who reads it, not who declared it.
+
+### §4.63 — Paging over an order that does not exist (2026-09-02, agent, etappe 64)
+
+Synapse orders both report queues by `received_ts` alone. Rows sharing a timestamp
+therefore have no defined order between two queries, and with offset paging that means a
+row can appear on two consecutive pages while another is never returned. The case that
+produces equal timestamps is a burst of reports about one incident — the case in which
+somebody is paging through the queue looking for something.
+
+Three things could be done and they are not equally honest, which is the substance of
+this entry:
+
+1. Sorting each page by `(received_ts, id)` makes what is displayed deterministic.
+2. Remembering which page an id was *first* seen on removes duplicates entirely.
+3. A row the server never returned cannot be recovered without walking the whole queue,
+   which is what `limit` exists to avoid.
+
+Two are fixed and the third is stated, rather than calling the result "paging fixed". A
+duplicate is visible and confusing; a skip is invisible and worse, and it is the one
+that cannot be closed from this side.
+
+The keying is the part worth remembering. The obvious implementation is a set of ids
+already seen, and it is wrong: paging *back* to an earlier page would then blank it,
+because every row on it has been seen. Keyed on which page first claimed an id, going
+back works and duplicates still vanish.
+
+**And the typecheck was no help at all.** The first version put the hook call after
+`if (!connected) return`, which is a conditional hook — React counts hooks per render,
+so the count would have changed the moment the connection came up and thrown "Rendered
+more hooks than during the previous render". `tsc` was perfectly happy. The rule that
+caught it is the same one this file keeps arriving at from different directions: a green
+check answers its own question, never the one being asked (§4.40, §4.48, §4.52).
+
+The pure part — the ordering and the first-seen decision — was then moved to `lib/`, so
+it is testable without rendering a component. Seven tests, including the one that would
+have caught the naive seen-set: going back to page 0 must still show page 0.

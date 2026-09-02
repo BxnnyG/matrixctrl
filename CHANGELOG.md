@@ -15,6 +15,25 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.60] — 2026-09-02
+
+### Fixed
+
+- **Paging a report queue could show the same report twice.** Synapse orders both queues
+  by timestamp alone, so reports filed in the same second have no defined order between
+  two queries — and a burst of reports about one incident is exactly what produces them.
+  Each page is now ordered by `(timestamp, id)`, which is stable across reloads, and a
+  report is shown on the page it first appeared on, which removes duplicates.
+
+### Notes
+
+- A row the server never returned still cannot be recovered from this side without
+  walking the whole queue, which is what a page limit exists to avoid. Two of the three
+  halves are fixed; the third is documented rather than papered over. At the default
+  page size of 50 a typical queue has no page boundary at all.
+- The ordering and the first-seen rule live in `lib/paging.ts` with tests, rather than
+  inside the component.
+
 ## [0.1.59] — 2026-09-02
 
 ### Added

@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner, Tabs } from "@/components/mc";
 import { MatrixConnect, clearConnectAttempt } from "@/components/MatrixConnect";
+import { orderReports, claimForPage } from "@/lib/paging";
 
 export const Route = createFileRoute("/reports")({
   component: Reports,
@@ -151,6 +152,15 @@ function MediaItem({ m, onDone }: { m: MediaRow; onDone: () => void }) {
 interface MatrixState { connected: boolean; reason?: string }
 
 const PAGE = 50;
+
+/** The component-side wrapper around lib/paging: one map per queue, kept across
+ *  renders. The ordering and the first-seen rule live in lib so they can be tested
+ *  without rendering a component (etappe 64). */
+function useStablePage<T extends { id: number; received_ts: number }>(rows: T[], page: number): T[] {
+  const firstSeen = useRef<Map<number, number>>(new Map());
+  return claimForPage(orderReports(rows), page, firstSeen.current);
+}
+
 
 const STATE_LABEL: Record<State, string> = {
   open: "offen",
@@ -424,6 +434,16 @@ function Reports() {
     placeholderData: keepPreviousData,
   });
 
+  // Above the early returns, because these call useRef: React counts hooks per render,
+  // and a call placed after `if (!connected) return` would change that count the moment
+  // the connection came up — "Rendered more hooks than during the previous render".
+  // The typecheck does not see this; the rule is the reason the calls sit here.
+  //
+  // Each queue gets its own map: Synapse numbers them from independent sequences, so an
+  // id from one says nothing about the other (E48's collision, one layer up).
+  const stableEvents = useStablePage(list.data?.reports ?? [], from / PAGE);
+  const stableUsers = useStablePage(userList.data?.reports ?? [], userFrom / PAGE);
+
   // See rooms.tsx: a successful load is the only proof the token works.
   useEffect(() => {
     if (list.isSuccess) clearConnectAttempt();
@@ -450,8 +470,8 @@ function Reports() {
   const notAdmin = err?.status === 403;
   const needsConnect = err?.status === 409;
 
-  const all = list.data?.reports ?? [];
-  const userAll = userList.data?.reports ?? [];
+  const all = stableEvents;
+  const userAll = stableUsers;
   const total = list.data?.total ?? 0;
   const userTotal = userList.data?.total ?? 0;
 
