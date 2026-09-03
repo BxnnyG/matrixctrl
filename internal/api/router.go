@@ -121,6 +121,9 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/sysinfo", deps.Status.SysInfo)
 			// Recorded node usage and capacity (etappe 59).
 			r.Get("/nodes/history", deps.Status.NodeHistory)
+			// The config repository and MatrixCtrl's own database (etappe 68). Not the
+			// homeserver's data — the archive's manifest says so itself.
+			r.Get("/backup", deps.Status.Backup)
 			r.Get("/events", deps.Status.Events)
 			r.Get("/components/{name}/pods", deps.Status.ComponentDetail)
 			r.Get("/pods/{deployment}", deps.Status.DeploymentPods)

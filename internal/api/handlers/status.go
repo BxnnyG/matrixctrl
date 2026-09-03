@@ -2,15 +2,18 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/bxnnyg/matrixctrl/internal/backup"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
 	"github.com/bxnnyg/matrixctrl/internal/nodehist"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type StatusHandler struct {
@@ -26,6 +29,39 @@ type StatusHandler struct {
 	// nodes serves the recorded node history. Nil disables the endpoint rather than
 	// making it answer with an empty series, which would read as "nothing happened".
 	nodes *nodehist.Store
+	// backupDB and backupRepo are what an archive is made of (etappe 68).
+	backupDB   *pgxpool.Pool
+	backupRepo string
+	appVersion string
+}
+
+// SetBackup wires what a backup needs: the database and the config repository path
+// (etappe 68). Nil disables the endpoint rather than producing an empty archive, which
+// would be a backup that looks taken and holds nothing.
+func (h *StatusHandler) SetBackup(db *pgxpool.Pool, configRepo, appVersion string) {
+	h.backupDB, h.backupRepo, h.appVersion = db, configRepo, appVersion
+}
+
+// GET /api/v1/backup — the config repository and MatrixCtrl's own database.
+//
+// Streamed straight to the response: the archive is small today, but buffering it is a
+// decision that only turns wrong on a larger install, and then it is a crash rather
+// than a slow download.
+func (h *StatusHandler) Backup(w http.ResponseWriter, r *http.Request) {
+	if h.backupDB == nil {
+		Error(w, http.StatusServiceUnavailable, "Für diese Installation ist kein Backup verfügbar.")
+		return
+	}
+	name := "matrixctrl-backup-" + time.Now().UTC().Format("2006-01-02-1504") + ".tar.gz"
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+
+	if err := backup.Create(r.Context(), h.backupDB, h.backupRepo, h.appVersion, w); err != nil {
+		// The status line is already sent, so this cannot become a clean 500. Logged
+		// so a truncated archive has an explanation somewhere, rather than being a
+		// file that unpacks halfway and is discovered during a restore.
+		log.Printf("backup: failed partway through: %v", err)
+	}
 }
 
 // SetNodeHistory wires the recorded node samples (etappe 59).

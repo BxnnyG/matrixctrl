@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { Card, Icon, Badge, SectionTitle, Meter, EmptyState } from "@/components/mc";
+import { Card, Icon, Badge, SectionTitle, Meter, EmptyState, Button } from "@/components/mc";
 
 export const Route = createFileRoute("/system")({
   component: SystemPage,
@@ -139,6 +139,40 @@ function SystemPage() {
 
   const changes = history?.capacity_changes ?? [];
 
+  // fetch + blob rather than a plain link. A navigation cannot carry an Authorization
+  // header, and the alternatives were both worse: putting the session token in the URL
+  // is exactly the leak E35 removed, and widening the single-use WebSocket ticket to
+  // cover ordinary downloads would loosen a mechanism built narrow on purpose.
+  //
+  // The cost is that the browser holds the archive in memory. That is a property of
+  // authenticated downloads, not a design choice — the server still streams it.
+  const [downloading, setDownloading] = useState(false);
+  const [downloadErr, setDownloadErr] = useState<string | null>(null);
+  const download = async () => {
+    setDownloading(true);
+    setDownloadErr(null);
+    try {
+      const res = await fetch("/api/v1/status/backup", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1])
+        ?? "matrixctrl-backup.tar.gz";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // A backup that failed must say so. A button that flickers and produces no file
+      // is indistinguishable from one that worked, which is the worst outcome here.
+      setDownloadErr(e instanceof Error ? e.message : "unbekannter Fehler");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 920 }}>
       {/* The reason the capacity columns are recorded at all. On 2026-08-16 this node
@@ -162,6 +196,36 @@ function SystemPage() {
           </div>
         </Card>
       ))}
+
+      {/* Backup. The card states what the archive does NOT hold, because an operator
+          who believes they have a backup of their homeserver and discovers otherwise
+          during a restore is the failure this whole feature exists to avoid. */}
+      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name="download" size={17} />
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Backup</h2>
+          </div>
+          <Button variant="primary" icon="download" onClick={() => void download()} disabled={downloading}>
+            {downloading ? "Wird erstellt…" : "Herunterladen"}
+          </Button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
+          <strong style={{ color: "var(--text)" }}>Enthalten:</strong> das Konfigurations-Repository
+          mit vollständiger Git-Historie — also jeder ESS-Wert samt Änderungsverlauf — und die
+          Datenbank von MatrixCtrl: Hooks, Upgrade-Verlauf, Melde-Entscheidungen, Node-Verlauf.
+        </div>
+        {downloadErr && (
+          <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>
+            Das Backup konnte nicht erstellt werden: {downloadErr}
+          </div>
+        )}
+        <div style={{ fontSize: 12.5, color: "var(--status-warn)", lineHeight: 1.65 }}>
+          <strong>Nicht enthalten: der Homeserver selbst.</strong> Weder Synapses Datenbank
+          (Konten, Räume, Nachrichten) noch die hochgeladenen Dateien. Beide liegen auf Volumes,
+          die dieser Pod nicht einbindet. Dieses Archiv ersetzt kein Backup von Synapse.
+        </div>
+      </Card>
 
       {sysinfo?.node_metrics?.map((node) => {
         const h = seriesFor(node.name);

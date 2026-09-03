@@ -15,6 +15,30 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.64] — 2026-09-03
+
+### Added
+
+- **Backup.** The System page can produce an archive containing the config repository
+  *with its full git history* — every ESS value and every change ever made to it — and
+  MatrixCtrl's own database: hooks, upgrade history, report dispositions, recorded node
+  capacity. "Backup/restore" had been listed as project scope since the beginning with
+  nothing behind it.
+
+### Notes
+
+- **The archive does not contain the homeserver.** Synapse's database and its uploaded
+  media live on volumes this pod does not mount. That sentence is in the archive's own
+  manifest and on the card that offers it, not only in documentation — an operator who
+  believes they hold a backup of their Matrix server and finds out during a restore is
+  the failure this feature exists to avoid.
+- No schema is carried: a restore rebuilds it from the migrations, so an archive comes
+  back onto the *current* schema rather than the one it was taken on.
+- Telemetry tables are included but marked `regenerable` in the manifest — they are
+  31 000 of the 31 100 rows, and losing them costs history rather than function.
+- Restore is deliberately a separate change. Taking a backup is harmless; writing one
+  back destroys what is there.
+
 ## [0.1.62] — 2026-09-03
 
 ### Changed

@@ -190,6 +190,9 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(bootstrapAuth, oidcSvc, pool, bootstrapAuth.JWTKey())
 	statusHandler := handlers.NewStatusHandler(k8sClient, helmClient, essNS, essRelease, frontendFS)
+	// Backup needs no cluster access: it captures the config repository and this
+	// process's own database, both of which are local (etappe 68).
+	statusHandler.SetBackup(pool, configRepoPath, version.Version)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	driftHandler := handlers.NewDriftHandler(pool, k8sClient, essNS)
 	usersHandler := handlers.NewUsersHandler(authHandler.MAS)

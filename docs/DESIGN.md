@@ -2442,3 +2442,49 @@ the zone database, and the deployed pod completed OIDC discovery over HTTPS, whi
 TLS handshake against MAS using exactly those copied certificates. Whether arm64
 publishes is the next tagged release's answer, and the README says so instead of
 claiming support that has not been demonstrated.
+
+### §4.66 — A backup that says what it is not (2026-09-03, agent, etappe 68)
+
+S14 has listed "backup/restore" as project scope since the beginning. E67 checked and
+found **nothing behind the word** — the only matches in the code were a one-off
+config-migration directory and a comment. For a tool whose job is running a homeserver,
+that was the one remaining gap where a failure costs data rather than time.
+
+What MatrixCtrl can capture correctly, measured rather than assumed: its own database
+(14 MB) and the config repository (968 KB, 71 files, **with git history** — every ESS
+value and every change ever made to it). What it cannot: Synapse's database and media,
+which live on volumes this pod does not mount. Reaching those needs a Job with the
+volumes attached, which is a different mechanism rather than a bigger loop.
+
+**So the archive's own manifest names what it does not contain**, and so does the card
+that offers it. An operator who believes they hold a backup of their Matrix server and
+learns otherwise during a restore is precisely the failure this project keeps writing
+up — something that looks complete and is not (§4.45). Putting that sentence only in
+documentation would be the §4.60 mistake: prose that stops being read long before it
+stops being true.
+
+**No schema in the archive.** It carries data per table; a restore rebuilds the schema by
+running the migrations, which already *are* the schema's definition and were tested from
+zero as recently as E67. A copy inside every archive would be a second source of truth
+that ages differently from the first (§4.49) — and it would restore onto the schema the
+backup was taken on rather than the current one, which is the opposite of what anyone
+wants.
+
+Two implementation notes worth keeping, both about not weakening something else to make
+this convenient:
+
+**The download is `fetch` + blob, not a link.** A navigation cannot carry an
+Authorization header, and the two obvious workarounds were both worse: putting the
+session token in the URL is exactly the leak E35 removed, and widening the single-use
+WebSocket ticket to cover ordinary downloads would loosen a mechanism deliberately built
+narrow. The browser buffers the archive, which is a property of authenticated downloads
+rather than a design decision — the server still streams.
+
+**Telemetry is labelled, not omitted.** `rtc_samples` and `node_samples` are 31 000 of
+the 31 100 rows, and losing them costs history rather than function. They are included
+anyway — a backup that quietly drops things is the defect, not the feature — but marked
+`regenerable` in the manifest so a restore can make an informed choice.
+
+Restore is deliberately a separate etappe. Taking a backup is harmless; writing one back
+destroys what is there, and shipping both together would mean the dangerous half arrives
+less carefully tested than the safe one.
