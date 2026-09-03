@@ -75,15 +75,15 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21) |
 | S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
-| S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS) |
+| S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
-| S9 Verification & CI | ✅ (E13, E14, E18, E20) | CI on push/PR, 26 frontend tests, 13 backend tests (E14), headless-browser route check, gofmt gate (E18); the route check also produces the README screenshots (§4.18) |
+| S9 Verification & CI | ✅ (E13, E14, E18, E20, E49, E53) | CI on push/PR; **33 frontend tests, 350 Go test functions across 20 packages** (counted 2026-09-03, the previous "26 and 13" was long stale); headless-browser route check that now *fails* on a skipped route rather than passing (E49); gofmt gate in `make check` as well as CI (E53) |
 | S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
-| S13 User & room management | ⏳ not started | Phase 2 — parked behind S6 ([VISION.md](VISION.md)) |
-| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ⅓ (E19) | RTC: the ports to forward read live from the Services, and inbound reachability stated as **unknown** rather than omitted (P2-9). TLS/DNS and backup not started |
+| S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
+| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ½ (E19, E44, E45, E51) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **TLS is only an editable config slice**, and **backup/restore does not exist at all** — checked 2026-09-03, the only matches were a one-off config-migration backup directory |
 | S15 Federation & bridges | ⏳ not started | Phase 4 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
@@ -210,9 +210,23 @@ Confirmed 2026-07-31 (§4.12). These are checked before every ship, forever:
 Every change asks: does more than one place need this? If yes it goes into a
 shared package. Re-decided per change, never "done".
 
-### S13–S17 · Not started ⏳
-Phase 2–6 scope. One line each so the IDs are reserved and citable:
-**S13** users/rooms/moderation · **S14** RTC + TLS/DNS + backup/restore ·
+### S13 · User, room and moderation management ✅
+**Purpose:** do the day-to-day admin work without `kubectl` and without Element Admin.
+**Today:** users (lock/unlock, deactivate/reactivate, admin rights, password, GDPR
+erasure), rooms (list, detail, members, block), both of Synapse's report queues with
+dispositions kept in MatrixCtrl, and media quarantine with read-back.
+**Deliberately absent:** deleting rooms and media, bulk actions, and protect/unprotect —
+every one of them either has no inverse or belongs with a permissions model that does
+not exist yet. See §4.39.
+
+*This section read "not started" until 2026-09-03, roughly four months after the first
+half of it shipped.* It is the same failure the backlog keeps producing (§4.38, P2-4,
+P2-19): a document describing a state the code left behind. It matters more here than
+elsewhere, because CLAUDE.md rule 2 sends every new reader to this table first.
+
+### S14–S17 · Partly or not started ⏳
+**S14** Day-2 ops — RTC substantially built (E19, E44, E45, E51); TLS/DNS is an editable
+config slice and nothing more; backup/restore does not exist ·
 **S15** federation + bridges · **S16** cross-component audit + worker insights ·
 **S17** multi-instance + i18n (English UI). Detail in [ROADMAP.md](ROADMAP.md).
 
