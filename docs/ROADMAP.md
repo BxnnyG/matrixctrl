@@ -59,7 +59,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 19 | Calling — the ports that must be forwarded, and an explicit "this half is not checkable from here" | ✅ 2026-08-01 · `v0.1.19` · [plan](plans/etappe-19-calling-reachability.md) |
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
-| 68 | Ein Backup, das sagt, was es nicht ist — Config-Repo samt Historie und eigene Datenbank, ausdrücklich ohne Homeserver | 🔄 gebaut 2026-09-03 · `v0.1.64` · [plan](plans/etappe-68-backup.md) |
+| 68 | Ein Backup, das sagt, was es nicht ist — Config-Repo samt Historie und eigene Datenbank, ausdrücklich ohne Homeserver | ✅ 2026-09-03 · `v0.1.64` · [plan](plans/etappe-68-backup.md) |
 | 67 | Die Tabelle, auf die jeder zuerst verwiesen wird — S13 stand vier Monate auf „not started" | ✅ 2026-09-03 · kein Artefakt · [plan](plans/etappe-67-inventory-reconciliation.md) |
 | 66 | Den Emulator überflüssig machen statt ihn zum Laufen bringen — arm64 scheiterte an einem einzigen `apk add` | ✅ 2026-09-03 · `v0.1.62` · [plan](plans/etappe-66-arch-independent-runtime.md) |
 | 65 | Löschung — und was sie nicht löscht | ✅ 2026-09-02 · `v0.1.61` · [plan](plans/etappe-65-gdpr-erasure.md) |
