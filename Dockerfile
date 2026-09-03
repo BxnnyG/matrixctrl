@@ -37,8 +37,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /matrixctrl ./cmd/matrixctrl
 
 # Stage 3: Minimal runtime
+#
+# Runs no command, deliberately (etappe 66). Every other stage here is native and Go
+# cross-compiles, so `apk add` was the single instruction in the whole build that needed
+# the *target* architecture to execute — and it is why two attempts at an arm64 image
+# died under QEMU (P2-7). It fetched exactly two things, and neither has to be installed:
+#
+#   tzdata           → the Go binary embeds it (see cmd/matrixctrl/tzdata.go)
+#   ca-certificates  → a PEM text bundle, architecture-independent by nature, so it is
+#                      copied out of the builder stage that already has one
+#
+# The runtime stage now only copies files, which no emulator is needed for.
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata
+COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=backend /matrixctrl /usr/local/bin/matrixctrl
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/matrixctrl"]

@@ -15,6 +15,32 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.62] — 2026-09-03
+
+### Changed
+
+- **The runtime image runs no command.** `apk add ca-certificates tzdata` was the single
+  instruction in the whole build that needed the *target* architecture to execute — every
+  other stage is native and Go cross-compiles — and it is why two attempts at an arm64
+  image failed under emulation. The timezone database is now embedded in the binary
+  (`import _ "time/tzdata"`, ~450 KB) and the CA bundle is copied out of the builder
+  stage, since it is architecture-independent text.
+- **The release builds `linux/amd64` and `linux/arm64`** in one manifest. No QEMU is set
+  up, deliberately: assembling the arm64 image is now copying files, and leaving the
+  emulator out means a future `RUN` in the runtime stage fails loudly instead of quietly
+  becoming a slow emulated build.
+- The README states which architectures a release actually carries. It previously said
+  nothing, so an ARM user found out when the pull failed.
+
+### Notes
+
+- This build host offers `linux/amd64` only and has no QEMU, so **the arm64 image could
+  not be built or tested here**. What was verified is that removing the packages broke
+  neither of the things they provided: the image carries the CA bundle, the binary
+  contains the zone database, and the deployed pod completed OIDC discovery over HTTPS —
+  a TLS handshake using exactly those copied certificates. Whether arm64 publishes is
+  the next tagged release's answer.
+
 ## [0.1.61] — 2026-09-02
 
 ### Added

@@ -2386,3 +2386,45 @@ reading a label that says "deactivate"; and it is offered whether or not the acc
 already deactivated, since an erasure request usually arrives after the account is gone.
 Bulk erasure is deliberately absent — a loop over a selection is how an irreversible
 action reaches the wrong rows. Affects S13.
+
+### §4.65 — Stop needing the emulator (2026-09-03, agent, etappe 66)
+
+P2-7 has said "releases are amd64 only" since August, with two failed multi-arch
+attempts behind it and a suspicion recorded: the runtime stage's `apk add` running under
+QEMU. The suspicion was right, and reading the Dockerfile showed how narrow the problem
+actually was.
+
+Every stage that does work is already native — the frontend and backend stages are
+pinned to `$BUILDPLATFORM`, and Go cross-compiles with `GOARCH=${TARGETARCH}`. Exactly
+**one instruction in the whole build** needed the target architecture to execute:
+
+```dockerfile
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
+```
+
+A package install fetching two files. So the fix was not to make emulation work — the
+thing two previous attempts tried — but to stop needing it:
+
+- `tzdata` → `import _ "time/tzdata"`, one line, about 450 KB of binary
+- `ca-certificates` → a PEM text bundle, architecture-independent by nature, copied out
+  of the builder stage that already has one and already runs natively
+
+The runtime stage now runs no command at all. Assembling an arm64 image is copying
+files, which needs no emulator, so the workflow asks for both platforms in one manifest
+rather than the per-architecture runners and manifest merge the backlog had planned.
+
+**QEMU is deliberately not set up in that job.** Adding it would work and would also
+hide the property this etappe created: if someone later adds a `RUN` to the runtime
+stage, the arm64 build should fail loudly rather than quietly become a slow emulated
+build that works until it does not.
+
+What is verified and what is not, stated rather than blurred: this host offers
+`linux/amd64` only — `docker buildx inspect` lists no other platform, there is no QEMU —
+so **the arm64 image could not be built or tested here at all**. What was checked is
+that removing the packages did not break the things they provided: the built image
+carries the CA bundle (179 359 bytes, identical to the builder's), the binary contains
+the zone database, and the deployed pod completed OIDC discovery over HTTPS, which is a
+TLS handshake against MAS using exactly those copied certificates. Whether arm64
+publishes is the next tagged release's answer, and the README says so instead of
+claiming support that has not been demonstrated.

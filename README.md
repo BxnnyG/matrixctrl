@@ -108,6 +108,10 @@ grows into full admin parity.
 ### Prerequisites
 - A Kubernetes cluster (k3s works great) with an ingress controller (Traefik).
 - An existing ESS (`matrix-stack`) release, *or* let MatrixCtrl deploy one.
+- **Architecture:** every release up to and including `0.1.61` publishes `linux/amd64`
+  only — on an ARM board the image will not pull, which the README did not previously
+  say. From `0.1.62` the release also builds `linux/arm64`; until a tagged release has
+  actually produced one, treat arm64 as untested rather than supported.
 
 <details>
 <summary><b>Starting from a bare Debian/Ubuntu server?</b> — k3s + Helm in three commands</summary>

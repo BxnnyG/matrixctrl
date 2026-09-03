@@ -473,7 +473,15 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   correct and nothing looked wrong; only a plain `go build ./cmd/matrixctrl` would
   have embedded the old UI. A tracked artefact that can silently disagree with its
   source is worse than the noisy diffs this entry was originally about.
-- **P2-7 · Publish an arm64 image again (S8).** Releases are `linux/amd64` only.
+- **P2-7 · Publish an arm64 image again (S8).** ⏳ **Cause removed 2026-09-03 (E66,
+  [DESIGN.md §4.65](DESIGN.md)); the cure is unproven.** The suspicion in this entry was
+  right and narrower than it looked: exactly one instruction in the build needed the
+  target architecture, `apk add` in the runtime stage. tzdata is now embedded in the
+  binary and the CA bundle copied from the builder, so that stage runs no command and
+  needs no emulator — which also made the per-architecture runners and manifest merge
+  planned below unnecessary. **Stays open until a tagged release actually publishes an
+  arm64 image**, because this build host has no QEMU and could not test one.
+  *Original entry:* Releases are `linux/amd64` only.
   Two attempts at multi-arch failed in the image step: the first spent 25 minutes
   emulating the frontend build (fixed in the Dockerfile — builder stages now run
   natively and Go cross-compiles), the second failed in under four minutes, so

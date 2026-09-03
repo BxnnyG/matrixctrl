@@ -151,7 +151,12 @@ jobs:
       #
       # Worth keeping even once this is resolved. It costs nothing and turns an
       # opaque failure into a labelled one.
-      - name: Build image (no push)
+      # amd64 first, loaded into the daemon. Kept as its own step for the reason above:
+      # it separates "the Dockerfile is broken" from "the registry said no", and a
+      # multi-platform build cannot be loaded locally at all, so the diagnostic would be
+      # lost if this were merged into the push below. The layer cache makes the second
+      # build of amd64 nearly free.
+      - name: Build image, amd64 (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -164,13 +169,28 @@ jobs:
             ghcr.io/bxnnyg/matrixctrl:${{ steps.v.outputs.version }}
             ghcr.io/bxnnyg/matrixctrl:latest
 
-      - name: Push image
-        env:
-          VERSION: ${{ steps.v.outputs.version }}
-        run: |
-          set -x
-          docker push "ghcr.io/bxnnyg/matrixctrl:$VERSION"
-          docker push "ghcr.io/bxnnyg/matrixctrl:latest"
+      # Both architectures, pushed as one manifest list (etappe 66, P2-7).
+      #
+      # No QEMU is set up here, and that is deliberate rather than an omission: since
+      # E66 the runtime stage runs *no command*, every other stage is pinned to
+      # $BUILDPLATFORM, and Go cross-compiles — so assembling the arm64 image is copying
+      # files and needs no emulation. Two earlier attempts failed precisely in the one
+      # emulated instruction, `apk add` in the final stage, which no longer exists.
+      #
+      # Leaving QEMU out keeps that property honest: if someone adds a RUN to the
+      # runtime stage, this fails loudly instead of silently becoming a slow emulated
+      # build that works until it does not.
+      - name: Build and push image, amd64 + arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.v.outputs.version }}
+          tags: |
+            ghcr.io/bxnnyg/matrixctrl:${{ steps.v.outputs.version }}
+            ghcr.io/bxnnyg/matrixctrl:latest
 
       # The chart's default image tag is "latest", which is how a chart pinned to
       # one version ends up pulling a different build months later. Pin the
