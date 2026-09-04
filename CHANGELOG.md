@@ -15,6 +15,37 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.65] — 2026-09-04
+
+### Added
+
+- **Restore.** Upload an archive and get the deployment back: the full ESS configuration
+  with git history — hostnames, server name, TLS issuer, RTC settings — plus the hooks
+  that re-apply manual patches, the upgrade history and the report dispositions.
+- **A preview before anything is written**, showing when the archive was taken, which
+  MatrixCtrl version made it and **which ESS release it came from**, so nobody discovers
+  after the fact that they put a 26.8.0 configuration onto a different cluster.
+- The backup manifest now records the ESS release (name, chart version, revision). It
+  previously recorded only MatrixCtrl's own version, which made "restore the same
+  versions" impossible.
+
+### Changed
+
+- The backup now says what it **does** restore, not only what it does not. The archive
+  is everything needed to rebuild the same homeserver minus what users created; the
+  previous wording collapsed both into one pessimistic sentence.
+
+### Notes
+
+- An archive taken before a migration restores onto today's schema: columns are matched
+  by name, ones since dropped are skipped, ones since added take their defaults. That is
+  the return on carrying data and no schema.
+- `schema_migrations` is never restored — it is the live database's bookkeeping about
+  itself.
+- The database is restored in one transaction; the config repository is written beside
+  the live one and swapped. If the two ever do end up from different moments, the error
+  says so rather than reporting a clean failure.
+
 ## [0.1.64] — 2026-09-03
 
 ### Added

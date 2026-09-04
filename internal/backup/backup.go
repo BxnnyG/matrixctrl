@@ -53,15 +53,31 @@ type Table struct {
 	File        string `json:"file"`
 }
 
+// Release identifies the ESS deployment the archive was taken from.
+//
+// Without it "restore the same homeserver" is not possible: the configuration would come
+// back onto whatever chart version happened to be newest, which is a different
+// deployment wearing the same hostnames (etappe 69).
+type Release struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Chart     string `json:"chart,omitempty"`
+	Revision  int    `json:"revision,omitempty"`
+}
+
 // Manifest describes the archive, including what it deliberately leaves out.
 type Manifest struct {
 	FormatVersion int       `json:"format_version"`
 	CreatedAt     time.Time `json:"created_at"`
 	AppVersion    string    `json:"app_version"`
-	Tables        []Table   `json:"tables"`
-	ConfigFiles   int       `json:"config_repo_files"`
+	// ESS is the managed release at the time of the backup.
+	ESS         Release `json:"ess"`
+	Tables      []Table `json:"tables"`
+	ConfigFiles int     `json:"config_repo_files"`
 
-	// NotIncluded is the point of the manifest. Read it before trusting the archive.
+	// Restores and NotIncluded are the point of the manifest. Read both before
+	// trusting the archive.
+	Restores    []string `json:"restores"`
 	NotIncluded []string `json:"not_included"`
 	// SchemaNote explains why no schema is carried.
 	SchemaNote string `json:"schema_note"`
@@ -96,7 +112,7 @@ func tablesWithRows(ctx context.Context, db *pgxpool.Pool) ([]Table, error) {
 // Streamed rather than assembled: the archive is small today, but holding it in memory
 // is a decision that only becomes wrong on somebody else's larger install, and by then
 // it is a crash rather than a slow download.
-func Create(ctx context.Context, db *pgxpool.Pool, configRepo, appVersion string, w io.Writer) error {
+func Create(ctx context.Context, db *pgxpool.Pool, configRepo, appVersion string, ess Release, w io.Writer) error {
 	gz := gzip.NewWriter(w)
 	defer gz.Close()
 	tw := tar.NewWriter(gz)
@@ -118,12 +134,22 @@ func Create(ctx context.Context, db *pgxpool.Pool, configRepo, appVersion string
 		FormatVersion: FormatVersion,
 		CreatedAt:     time.Now().UTC(),
 		AppVersion:    appVersion,
+		ESS:           ess,
 		Tables:        tables,
 		ConfigFiles:   configFiles,
+		// What comes back and what does not are genuinely different sentences, and E68
+		// used the pessimistic one for both. The configuration *is* the deployment —
+		// hostnames, server name, TLS issuer, RTC settings, the hooks that keep the SFU
+		// patched. What no archive here can return is what users made (etappe 69).
+		Restores: []string{
+			"Die vollständige ESS-Konfiguration mit Git-Historie: Hostnames, serverName, TLS-Issuer, RTC-Einstellungen.",
+			"Die Hooks, die manuelle Patches nach jedem Upgrade und Rollback wiederherstellen.",
+			"Upgrade-Verlauf, Melde-Entscheidungen und den aufgezeichneten Node-Verlauf.",
+		},
 		NotIncluded: []string{
-			"Die Datenbank von Synapse — der eigentliche Homeserver (Konten, Räume, Nachrichten).",
-			"Die hochgeladenen Dateien von Synapse (Media-Volume).",
-			"Beide liegen auf Volumes, die dieser Pod nicht einbindet. Dieses Archiv ersetzt kein Backup des Homeservers.",
+			"Was die Nutzer erzeugt haben: Konten, Räume, Nachrichten — Synapses Datenbank.",
+			"Die hochgeladenen Dateien (Media-Volume).",
+			"Beides liegt auf Volumes, die dieser Pod nicht einbindet. Ein wiederhergestellter Server ist derselbe Server, aber leer.",
 		},
 		SchemaNote: "Enthält nur Daten, kein Schema: das Schema entsteht beim Zurückspielen aus den Migrationen, " +
 			"damit ein Archiv auf den aktuellen Stand zurückkommt und nicht auf den, bei dem es entstanden ist.",

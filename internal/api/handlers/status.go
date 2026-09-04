@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,12 +58,86 @@ func (h *StatusHandler) Backup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 
-	if err := backup.Create(r.Context(), h.backupDB, h.backupRepo, h.appVersion, w); err != nil {
+	// The managed release, so a restore can reproduce the same version rather than the
+	// newest one (etappe 69). Best effort: a backup without it is still worth having,
+	// and an empty field says "unknown" rather than inventing a version.
+	var ess backup.Release
+	if h.helm != nil {
+		if rel, err := h.helm.GetRelease(h.essRelease); err == nil && rel != nil {
+			ess = backup.Release{
+				Name: h.essRelease, Namespace: h.essNS,
+				Chart: rel.Version, Revision: rel.Revision,
+			}
+		}
+	}
+
+	if err := backup.Create(r.Context(), h.backupDB, h.backupRepo, h.appVersion, ess, w); err != nil {
 		// The status line is already sent, so this cannot become a clean 500. Logged
 		// so a truncated archive has an explanation somewhere, rather than being a
 		// file that unpacks halfway and is discovered during a restore.
 		log.Printf("backup: failed partway through: %v", err)
 	}
+}
+
+// POST /api/v1/status/restore/preview — read an archive without changing anything.
+//
+// Separate from the restore itself on purpose: an operator should see the ESS release
+// and the contents of an archive *before* it overwrites what is there, not discover
+// afterwards that they put a 26.8.0 configuration onto a different cluster (etappe 69).
+func (h *StatusHandler) RestorePreview(w http.ResponseWriter, r *http.Request) {
+	a, err := h.readArchive(r)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, a.Manifest)
+}
+
+// POST /api/v1/status/restore — write an archive back.
+//
+// Destructive, and the reason restore arrived an etappe after backup. The database goes
+// back in one transaction; the config repository is written beside the live one and
+// swapped, so a failure part-way leaves what was there.
+func (h *StatusHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	if h.backupDB == nil {
+		Error(w, http.StatusServiceUnavailable, "Für diese Installation ist keine Wiederherstellung verfügbar.")
+		return
+	}
+	a, err := h.readArchive(r)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	files, err := a.RestoreConfigRepo(h.backupRepo)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Das Konfigurations-Repository konnte nicht wiederhergestellt werden: "+err.Error())
+		return
+	}
+	tables, err := a.RestoreDatabase(r.Context(), h.backupDB)
+	if err != nil {
+		// The config repository is already back and the database is not. Said plainly
+		// rather than reported as a clean failure, because the two halves are now from
+		// different points in time and the operator has to know which.
+		Error(w, http.StatusInternalServerError,
+			"Die Konfiguration wurde wiederhergestellt, die Datenbank nicht: "+err.Error()+
+				" — die Datenbank ist unverändert, das Archiv kann erneut eingespielt werden.")
+		return
+	}
+
+	log.Printf("restore: %d config file(s), tables: %s", files, strings.Join(tables, ", "))
+	JSON(w, http.StatusOK, map[string]any{
+		"config_files":   files,
+		"tables":         tables,
+		"ess":            a.Manifest.ESS,
+		"restart_needed": true,
+	})
+}
+
+// readArchive is the shared upload path. Bounded: an unbounded read of an uploaded file
+// is how a panel is turned off by a large POST.
+func (h *StatusHandler) readArchive(r *http.Request) (*backup.Archive, error) {
+	return backup.Read(io.LimitReader(r.Body, 512<<20))
 }
 
 // SetNodeHistory wires the recorded node samples (etappe 59).

@@ -124,6 +124,10 @@ func NewRouter(deps Deps) http.Handler {
 			// The config repository and MatrixCtrl's own database (etappe 68). Not the
 			// homeserver's data — the archive's manifest says so itself.
 			r.Get("/backup", deps.Status.Backup)
+			// Preview first, restore second — the archive says which ESS release it
+			// came from, and that is worth seeing before it overwrites anything (E69).
+			r.Post("/restore/preview", deps.Status.RestorePreview)
+			r.Post("/restore", deps.Status.Restore)
 			r.Get("/events", deps.Status.Events)
 			r.Get("/components/{name}/pods", deps.Status.ComponentDetail)
 			r.Get("/pods/{deployment}", deps.Status.DeploymentPods)

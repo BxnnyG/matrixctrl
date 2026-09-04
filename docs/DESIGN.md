@@ -2488,3 +2488,46 @@ anyway — a backup that quietly drops things is the defect, not the feature —
 Restore is deliberately a separate etappe. Taking a backup is harmless; writing one back
 destroys what is there, and shipping both together would mean the dangerous half arrives
 less carefully tested than the safe one.
+
+### §4.67 — "The same homeserver" is two different sentences (2026-09-04, operator + agent, etappe 69)
+
+E68 shipped a backup whose card read *"not included: the homeserver"*. The operator
+pushed back and was right:
+
+> aber wäre es dann nicht schlau beim setup, backup einspielen und er baut es genau so
+> auf — also gleiche versionen gleiche config
+
+The archive holds `hostnames.yaml`, `rtc.yaml`, `tls.yaml` and every other slice with git
+history. That is not "not the homeserver". It is everything needed to stand the same one
+up again — the same server name, the same ingress hosts, the same TLS issuer, the same
+RTC settings, and the hooks that keep the SFU patched. What it cannot return is what
+users made: accounts, rooms, messages, media.
+
+E68 collapsed those into one pessimistic sentence. **Understating a feature is a smaller
+error than overstating one, and it is still an error** — an operator reading "does not
+contain the homeserver" would reasonably conclude the archive is not worth taking before
+a rebuild, which is exactly when it is worth most. The manifest now carries both lists,
+`restores` and `not_included`.
+
+The question also exposed a real gap: "gleiche Versionen" was not possible. The manifest
+recorded MatrixCtrl's own version and nothing about ESS, so a restore would have
+reproduced the configuration onto whatever chart version happened to be newest — a
+different deployment wearing the same hostnames. It now records the release name, chart
+version and revision, and the restore screen shows them **before** anything is written.
+
+**Restoring across a schema change** is the case the design exists for. The archive
+carries data and no schema (§4.66), so a backup taken at schema N lands on schema N+1:
+columns are matched by header name, ones since dropped are skipped, ones since added take
+their defaults. An archive from before migration 017 therefore restores onto today's
+schema without special handling — which is the whole return on not carrying a schema.
+
+Three guards worth keeping:
+
+- `schema_migrations` is **never** restored. It is the database's bookkeeping about
+  itself, and a backup's copy would report migrations that have run as pending, or worse,
+  pending ones as done.
+- The database goes back in one transaction, so a failure part-way leaves it as it was.
+  The config repository is written beside the live one and swapped for the same reason.
+- The two halves can still end up from different moments — config restored, database
+  not — and the error says so plainly instead of reporting a clean failure. An operator
+  who does not know which half moved cannot choose what to do next.
