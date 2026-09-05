@@ -169,6 +169,7 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/api/v1/rtc/reachability", deps.RTC.Reachability)
 
 		r.Route("/api/v1/config", func(r chi.Router) {
+			r.Get("/location", deps.Config.Location)
 			r.Get("/slices", deps.Config.ListSlices)
 			r.Get("/slices/{name}", deps.Config.GetSlice)
 			r.Put("/slices/{name}", deps.Config.PutSlice)

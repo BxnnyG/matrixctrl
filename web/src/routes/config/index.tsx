@@ -4,6 +4,15 @@ import { useState, useMemo, useRef, type ReactNode } from "react";
 import { YamlEditor } from "@/components/config/YamlEditor";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
+
+interface ConfigLocation {
+  path: string;
+  seed?: string;
+  bytes: number;
+  files: number;
+  commits: number;
+  versioned: boolean;
+}
 import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves } from "@/lib/schema";
 import { groupNav, orderKeys } from "@/lib/sections";
 import { Icon, Badge, Button, Toggle, Spinner, EmptyState } from "@/components/mc";
@@ -123,6 +132,13 @@ function Settings() {
         .slice(0, 120)
     : null;
 
+  // Cheap and static; asked once so the header can state where the configuration is.
+  const { data: location } = useQuery({
+    queryKey: ["config", "location"],
+    queryFn: () => api.get<ConfigLocation>("/api/v1/config/location"),
+    staleTime: 5 * 60_000,
+  });
+
   const segBtn = (on: boolean): React.CSSProperties => ({
     display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", fontSize: 12.5, fontWeight: 550, fontFamily: "var(--font)",
     border: "none", cursor: "pointer", borderRadius: "calc(var(--radius-sm) - 2px)",
@@ -143,6 +159,26 @@ function Settings() {
         </div>
 
         <div style={{ flex: 1 }} />
+
+        {/* Where this configuration actually lives. Added because an operator who had
+            been editing it for months still assumed it landed in the folder they once
+            seeded it from — ten screens about the configuration, and none of them said
+            (etappe 71). Compact by default; the detail is in the tooltip. */}
+        {location && (
+          <span
+            title={`Git-Repository auf einem eigenen Volume: ${location.path}\n` +
+              `${location.files} Dateien · ${(location.bytes / 1024).toFixed(0)} KB · ${location.commits} Commits` +
+              (location.seed ? `\n\nDer Ordner ${location.seed} war nur die Saat beim ersten Start und wird nicht mehr gelesen.` : "")}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: "var(--radius-sm)",
+              background: "var(--surface-2)", border: "1px solid var(--border-soft)", cursor: "default" }}>
+            <Icon name="database" size={13} style={{ color: "var(--text-faint)" }} />
+            <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{location.path}</span>
+            {location.versioned && (
+              <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>· {location.commits} Versionen</span>
+            )}
+          </span>
+        )}
+
         <Button variant="ghost" size="sm" icon="clock" onClick={() => navigate({ to: "/config/history" })}>Verlauf</Button>
         {mode === "standard" && dirty && <Badge tone="warn" size="sm">{Object.keys(changes).length} ungespeichert</Badge>}
         {saved && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-ok)" }}><Icon name="check" size={14} stroke={2.2} /> Gespeichert</span>}

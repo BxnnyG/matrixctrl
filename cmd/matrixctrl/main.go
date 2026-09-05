@@ -268,7 +268,7 @@ func main() {
 		})
 	}
 	wsHandler := handlers.NewWSHandler(helmHandler)
-	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion)
+	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion, configRepoPath, configSeedPath)
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
 
 	router := api.NewRouter(api.Deps{

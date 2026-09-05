@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 
@@ -15,10 +17,52 @@ type ConfigHandler struct {
 	store      *config.Store
 	git        *gitpkg.Repo
 	essVersion string // current deployed ESS version for schema selection
+	// repoPath and seedPath answer "where does my configuration live" — a question the
+	// panel could not answer at all until etappe 71.
+	repoPath string
+	seedPath string
 }
 
-func NewConfigHandler(store *config.Store, git *gitpkg.Repo, essVersion string) *ConfigHandler {
-	return &ConfigHandler{store: store, git: git, essVersion: essVersion}
+func NewConfigHandler(store *config.Store, git *gitpkg.Repo, essVersion, repoPath, seedPath string) *ConfigHandler {
+	return &ConfigHandler{store: store, git: git, essVersion: essVersion, repoPath: repoPath, seedPath: seedPath}
+}
+
+// GET /api/v1/config/location — where the configuration actually lives.
+//
+// Added because an operator who had been editing configuration for months still assumed
+// it landed in the folder they had seeded it from (etappe 71). Ten screens about the
+// configuration and not one named the volume it is kept on — an absent sentence about
+// the product's most reassuring property.
+func (h *ConfigHandler) Location(w http.ResponseWriter, r *http.Request) {
+	type location struct {
+		Path string `json:"path"`
+		// Seed is where the initial import came from, read once at first start. Named
+		// explicitly so it stops looking like the live source of truth.
+		Seed    string `json:"seed,omitempty"`
+		Bytes   int64  `json:"bytes"`
+		Files   int    `json:"files"`
+		Commits int    `json:"commits"`
+		// Versioned is what makes this more than a directory: history, diff, rollback.
+		Versioned bool `json:"versioned"`
+	}
+	loc := location{Path: h.repoPath, Seed: h.seedPath, Versioned: h.git != nil}
+
+	_ = filepath.WalkDir(h.repoPath, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if info, ierr := d.Info(); ierr == nil {
+			loc.Files++
+			loc.Bytes += info.Size()
+		}
+		return nil
+	})
+	if h.git != nil {
+		if commits, err := h.git.Log(1000); err == nil {
+			loc.Commits = len(commits)
+		}
+	}
+	JSON(w, http.StatusOK, loc)
 }
 
 // GET /api/v1/config/slices

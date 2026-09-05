@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.67] — 2026-09-05
+
+### Added
+
+- **The configuration screen now says where the configuration lives** — the path, that
+  it is a git repository on its own volume, and how many versions it holds. It never
+  did, so an operator could edit configuration for months while still assuming it landed
+  in the folder they originally seeded it from. The seed directory is named in the
+  tooltip so it stops looking like the source of truth.
+- `storage.config.path` in the chart values. The Go side has always read this from the
+  environment; the chart hardcoded it, so the one thing an operator might want to move
+  was the one thing they could not.
+
+### Notes
+
+- The path occurs in four places in the deployment template — the environment variable,
+  two mounts and the ownership fix. Parameterising only the first would have pointed the
+  configuration at a path where no volume is mounted, which is worse than a hardcoded
+  value that at least agrees with itself.
+- Not done, deliberately: putting the configuration in `/opt` on the host. A hostPath
+  ties the pod to one node and survives no migration — which is what a volume exists to
+  avoid.
+
 ## [0.1.66] — 2026-09-05
 
 ### Fixed

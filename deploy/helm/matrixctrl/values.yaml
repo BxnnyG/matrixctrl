@@ -65,6 +65,10 @@ storage:
   config:
     size: 1Gi
     storageClass: local-path
+    # Where the config repository is mounted inside the container. The Go side has
+    # always read this from the environment; the chart used to hardcode it, so the one
+    # part an operator might want to move was the one part they could not (etappe 71).
+    path: /data/config-repo
 
 # Ingress / hostname
 ingress:

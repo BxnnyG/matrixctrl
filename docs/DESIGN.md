@@ -2579,3 +2579,47 @@ Two smaller decisions: the password is read per request rather than held on the 
 because a credential kept for the life of a process outlives the reason it was needed;
 and a failed connection is logged rather than echoed, because the error carries the DSN
 and the DSN carries the password.
+
+### §4.70 — The most reassuring property, never stated (2026-09-05, operator + agent, etappe 71)
+
+The operator, after the backup work landed:
+
+> aso und natürlich auch dann schönner und besser speichert als ich das gemacht habe,
+> bei liegts in irgendeinem ordner … am beste wäre das wenn es dann in opt landet wie
+> art compose oder halt in volume ist idk
+
+I read it as being about backups. It was about the configuration:
+
+> bruder ich meinte die configs!!!
+
+And the answer is that MatrixCtrl already does what they were asking for. Their values
+sit in `/root/ess-config-values`; MatrixCtrl's live in `/data/config-repo` on a dedicated
+PVC, as a **git repository** with history, diffs and rollback. The old folder is the
+*seed*, read once at first start and never again.
+
+**They had been editing configuration for months without knowing that.** Ten screens
+about configuration and not one of them names the volume it is kept on. This is a
+documentation failure of a particular kind — not a stale sentence but an absent one, and
+absent about the property most worth knowing. The panel's answer to "where does my
+configuration live" was silence, so the operator kept the mental model they arrived with.
+
+The fix is one line in the editor's header: the path, that it is versioned, and how many
+versions there are, with the seed named in the tooltip so the old folder stops looking
+like the source of truth.
+
+**The second half was a real gap.** `MATRIXCTRL_CONFIG_REPO` is read from the environment
+by the Go code and the chart hardcoded it, so "einstellbar" was half-true: the volume's
+size and storage class were values, its path was not. That is §4.61's shape once more —
+something the code supports and nothing exposes.
+
+Fixing it needed care worth recording. The path appears in **four** places in the
+template: the env var, the mount, the ownership fix in the init container, and the
+second container's mount. Changing only the env var — which is what the first pass did —
+would have produced a pod whose configuration path points where no volume is mounted:
+strictly worse than the hardcoded value, because at least that one agreed with itself.
+A half-applied parameterisation is a new bug wearing the old one's clothes.
+
+Deliberately not done: moving the configuration to `/opt` on the host. It is what "like a
+compose setup" means literally and it would be a step backwards — a hostPath ties the pod
+to one node and survives no migration, which is exactly what a volume avoids. The request
+underneath was *knowing where it is*, and that was the part missing.

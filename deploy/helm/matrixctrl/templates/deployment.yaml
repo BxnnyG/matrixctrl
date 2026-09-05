@@ -37,7 +37,7 @@ spec:
       initContainers:
         - name: fix-ownership
           image: busybox:1.36
-          command: ["sh", "-c", "chown -R 65532:65532 /data/config-repo || true"]
+          command: ["sh", "-c", {{ printf "chown -R 65532:65532 %s || true" (.Values.storage.config.path | default "/data/config-repo") | quote }}]
           # Init containers count towards the pod's QoS class. Without equal
           # requests and limits here the pod is Burstable no matter what the two
           # real containers declare — which is exactly what happened on the first
@@ -60,7 +60,7 @@ spec:
               add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
           volumeMounts:
             - name: config-repo
-              mountPath: /data/config-repo
+              mountPath: {{ .Values.storage.config.path | default "/data/config-repo" | quote }}
       containers:
         # ── MatrixCtrl ─────────────────────────────────────────────────────
         - name: matrixctrl
@@ -109,7 +109,7 @@ spec:
             - name: MATRIXCTRL_ESS_RELEASE
               value: {{ .Values.ess.release | quote }}
             - name: MATRIXCTRL_CONFIG_REPO
-              value: /data/config-repo
+              value: {{ .Values.storage.config.path | default "/data/config-repo" | quote }}
             {{- if .Values.configSeedPath }}
             - name: MATRIXCTRL_CONFIG_SEED
               value: {{ .Values.configSeedPath | quote }}
@@ -138,7 +138,7 @@ spec:
             {{- end }}
           volumeMounts:
             - name: config-repo
-              mountPath: /data/config-repo
+              mountPath: {{ .Values.storage.config.path | default "/data/config-repo" | quote }}
             # readOnlyRootFilesystem leaves nothing writable, and go-git writes
             # temporary files. An emptyDir keeps the root read-only without the
             # config repo losing its persistence.
