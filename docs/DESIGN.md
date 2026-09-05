@@ -2780,3 +2780,83 @@ The general shape, for the next time: **a secret that exists in exactly one plac
 exactly one moment, is not stored — it is announced.** Anything an operator will need
 later has to live somewhere they can query on their own schedule, not somewhere they had
 to be watching.
+
+### §4.75 — Der Fix war fertig, getestet und kam nie an (2026-09-05, operator + agent, etappe 76)
+
+Letzte Runde habe ich §4.74 gemeldet als *ausgeliefert*: `make check` grün, beide
+Integrationstests grün, Image gebaut, in k3s importiert, `helm upgrade` auf Revision 73,
+Pod 2/2, Logzeile aus dem laufenden Container zitiert. Jede einzelne dieser Aussagen war
+wahr.
+
+Der Operator hat auf einer frischen VM installiert und bekam `0.1.69`.
+
+**Der Release-Job war an Schritt 6 gescheitert:** *"CHANGELOG must have a section for
+this version"*. Ich hatte getaggt, ohne den Abschnitt zu schreiben. Der Guard hat exakt
+das getan, wofür er gebaut wurde — nur steht er hinter dem Tag. Ein Tag ist gepusht und
+öffentlich, bevor irgendetwas ihn prüft; was danach fehlschlägt, ist ein Bericht, kein
+Schutz. GHCR blieb auf 0.1.69, `helm install` löste brav „die neueste veröffentlichte
+Version" auf, und der Operator lief in genau den Bug, den 0.1.70 behebt.
+
+Nachgesehen habe ich es nicht. `gh` fehlte auf der Maschine, und dabei habe ich es
+belassen — statt des einen `curl` auf `api.github.com/repos/…/actions/runs`, der zwei
+Sekunden dauert und die Frage beantwortet hätte. „Verifiziert" hieß hier: alles geprüft,
+was ich lokal anfassen konnte, und die eine Sache nicht, die zwischen meiner Maschine und
+seiner steht.
+
+Die Verwechslung dahinter ist benennbar: **in den Cluster deployt ist nicht
+veröffentlicht.** Der lokale k3s ist die Maschine, auf der ich arbeite — dass dort etwas
+läuft, sagt über die Registry nichts. Alle Belege, die ich gesammelt hatte, kamen von der
+falschen Seite der Veröffentlichungsgrenze.
+
+Zwei Konsequenzen, beide vor dem Tag statt danach:
+
+- `scripts/check-changelog.sh` in `make check` — derselbe Guard wie in CI, an der Stelle,
+  wo er noch etwas verhindern kann statt es zu protokollieren.
+- Eine Release-Meldung gilt erst, wenn die Registry sie bestätigt. Der Tag-Push ist die
+  Absicht, nicht das Ergebnis.
+
+0.1.70 wird nicht nachgezogen. Der Tag ist öffentlich, veröffentlicht wurde unter der
+Nummer nichts, und eine Lücke in der Versionsfolge ist ein ehrlicheres Protokoll als ein
+verschobener Tag — die Nummern 0.1.36, 0.1.42 und 0.1.63 fehlen aus demselben Grund.
+
+### §4.76 — Vier Fehlschläge auf dem Weg zu einer Installation, keiner davon in der Software (2026-09-05, operator, etappe 76)
+
+Das Terminal des Operators, in seiner Reihenfolge:
+
+| | Was er sah | Was es hieß |
+|---|---|---|
+| 1 | `Kubernetes cluster unreachable: Get "http://localhost:8080/version"` | `KUBECONFIG` nicht gesetzt. k3s legt sie root-only unter `/etc/rancher/k3s/k3s.yaml` ab |
+| 2 | `These resources were kept due to the resource policy` | `helm uninstall` behält die Volumes. Die Neuinstallation lief auf der alten Datenbank |
+| 3 | Passwort-Secret leer | 0.1.70 war nicht veröffentlicht (§4.75) |
+| 4 | `non-absolute URLs …, got: %E2%80%A6` | Er hat ein README-Kommando mit einem echten `…` darin eingefügt |
+
+Vier Fehlschläge, keiner in MatrixCtrl. Alle vier im Weg dorthin — und jeder einzelne war
+dokumentiert. Die Kubeconfig-Zeile steht im README. Was `helm uninstall` behält, steht im
+README, mit Tabelle und Begründung. Trotzdem hat er zwei Stunden verloren, weil
+Dokumentation zum Zeitpunkt des Fehlers nur hilft, wenn man weiß, wonach man sucht: eine
+Fehlermeldung über Port 8080 schickt niemanden in einen Abschnitt über Kubeconfig-Pfade.
+
+Was fehlte, war nichts Erklärendes, sondern etwas Ausführbares. `scripts/install.sh`
+prüft der Reihe nach genau das, was hier schiefging, und sagt bei jedem Punkt einen Satz
+statt eines Exit-Codes. Die interessanteste Stelle ist Nr. 2: die behaltenen Volumes sind
+**richtig** so — eine Datenbank an einen Vertipper zu verlieren wäre schlimmer —, aber
+ihre Folge wurde nie ausgesprochen. Sie machen die nächste „frische Installation" zu
+einem Upgrade auf altem Bestand: Schema migriert, Admin-Account vorhanden, kein neues
+Passwort zu zeigen. Genau der Zustand, aus dem der Operator herauswollte, war der, den
+Neuinstallieren herstellt. Das Skript fragt jetzt, statt zu raten, und verlangt für das
+Löschen ein getipptes `delete` — `--yes` deckt es bewusst nicht ab: ein Flag, das „hör
+auf zu fragen" bedeutet, darf keine Datenbank löschen.
+
+Nr. 4 hat einen eigenen Guard bekommen (`scripts/check-commands.sh`): in einem
+Shell-Block darf kein `…` stehen. Prosa darf abkürzen; ein Block, den jemand ausführen
+soll, ist eine Anweisung, und eine Anweisung mit einer Lücke ist eine Falle für genau den
+Leser, der nicht weiß, was in die Lücke gehört.
+
+Die TLS-Frage stellt das Skript aus, weil der Operator sie gestellt hat: cert-manager
+(HTTP-01 scheitert hinter Cloudflares Proxy), Cloudflare *Full* (Traefiks
+Default-Zertifikat reicht, nichts zu installieren), Cloudflare *Flexible* (Origin spricht
+HTTP), oder gar kein TLS. Vier Kombinationen aus `entrypoint`/`tls`/`certIssuer`, die man
+einzeln raten kann und dann eine Seite hat, die halb funktioniert.
+
+Der Lauf endet nicht bei `STATUS: deployed`, sondern bei URL, Benutzer, Passwort und dem
+DNS-Record. Eine Installation ist fertig, wenn jemand eingeloggt ist.

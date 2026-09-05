@@ -56,6 +56,8 @@ check:
 	$(GO) test ./...
 	cd web && ./node_modules/.bin/tsc -b --noEmit
 	./scripts/check-sensitive.sh
+	./scripts/check-changelog.sh
+	./scripts/check-commands.sh
 	# gofmt is a CI gate, and `make check` did not run it until 2026-08-17 — so
 	# "check green" did not imply "CI green", and E51 shipped unformatted code that
 	# only the pipeline would have caught. A local check that omits a remote gate

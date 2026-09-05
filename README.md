@@ -141,16 +141,51 @@ helm version
 **One more thing if you want HTTPS.** The install command below passes
 `ingress.certIssuer=letsencrypt-prod`, which assumes [cert-manager](https://cert-manager.io/docs/installation/)
 and a `ClusterIssuer` of that name already exist. Install cert-manager first, or
-drop the `--set ingress.certIssuer=…` flag and terminate TLS however you prefer.
+drop the `--set ingress.certIssuer=<issuer>` flag and terminate TLS however you prefer.
 
 Both installer scripts above are piped straight from the internet into a shell.
 That is what the upstream projects document, but read them first if that is not
 acceptable in your environment.
 </details>
 
-### Install (recommended) — OCI chart
+### Install (recommended) — the installer script
 
-The chart and image are published to GHCR, so one command is all you need:
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh)
+```
+
+It asks for a hostname and how you want HTTPS terminated, and checks the rest itself:
+whether `kubectl`/`helm` are there, whether a kubeconfig exists where nothing looks for
+it (k3s writes a root-only one to `/etc/rancher/k3s/k3s.yaml`), whether the cluster
+answers, whether an ingress controller is installed, whether cert-manager has a
+`ClusterIssuer` — and whether a previous install left a database behind, which is the
+one thing that quietly turns a reinstall into an upgrade.
+
+When it finishes it prints the URL, the user, the **admin password**, and the DNS
+record you need. That is the part a bare `helm install` leaves you to find.
+
+Non-interactive, for a script or a second server:
+
+```bash
+./scripts/install.sh install --host matrixctrl.example.com \
+  --tls letsencrypt --issuer letsencrypt-prod --yes
+```
+
+Other subcommands: `password` (prints it again, any time), `status`, `uninstall`.
+
+#### HTTPS — pick one
+
+| `--tls` | What happens | When |
+|---|---|---|
+| `letsencrypt` | cert-manager issues a real certificate | cert-manager and a `ClusterIssuer` exist, and port 80 is reachable. **Not behind Cloudflare's proxy** — HTTP-01 cannot complete through it |
+| `cloudflare-full` | Traefik serves its own default certificate; Cloudflare re-encrypts | Cloudflare proxied, SSL mode **Full**. Nothing to install. Not *Full (strict)* |
+| `cloudflare-flexible` | The origin speaks plain HTTP | Cloudflare proxied, SSL mode **Flexible** |
+| `none` | Plain HTTP | LAN, or a tunnel that terminates TLS itself |
+
+<details>
+<summary><b>Alternative — plain Helm, no script</b></summary>
+
+The chart and image are published to GHCR:
 
 ```bash
 helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
@@ -158,6 +193,11 @@ helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
   --set ingress.host=matrixctrl.example.com \
   --set ingress.certIssuer=letsencrypt-prod
 ```
+
+On k3s, `export KUBECONFIG=/etc/rancher/k3s/k3s.yaml` first — without it Helm reports
+`Kubernetes cluster unreachable: dial tcp [::1]:8080` and means "I did not find your
+cluster".
+</details>
 
 No version is pinned here on purpose: Helm resolves the newest published chart, so
 this command cannot go stale. Each released chart pins its own matching image, so
@@ -212,7 +252,7 @@ helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
    To choose it yourself — at install **or any time after** — set it and upgrade:
 
    ```bash
-   helm upgrade matrixctrl … --set secrets.adminPassword='your-password'
+   ./scripts/install.sh install --admin-password 'your-password'
    ```
 
    The value is applied on every start, so this is also how you reset a password you
@@ -286,13 +326,13 @@ helm upgrade matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl -n matrixctrl --r
   --set secrets.adminPassword='your-password'
 ```
 
-> **Upgrading to v0.1.70 sets a new bootstrap password.** The chart generates one into
+> **Upgrading to v0.1.71 sets a new bootstrap password.** The chart generates one into
 > its Secret because there was none there before, and the app applies it on start — so
 > read it back with the command above rather than reusing the old one. This affects only
 > the local `admin` bootstrap login; if you have already switched to **Connect Matrix
 > Login**, that is not how you sign in and nothing changes for you.
 
-> Before v0.1.70 the password was written to the pod log exactly once and
+> Before v0.1.71 the password was written to the pod log exactly once and
 > `secrets.adminPassword` was read only when the account was created — so a restarted pod
 > meant no way in, and reinstalling did not help because `helm uninstall` keeps the
 > database volume. If you are on an older version, upgrade; that alone fixes it.
@@ -321,11 +361,15 @@ scale it back up.
 ### Uninstall
 
 ```bash
-helm uninstall matrixctrl -n matrixctrl
+./scripts/install.sh uninstall
 ```
 
-This deliberately **leaves three things behind**, so that reinstalling does not
-lose your data or lock you out:
+It removes the release, then shows you what Helm kept and offers to delete that
+too — typing `delete` is required, and `--yes` does not cover it.
+
+By hand it is `helm uninstall matrixctrl -n matrixctrl`, which deliberately
+**leaves three things behind**, so that reinstalling does not lose your data or
+lock you out:
 
 | Kept | Why |
 |---|---|
@@ -333,7 +377,16 @@ lose your data or lock you out:
 | `pvc/matrixctrl-postgres` | audit log, hooks, upgrade history |
 | `secret/matrixctrl-secret` | DB password and JWT key — regenerating them invalidates every session |
 
-They carry `helm.sh/resource-policy: keep`. To remove everything for real:
+They carry `helm.sh/resource-policy: keep`.
+
+> **This is why "just reinstall it" does not reset anything.** With those volumes
+> in place a fresh `helm install` comes up on the existing database: the schema is
+> already migrated, the admin account already exists, and the install has no new
+> password to give you — it looks like a first install and behaves like an upgrade.
+> If that is what you are trying to escape, delete the volumes below, or use
+> `./scripts/install.sh install`, which notices them and asks.
+
+To remove everything for real:
 
 ```bash
 kubectl delete pvc matrixctrl-config matrixctrl-postgres -n matrixctrl

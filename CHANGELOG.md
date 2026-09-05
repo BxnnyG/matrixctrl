@@ -15,6 +15,58 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.71] — 2026-09-05
+
+### Added
+
+- **An installer**: `scripts/install.sh` — install, upgrade, uninstall, and read the
+  admin password back. It checks the things that actually go wrong before Helm runs:
+  a kubeconfig that is not on `$KUBECONFIG` (k3s writes a root-only one), an
+  unreachable API server, a missing ingress controller, and data left behind by a
+  previous install. Then it asks how TLS should be terminated — cert-manager,
+  Cloudflare *Full*, Cloudflare *Flexible*, or plain HTTP — and afterwards prints the
+  URL, the user, the password and the DNS record needed to reach it.
+  Run it with `bash <(curl -fsSL …/scripts/install.sh)`; prompts are read from
+  `/dev/tty`, so piping the script does not make it answer its own questions.
+- **`--delete-data`**, and a matching prompt in `uninstall`, for the volumes
+  `helm uninstall` deliberately keeps. Keeping them is right — losing a database to a
+  typo is worse — but it silently turns the next "fresh install" into an upgrade over
+  an old database, which is how an install can complete with no admin password to show
+  for it. Deleting them takes the flag or a typed confirmation; `--yes` does not
+  cover it.
+
+### Fixed
+
+- **Restoring an archive failed on the schema's own foreign keys.** The first test to
+  take a real archive from a real database and put it back found three defects in ten
+  seconds, after six releases of green unit tests: rows were inserted children-first,
+  each table was truncated separately (which Postgres refuses for a referenced table
+  even when the child is empty), and blank CSV fields became SQL `NULL` in `NOT NULL`
+  columns. Insert order and truncation now come from the target's `pg_constraint`
+  graph, and nullability from `information_schema`, so a new foreign key needs no one
+  to remember this.
+- **A fresh install could finish with no way to log in.** The bootstrap password was
+  printed to the pod log exactly once, and `secrets.adminPassword` was only read when
+  the admin user was created — so it did nothing in the one case it was needed. It is
+  now generated into the release Secret like the database password and the JWT key,
+  kept across upgrades, and applied on **every** start, which makes setting it the way
+  to reset it. Read it with `scripts/install.sh password`.
+- **The config seed defaulted to a path from the developer's machine**
+  (`/root/ess-config-values`), so every fresh install logged a `permission denied`
+  warning about a directory that was never theirs. The default is now empty.
+- **A README command could not be pasted**: it contained a literal `…` where the rest
+  of the command belonged, and pasting it produced
+  `non-absolute URLs should be in form of repo_name/path_to_chart, got: %E2%80%A6`.
+
+### Notes
+
+- **0.1.70 was tagged but never published.** The release workflow stopped at its
+  "CHANGELOG must have a section for this version" guard — correctly, but after the
+  tag was already public, so nothing reached GHCR and `helm install` kept resolving
+  0.1.69 while everything local reported success. The same check now runs in
+  `make check` (`scripts/check-changelog.sh`), before a tag exists. The version number
+  is skipped rather than reused: a gap is a more honest record than a moved tag.
+
 ## [0.1.69] — 2026-09-05
 
 ### Fixed

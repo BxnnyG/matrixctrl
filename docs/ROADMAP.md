@@ -60,8 +60,9 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 32 | Release Notes auf der Upgrade-Seite + Version aus der Liste übernommen — die andere Hälfte der Pin-Warnung | ✅ 2026-08-05 · `v0.1.33` · [plan](plans/etappe-32-release-notes.md) |
 | 33 | OIDC-Init wiederholen statt einmalig aufgeben — ein Neustart vor MAS sperrte den Operator 11 h aus dem eigenen Panel aus | ✅ 2026-08-06 · `v0.1.34` · [plan](plans/etappe-33-oidc-retry.md) |
 | 73 | Der Restore, der nichts wiederhergestellt und Erfolg gemeldet hätte — dazu Skeletons und ein ehrlicher Byte-Zähler | ✅ 2026-09-05 · `v0.1.69` · [plan](plans/etappe-73-silent-restore-and-loading.md) |
-| 74 | Der Restore, der an den eigenen Fremdschlüsseln scheiterte — gefunden vom ersten echten Durchlauf | ✅ 2026-09-05 · `v0.1.70` · [plan](plans/etappe-74-restore-order.md) |
-| 75 | Ein frisches Setup, in das man sich auch anmelden kann — Passwort im Secret statt in einer Logzeile | ✅ 2026-09-05 · `v0.1.70` · [plan](plans/etappe-75-first-login.md) |
+| 74 | Der Restore, der an den eigenen Fremdschlüsseln scheiterte — gefunden vom ersten echten Durchlauf | ✅ 2026-09-05 · `v0.1.71` · [plan](plans/etappe-74-restore-order.md) |
+| 75 | Ein frisches Setup, in das man sich auch anmelden kann — Passwort im Secret statt in einer Logzeile | ✅ 2026-09-05 · `v0.1.71` · [plan](plans/etappe-75-first-login.md) |
+| 76 | Ein Installer, der die vier Fallen auf dem Weg kennt — und ein Release, das ankommt statt nur zu existieren | ✅ 2026-09-05 · `v0.1.71` · [plan](plans/etappe-76-installer.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |
