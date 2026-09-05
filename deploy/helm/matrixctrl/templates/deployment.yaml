@@ -97,13 +97,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "matrixctrl.secretName" . }}
                   key: jwt-secret
-            {{- if .Values.secrets.adminPassword }}
+            # Always set: the Secret always has one (etappe 75), and the app treats it
+            # as authoritative on every start, so this is the reset path too.
             - name: MATRIXCTRL_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "matrixctrl.secretName" . }}
                   key: admin-password
-            {{- end }}
             - name: MATRIXCTRL_ESS_NAMESPACE
               value: {{ .Values.ess.namespace | quote }}
             - name: MATRIXCTRL_ESS_RELEASE

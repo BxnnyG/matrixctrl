@@ -83,9 +83,15 @@ type Manifest struct {
 	SchemaNote string `json:"schema_note"`
 }
 
-// tablesWithRows lists user tables that currently hold data, in dependency-free order
-// (this schema has no cross-table foreign keys — report_dispositions annotates rows in
-// another system entirely, see migrations/013).
+// tablesWithRows lists user tables that currently hold data, in name order.
+//
+// Name order and not dependency order: this list is what the archive *contains*, and the
+// order rows have to go back in belongs to the schema they are going back into, which is
+// not necessarily this one. RestoreDatabase sorts it there, from pg_constraint.
+//
+// A comment here once claimed the schema had no cross-table foreign keys. It has had two
+// since migration 002, and the claim survived long enough to ship a restore that could
+// not restore anything (etappe 74).
 func tablesWithRows(ctx context.Context, db *pgxpool.Pool) ([]Table, error) {
 	rows, err := db.Query(ctx, `
 		SELECT relname, n_live_tup FROM pg_stat_user_tables

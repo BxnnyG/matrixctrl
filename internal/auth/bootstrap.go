@@ -97,35 +97,85 @@ func randomKey() []byte {
 	return b
 }
 
-// EnsureAdminExists creates the admin user on first run if not present.
+// EnsureAdminExists makes sure there is a way in, on every start and not only the first.
+//
+// It used to run once, log a generated password, and never speak again. Every part of
+// that was a trap (etappe 75):
+//
+//   - the password existed for one pod lifetime, in one log line, with no way to ask for
+//     it again and no way to reset it;
+//   - `helm uninstall` leaves the PVC, so reinstalling — the one thing anybody tries —
+//     found the old row, did nothing, and said nothing;
+//   - MATRIXCTRL_ADMIN_PASSWORD was read only when creating the row, so the documented
+//     way to choose a password silently did not apply to any install that had one.
+//
+// So the environment is now authoritative every time. The chart always puts a password in
+// its Secret, which makes that the single place the credential lives, retrievable with
+// kubectl for as long as the install exists — and it means an install already locked out
+// repairs itself on the next upgrade instead of needing psql.
 func (b *Bootstrap) EnsureAdminExists(ctx context.Context) error {
 	var exists bool
-	err := b.db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM bootstrap_credentials WHERE user_id=$1)", bootstrapUserID).Scan(&exists)
+	err := b.db.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM bootstrap_credentials WHERE user_id=$1)", bootstrapUserID,
+	).Scan(&exists)
 	if err != nil {
-		// Table may not exist yet — handled by migration; just skip
-		return nil
-	}
-	if exists {
-		return nil
+		// Not swallowed. This used to return nil on any error, so a database that could
+		// not answer produced exactly the same silence as a healthy one that had nothing
+		// to do — which is how a locked-out install still looks fine in the log.
+		return fmt.Errorf("check for bootstrap admin: %w", err)
 	}
 
-	password := os.Getenv("MATRIXCTRL_ADMIN_PASSWORD")
-	if password == "" {
-		password = generatePassword()
+	configured := os.Getenv("MATRIXCTRL_ADMIN_PASSWORD")
+
+	switch {
+	case configured != "":
+		// Authoritative: bring the stored hash in line with the environment on every
+		// start. Never logged — it is in the Secret, and a log line only widens the blast
+		// radius of the same credential.
+		hash, err := bcrypt.GenerateFromPassword([]byte(configured), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		if _, err := b.db.Exec(ctx, `
+			INSERT INTO bootstrap_credentials(user_id, password_hash) VALUES($1, $2)
+			ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
+			bootstrapUserID, string(hash),
+		); err != nil {
+			return err
+		}
+		if exists {
+			log.Printf("MatrixCtrl: bootstrap admin password set from MATRIXCTRL_ADMIN_PASSWORD")
+		} else {
+			log.Printf("MatrixCtrl: bootstrap admin created, password from MATRIXCTRL_ADMIN_PASSWORD")
+		}
+		return nil
+
+	case exists:
+		// The case that produced the original report: nothing to do, and previously
+		// nothing said. An operator who cannot get in needs to be told where to look,
+		// here, in the log they are already reading.
+		log.Printf("MatrixCtrl: bootstrap admin already exists; its password is not recoverable from here")
+		log.Printf("MatrixCtrl: to set one: helm upgrade --set secrets.adminPassword=<new> (applied on every start)")
+		return nil
+
+	default:
+		// No configured password and no admin yet. Generating one keeps a bare
+		// `docker run` working, but it is the fallback now, not the design.
+		password := generatePassword()
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		if _, err := b.db.Exec(ctx,
+			"INSERT INTO bootstrap_credentials(user_id, password_hash) VALUES($1, $2)",
+			bootstrapUserID, string(hash),
+		); err != nil {
+			return err
+		}
 		log.Printf("MatrixCtrl: bootstrap admin password: %s", password)
-		log.Printf("MatrixCtrl: set MATRIXCTRL_ADMIN_PASSWORD env var to override")
+		log.Printf("MatrixCtrl: this line is the only copy — set secrets.adminPassword to keep it in the Secret instead")
+		return nil
 	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
-	}
-
-	_, err = b.db.Exec(ctx,
-		"INSERT INTO bootstrap_credentials(user_id, password_hash) VALUES($1, $2)",
-		bootstrapUserID, string(hash),
-	)
-	return err
 }
 
 func (b *Bootstrap) Login(ctx context.Context, username, password, ipAddr, userAgent string) (token string, err error) {

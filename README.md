@@ -200,25 +200,24 @@ helm install matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl \
 
 ## First run
 
-1. Open `https://matrixctrl.example.com` and log in as **`admin`**. The password is
-   generated on first start and written to the pod log:
+1. Open `https://matrixctrl.example.com` and log in as **`admin`**. The password lives in
+   the release Secret, and this works whenever you ask — first minute or a year later:
 
    ```bash
-   kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl | grep "bootstrap admin password"
-   # MatrixCtrl: bootstrap admin password: <generated>
+   kubectl -n matrixctrl get secret matrixctrl-secret -o jsonpath='{.data.admin-password}' | base64 -d; echo
    ```
 
-   > **It is logged exactly once**, on the start where the admin user is created.
-   > If the pod has restarted since, that line is gone from the current log — try
-   > `kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl --previous`, and see
-   > [Lost the admin password?](#lost-the-admin-password) if it is no longer there.
+   It is generated at install time if you do not set one, and kept across `helm upgrade`.
 
-   To choose the password yourself instead, set it at install time — then nothing is
-   ever logged:
+   To choose it yourself — at install **or any time after** — set it and upgrade:
 
    ```bash
-   helm install matrixctrl … --set secrets.adminPassword='your-password'
+   helm upgrade matrixctrl … --set secrets.adminPassword='your-password'
    ```
+
+   The value is applied on every start, so this is also how you reset a password you
+   have lost.
+
 2. Go to **Setup**. MatrixCtrl auto-discovers your ESS:
    - **No ESS yet?** → *Deploy ESS* (pick a version + server name).
    - **ESS already running?** → *Adopt existing ESS* (seeds config from the release).
@@ -273,17 +272,30 @@ kubectl logs -n matrixctrl deploy/matrixctrl -c postgres
 
 ### Lost the admin password?
 
-`secrets.adminPassword` is only read when the admin user is **created**, so setting
-it afterwards changes nothing — the account already exists. To get a new one, delete
-the stored credential and let the next start regenerate it:
+Read it back from the Secret:
 
 ```bash
-kubectl exec -n matrixctrl deploy/matrixctrl -c postgres -- \
-  psql -U matrixctrl -d matrixctrl -c "DELETE FROM bootstrap_credentials WHERE user_id='admin';"
-
-kubectl rollout restart deploy/matrixctrl -n matrixctrl
-kubectl logs -n matrixctrl deploy/matrixctrl -c matrixctrl | grep "bootstrap admin password"
+kubectl -n matrixctrl get secret matrixctrl-secret -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
+
+If you want a different one, set it — it is applied on every start, so an install you
+are locked out of repairs itself on upgrade:
+
+```bash
+helm upgrade matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl -n matrixctrl --reuse-values \
+  --set secrets.adminPassword='your-password'
+```
+
+> **Upgrading to v0.1.70 sets a new bootstrap password.** The chart generates one into
+> its Secret because there was none there before, and the app applies it on start — so
+> read it back with the command above rather than reusing the old one. This affects only
+> the local `admin` bootstrap login; if you have already switched to **Connect Matrix
+> Login**, that is not how you sign in and nothing changes for you.
+
+> Before v0.1.70 the password was written to the pod log exactly once and
+> `secrets.adminPassword` was read only when the account was created — so a restarted pod
+> meant no way in, and reinstalling did not help because `helm uninstall` keeps the
+> database volume. If you are on an older version, upgrade; that alone fixes it.
 
 This only affects the local bootstrap login. It does not touch your Matrix account,
 and once you have switched to **Connect Matrix Login** you sign in via Matrix

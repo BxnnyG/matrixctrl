@@ -2700,3 +2700,83 @@ error would have passed on the broken code.
 
 Both layouts are read now. Flat archives already exist in the wild, and a reader that
 silently ignores half of a file it does not recognise is what caused this.
+
+### §4.73 — The comment that was load-bearing and wrong (2026-09-05, agent, etappe 74)
+
+`backup.go` carried this, above the function that lists what goes into an archive:
+
+    // (this schema has no cross-table foreign keys — ...)
+
+Two had existed since migration 002. Tables were captured and restored in alphabetical
+order, which is fine for `config_snapshots` → `upgrade_history` and fatal for
+`hooks` → `hook_run_log`, because `_` sorts before `s`. So a restore of any archive from
+an install that had ever run a hook failed on the foreign key and rolled back whole.
+
+Six etappes — 68 through 73 — built, refined, redesigned and shipped a backup that could
+not be restored. Every one of them passed its tests, because every one of those tests
+built its own archive *and* its own expectations, and no hand-written fixture contains a
+foreign key when the person writing it has read the comment.
+
+**A comment is not a check.** This one was load-bearing: the ordering decision rested on
+it, and nothing re-derived it after migration 002 added the constraint it denied. The
+replacement does not restate the fact anywhere — `restoreOrder` reads `pg_constraint` at
+restore time, so the next foreign key orders itself and nobody has to remember this
+happened.
+
+Two further things fell out of writing it down properly:
+
+- **No single order can be right.** Emptying a referenced parent fails while its child
+  holds rows; filling a child fails before its parent exists. The old code interleaved
+  `TRUNCATE` and `COPY` per table, so it was unfixable by reordering alone — it needed to
+  become two phases, children-first then parents-first.
+- **The target schema is the authority**, not the archive. An archive can predate a
+  constraint, so the order has to be read from the database the rows are going *into*.
+
+The finding is not really the foreign key. It is that the only test which took a real
+archive from a real database and put it back found this in **ten seconds**, on its first
+run, after six etappes of green unit tests. Fixtures test the code against the author's
+model of the world. A round trip tests it against the world. §4.72 said a question about
+whether something works is a test somebody else wrote for you; this is the same lesson
+with the database supplying the question.
+
+### §4.74 — Three ways to lose an install before the first login (2026-09-05, operator + agent, etappe 75)
+
+The operator built a new machine, installed the published chart, and ran the command the
+README gives for the admin password. Nothing. Restarted, ran it again. Nothing. There was
+no way into a freshly installed admin panel.
+
+Three defects, none of them fatal alone:
+
+1. **The credential existed for one pod lifetime.** Generated, written to the log, stored
+   nowhere else. Miss the line and it is gone — no second copy, no reset path.
+2. **`helm uninstall` does not uninstall.** The PVCs survive and the Secret is annotated
+   `resource-policy: keep`, so a reinstall found the old `bootstrap_credentials` row,
+   concluded there was nothing to do, and said nothing. Reinstalling is what everybody
+   tries first, and it was guaranteed not to work.
+3. **The escape hatch was inert.** `secrets.adminPassword` was read only when the row was
+   *created*, so it could not help any install that already had one — which is exactly
+   and only the situation where somebody needs it.
+
+Plus a swallowed error (`if err != nil { return nil }`, commented "table may not exist
+yet") that made a database failure and a healthy no-op produce identical output.
+
+**The README documented all of this correctly.** It said the password is logged exactly
+once; it said `secrets.adminPassword` only applies at creation. Honest, accurate, and
+worthless — the operator still ended up locked out of a machine they had just built.
+§4.71 said honesty about a limit is not a licence to make it the operator's problem, and
+this is the same lesson arriving through the front door: *documenting* a trap is not
+*removing* one, and a warning the reader has to act on before they know they need it is
+not a warning at all.
+
+The fix moves the credential from a log line to state, reusing the chart's existing
+self-configuring-secret machinery: `admin-password` is generated like `db-password` and
+`jwt-secret`, reused across upgrades via `lookup`, and therefore always readable with
+`kubectl get secret`. Because the value is now always present in the pod, the app can
+treat it as authoritative on every start — which makes setting it a real reset, and means
+an install already in this state repairs itself on the next `helm upgrade` instead of
+needing psql.
+
+The general shape, for the next time: **a secret that exists in exactly one place, for
+exactly one moment, is not stored — it is announced.** Anything an operator will need
+later has to live somewhere they can query on their own schedule, not somewhere they had
+to be watching.

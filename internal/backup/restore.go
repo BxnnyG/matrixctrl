@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -142,25 +143,194 @@ func (a *Archive) RestoreDatabase(ctx context.Context, db *pgxpool.Pool) (restor
 		}
 	}()
 
+	var want []string
 	for _, t := range a.Manifest.Tables {
 		if neverRestored[t.Name] {
 			continue
 		}
-		data, ok := a.tables[t.Name]
-		if !ok {
+		if _, ok := a.tables[t.Name]; !ok {
 			continue // listed but absent: nothing to write, and not a reason to abort
 		}
-		n, rerr := restoreTable(ctx, tx, t.Name, data)
-		if rerr != nil {
-			err = fmt.Errorf("%s: %w", t.Name, rerr)
+		want = append(want, t.Name)
+	}
+
+	// Order comes from the target schema, never from the archive or the alphabet. The
+	// target is what the rows have to satisfy, and an archive can predate any constraint
+	// in it (etappe 74).
+	order, clear, err := restorePlan(ctx, tx, want)
+	if err != nil {
+		return nil, err
+	}
+
+	// One TRUNCATE for all of them, not one per table. Postgres refuses to empty a table
+	// another table references — even when that other table holds no rows — unless both
+	// are named in the same statement. Per-table TRUNCATE therefore cannot be made to
+	// work in any order, and CASCADE would silently empty tables the archive says nothing
+	// about. `clear` is the archive's tables plus everything that references them.
+	if len(clear) > 0 {
+		quoted := make([]string, len(clear))
+		for i, name := range clear {
+			quoted[i] = fmt.Sprintf("%q", name)
+		}
+		if _, err = tx.Exec(ctx, "TRUNCATE "+strings.Join(quoted, ", ")); err != nil {
+			err = fmt.Errorf("leeren: %w", err)
 			return nil, err
 		}
-		restored = append(restored, fmt.Sprintf("%s (%d)", t.Name, n))
+	}
+
+	for _, name := range order {
+		n, rerr := restoreTable(ctx, tx, name, a.tables[name])
+		if rerr != nil {
+			err = fmt.Errorf("%s: %w", name, rerr)
+			return nil, err
+		}
+		restored = append(restored, fmt.Sprintf("%s (%d)", name, n))
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return restored, nil
+}
+
+// restorePlan returns the tables to fill, every parent ahead of its children, and the
+// tables to empty first.
+//
+// Read from pg_constraint rather than written down here, so a foreign key added by a
+// future migration plans itself without anyone remembering this function exists. That is
+// the whole point: the list that was written down by hand said there were no foreign keys
+// at all, while two had been in the schema since migration 002 (etappe 74).
+//
+// The set to empty is wider than the set to fill, and deliberately so. A table that holds
+// no rows at backup time is not in the archive, but it can still reference one that is,
+// and Postgres will not empty a referenced table unless its referencing tables are
+// emptied in the same breath. Following the references outward — and no further — keeps
+// tables the archive never claimed to cover untouched, which TRUNCATE ... CASCADE would
+// not.
+func restorePlan(ctx context.Context, tx pgx.Tx, want []string) (order, clear []string, err error) {
+	live := map[string]bool{}
+	rows, err := tx.Query(ctx, `SELECT table_name FROM information_schema.tables
+		WHERE table_schema='public' AND table_type='BASE TABLE'`)
+	if err != nil {
+		return nil, nil, err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		live[name] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// A table the archive knows and this schema does not is skipped, not an error: it is
+	// an archive from before the table was dropped, and recreating it would undo a
+	// migration.
+	pending := map[string]bool{}
+	var names []string
+	for _, n := range want {
+		if live[n] && !pending[n] {
+			pending[n] = true
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+
+	// parents[child] orders the fill; children[parent] widens what has to be emptied.
+	parents := map[string]map[string]bool{}
+	children := map[string][]string{}
+	fk, err := tx.Query(ctx, `
+		SELECT child.relname, parent.relname
+		FROM pg_constraint c
+		JOIN pg_class child ON child.oid = c.conrelid
+		JOIN pg_class parent ON parent.oid = c.confrelid
+		JOIN pg_namespace n ON n.oid = child.relnamespace
+		WHERE c.contype = 'f' AND n.nspname = 'public'`)
+	if err != nil {
+		return nil, nil, err
+	}
+	for fk.Next() {
+		var child, parent string
+		if err := fk.Scan(&child, &parent); err != nil {
+			fk.Close()
+			return nil, nil, err
+		}
+		// A self-reference is satisfied inside the table's own COPY, and treating it as a
+		// dependency would make every such table look like a cycle.
+		if child == parent || !live[child] || !live[parent] {
+			continue
+		}
+		children[parent] = append(children[parent], child)
+		if pending[child] && pending[parent] {
+			if parents[child] == nil {
+				parents[child] = map[string]bool{}
+			}
+			parents[child][parent] = true
+		}
+	}
+	fk.Close()
+	if err := fk.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	seen := map[string]bool{}
+	queue := append([]string(nil), names...)
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		if seen[n] || neverRestored[n] {
+			continue
+		}
+		seen[n] = true
+		clear = append(clear, n)
+		queue = append(queue, children[n]...)
+	}
+	sort.Strings(clear)
+
+	return topoSort(names, parents), clear, nil
+}
+
+// topoSort puts every parent ahead of its children, keeping name order among tables that
+// do not constrain each other so two runs of the same restore behave the same way.
+//
+// A cycle cannot be ordered, and refusing to restore because of one would be a worse
+// answer than trying: the remaining tables are appended in name order and Postgres gets
+// to say whether it actually minds.
+func topoSort(names []string, parents map[string]map[string]bool) []string {
+	done := map[string]bool{}
+	out := make([]string, 0, len(names))
+	for len(out) < len(names) {
+		progress := false
+		for _, n := range names {
+			if done[n] {
+				continue
+			}
+			ready := true
+			for p := range parents[n] {
+				if !done[p] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				done[n] = true
+				out = append(out, n)
+				progress = true
+			}
+		}
+		if !progress {
+			for _, n := range names {
+				if !done[n] {
+					done[n] = true
+					out = append(out, n)
+				}
+			}
+		}
+	}
+	return out
 }
 
 func restoreTable(ctx context.Context, tx pgx.Tx, table string, csvData []byte) (int, error) {
@@ -173,20 +343,23 @@ func restoreTable(ctx context.Context, tx pgx.Tx, table string, csvData []byte) 
 	}
 	header := rows[0]
 
-	// Which of the archive's columns still exist here.
+	// Which of the archive's columns still exist here, and which of them accept NULL.
+	// Nullability is read rather than assumed: see the empty-field handling below.
 	live := map[string]bool{}
-	cur, err := tx.Query(ctx, `SELECT column_name FROM information_schema.columns
+	nullable := map[string]bool{}
+	cur, err := tx.Query(ctx, `SELECT column_name, is_nullable FROM information_schema.columns
 		WHERE table_schema='public' AND table_name=$1`, table)
 	if err != nil {
 		return 0, err
 	}
 	for cur.Next() {
-		var c string
-		if err := cur.Scan(&c); err != nil {
+		var c, isNullable string
+		if err := cur.Scan(&c, &isNullable); err != nil {
 			cur.Close()
 			return 0, err
 		}
 		live[c] = true
+		nullable[c] = isNullable == "YES"
 	}
 	cur.Close()
 	if len(live) == 0 {
@@ -207,10 +380,6 @@ func restoreTable(ctx context.Context, tx pgx.Tx, table string, csvData []byte) 
 		return 0, nil
 	}
 
-	if _, err := tx.Exec(ctx, fmt.Sprintf("TRUNCATE %q", table)); err != nil {
-		return 0, err
-	}
-
 	src := pgx.CopyFromSlice(len(rows)-1, func(i int) ([]any, error) {
 		rec := rows[i+1]
 		out := make([]any, len(idx))
@@ -219,11 +388,22 @@ func restoreTable(ctx context.Context, tx pgx.Tx, table string, csvData []byte) 
 				out[j] = nil
 				continue
 			}
-			// COPY CSV writes NULL as an empty unquoted field; encoding/csv cannot tell
-			// that from an empty string, so empty becomes NULL. Every column here is
-			// either nullable or has a default, so this is the safe direction.
+			// COPY CSV writes NULL as an empty unquoted field, and encoding/csv cannot
+			// tell that from a quoted empty string — so the archive alone cannot say
+			// which one a blank was. The schema can: a blank goes back as NULL only
+			// where NULL is allowed, and as "" everywhere else.
+			//
+			// This used to send NULL unconditionally, justified by the claim that every
+			// column was "either nullable or has a default". report_dispositions.note is
+			// `NOT NULL DEFAULT ''` — and a default does not apply to an explicitly
+			// supplied NULL, only to an omitted column. So the reasoning was wrong in a
+			// way that made the wrong answer look considered (etappe 74).
 			if rec[at] == "" {
-				out[j] = nil
+				if nullable[header[at]] {
+					out[j] = nil
+				} else {
+					out[j] = ""
+				}
 				continue
 			}
 			out[j] = rec[at]

@@ -47,7 +47,10 @@ func main() {
 	essNS := env("MATRIXCTRL_ESS_NAMESPACE", "ess")
 	essRelease := env("MATRIXCTRL_ESS_RELEASE", "ess")
 	configRepoPath := env("MATRIXCTRL_CONFIG_REPO", "/data/config-repo")
-	configSeedPath := env("MATRIXCTRL_CONFIG_SEED", "/root/ess-config-values")
+	// Empty by default: seeding is opt-in. This used to default to the first deployment's
+	// own home directory, so every other machine logged a permission-denied warning about
+	// a path that was never meant to exist there (etappe 75).
+	configSeedPath := env("MATRIXCTRL_CONFIG_SEED", "")
 
 	pool, err := db.New(ctx, dbURL)
 	if err != nil {

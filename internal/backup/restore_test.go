@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -193,4 +194,72 @@ func TestReadUnderstandsAFullArchive(t *testing.T) {
 	if a.Manifest.ESS.Chart != "matrix-stack-26.8.0" {
 		t.Errorf("ESS release lost: %+v", a.Manifest.ESS)
 	}
+}
+
+// TestRestoreOrderPutsParentsFirst covers the ordering on its own, without a database.
+//
+// The case that matters is the real one: hook_run_log references hooks, and sorts before
+// it, so alphabetical order — what the restore used until etappe 74 — is exactly wrong.
+func TestRestoreOrderPutsParentsFirst(t *testing.T) {
+	before := func(t *testing.T, out []string, first, second string) {
+		t.Helper()
+		i, j := indexOf(out, first), indexOf(out, second)
+		if i < 0 || j < 0 {
+			t.Fatalf("%q or %q missing from %v", first, second, out)
+		}
+		if i > j {
+			t.Errorf("%q must come before %q, got %v", first, second, out)
+		}
+	}
+
+	t.Run("the pair that broke the restore", func(t *testing.T) {
+		names := []string{"audit_log", "hook_run_log", "hooks"}
+		parents := map[string]map[string]bool{"hook_run_log": {"hooks": true}}
+		out := topoSort(names, parents)
+		before(t, out, "hooks", "hook_run_log")
+		if len(out) != len(names) {
+			t.Errorf("lost a table: %v", out)
+		}
+	})
+
+	t.Run("the pair that worked by luck stays working", func(t *testing.T) {
+		names := []string{"config_snapshots", "upgrade_history"}
+		parents := map[string]map[string]bool{"upgrade_history": {"config_snapshots": true}}
+		before(t, topoSort(names, parents), "config_snapshots", "upgrade_history")
+	})
+
+	t.Run("a chain", func(t *testing.T) {
+		names := []string{"c", "b", "a"}
+		parents := map[string]map[string]bool{"c": {"b": true}, "b": {"a": true}}
+		out := topoSort(names, parents)
+		if !reflect.DeepEqual(out, []string{"a", "b", "c"}) {
+			t.Errorf("got %v", out)
+		}
+	})
+
+	t.Run("unrelated tables keep name order", func(t *testing.T) {
+		names := []string{"a", "b", "c"}
+		out := topoSort(names, nil)
+		if !reflect.DeepEqual(out, names) {
+			t.Errorf("two runs of the same restore must agree: %v", out)
+		}
+	})
+
+	t.Run("a cycle is restored rather than refused", func(t *testing.T) {
+		names := []string{"a", "b"}
+		parents := map[string]map[string]bool{"a": {"b": true}, "b": {"a": true}}
+		out := topoSort(names, parents)
+		if len(out) != 2 {
+			t.Fatalf("a cycle must still yield every table, got %v", out)
+		}
+	})
+}
+
+func indexOf(hay []string, needle string) int {
+	for i, s := range hay {
+		if s == needle {
+			return i
+		}
+	}
+	return -1
 }

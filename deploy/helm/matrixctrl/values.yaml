@@ -90,7 +90,10 @@ secrets:
   dbPassword: ""
   # HS256 signing key for JWT tokens. Empty = auto-generate (randAlphaNum 48).
   jwtSecret: ""
-  # Initial bootstrap admin password (logged on first run if unset).
+  # Bootstrap admin password. Left empty, one is generated into this release's Secret
+  # and kept there across upgrades — read it back with:
+  #   kubectl -n matrixctrl get secret matrixctrl-secret -o jsonpath='{.data.admin-password}' | base64 -d
+  # Setting it here is also how you *reset* it: it is applied on every start.
   adminPassword: ""
 
 # OIDC via MAS — optional. Leave clientId empty to start in bootstrap mode and

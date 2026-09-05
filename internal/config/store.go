@@ -56,7 +56,14 @@ func (s *Store) Init(ctx context.Context, srcDir string) error {
 		{Name: "tls", File: "tls.yaml", Description: "cert-manager TLS configuration"},
 	}
 
+	// No seed directory is the normal case for a fresh install, and it has to be checked
+	// explicitly: filepath.Join("", "values.yaml") is "values.yaml", a *relative* path,
+	// so an empty seed would quietly read whatever happens to sit in the working
+	// directory (etappe 75).
 	for _, m := range defaults {
+		if srcDir == "" {
+			break
+		}
 		src := filepath.Join(srcDir, m.File)
 		dst := filepath.Join(s.path, m.File)
 		data, err := os.ReadFile(src)
