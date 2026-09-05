@@ -146,3 +146,51 @@ func TestSchemaMigrationsIsNeverRestored(t *testing.T) {
 		t.Error("restoring schema_migrations would misreport which migrations have run")
 	}
 }
+
+// E72 moved the archive's contents under matrixctrl/ and homeserver/ while Read() still
+// looked at the top level. The root manifest of a full archive carries a matching
+// format_version, so nothing was refused: the restore found no tables and no config
+// files, and reported success. A silent no-op is the worst failure a backup feature can
+// have, which is why this test was written before the fix (etappe 73).
+func TestReadUnderstandsAFullArchive(t *testing.T) {
+	cfg := Manifest{
+		FormatVersion: FormatVersion,
+		Tables:        []Table{{Name: "hooks", File: "db/hooks.csv"}},
+		ConfigFiles:   1,
+	}
+	root, err := json.Marshal(FullManifest{
+		FormatVersion: FormatVersion,
+		Parts:         []string{"matrixctrl/", "homeserver/"},
+		Config:        cfg,
+		ESS:           Release{Chart: "matrix-stack-26.8.0", Revision: 30},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := Read(bytes.NewReader(pack(t, map[string]string{
+		"manifest.json":                       string(root),
+		"matrixctrl/manifest.json":            manifestJSON(t, cfg),
+		"matrixctrl/db/hooks.csv":             "id,name\n1,x\n",
+		"matrixctrl/config-repo/synapse.yaml": "## comment\n",
+		"homeserver/db/events.csv":            "event_id\n$abc\n",
+	})))
+	if err != nil {
+		t.Fatalf("a full archive must be readable: %v", err)
+	}
+	if len(a.tables) == 0 {
+		t.Error("the database part was not found — a restore would silently do nothing")
+	}
+	if len(a.config) == 0 {
+		t.Error("the config part was not found")
+	}
+	// Synapse's tables must not be restored into MatrixCtrl's database: they belong to
+	// another system and are put back with psql.
+	if _, ok := a.tables["events"]; ok {
+		t.Error("homeserver tables must not enter MatrixCtrl's restore set")
+	}
+	// The ESS release must survive, so the preview can still say which version it is.
+	if a.Manifest.ESS.Chart != "matrix-stack-26.8.0" {
+		t.Errorf("ESS release lost: %+v", a.Manifest.ESS)
+	}
+}

@@ -28,18 +28,40 @@ function BackupPage() {
   // The cost is that the browser holds the archive in memory. That is a property of
   // authenticated downloads, not a design choice — the server still streams it.
   const [busy, setBusy] = useState<string | null>(null);
+  const [got, setGot] = useState(0);
   const [dlErr, setDlErr] = useState<string | null>(null);
+  const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
 
   // One helper for all three downloads. There were two near-identical copies before,
   // which is how the second one ended up with a different error message than the first.
   const grab = async (path: string, fallback: string, label: string) => {
-    setBusy(label); setDlErr(null);
+    setBusy(label); setDlErr(null); setGot(0);
     try {
       const res = await fetch(path, {
         headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
+
+      // Counted as it arrives rather than shown as a percentage. The archive is
+      // streamed, so there is no Content-Length to divide by — and a progress bar with
+      // an invented denominator is the thing §4.41 exists to forbid. Bytes are a number
+      // that is actually known (etappe 73).
+      const reader = res.body?.getReader();
+      let blob: Blob;
+      if (reader) {
+        const chunks: BlobPart[] = [];
+        let total = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          total += value.length;
+          setGot(total);
+        }
+        blob = new Blob(chunks);
+      } else {
+        blob = await res.blob();
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -108,7 +130,7 @@ function BackupPage() {
           </div>
           <Button variant="primary" icon="download" disabled={!!busy}
             onClick={() => void grab("/api/v1/status/backup/full", "matrixctrl-full.tar.gz", "full")}>
-            {busy === "full" ? "Wird erstellt…" : "Herunterladen"}
+            {busy === "full" ? (got ? `${mb(got)} MB…` : "Wird erstellt…") : "Herunterladen"}
           </Button>
         </div>
 

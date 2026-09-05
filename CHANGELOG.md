@@ -15,6 +15,34 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.69] — 2026-09-05
+
+### Fixed
+
+- **Restoring a full archive would have restored nothing, and said it worked.** 0.1.68
+  moved the archive's contents into subdirectories; the restore path still looked at the
+  top level, and because the root manifest carried a matching format version nothing was
+  refused — it found no tables, no configuration, and reported success. Both layouts are
+  read now, and archives made before 0.1.68 still restore.
+- Synapse's tables are skipped by the restore rather than written into MatrixCtrl's
+  database: they belong to another system and are put back with `psql`.
+
+### Added
+
+- **Loading skeletons** for the room list, the report queues and the member list — the
+  shape of the table that is coming, so the layout stops jumping when data lands. Full
+  page loads keep a spinner, where there is no shape to promise yet.
+- **The download button counts bytes received** (`142.3 MB…`). Not a progress bar: the
+  archive is streamed, so there is no total to divide by, and a bar with an invented
+  denominator is worse than a number that is actually known. On a 300 MB homeserver dump
+  it is the difference between a working download and a dead button.
+
+### Notes
+
+- The skeleton pulse honours `prefers-reduced-motion`, and is an opacity change rather
+  than a shimmer sweep — with a dozen placeholders on a page, a sweep is what the eye
+  follows.
+
 ## [0.1.68] — 2026-09-05
 
 ### Changed

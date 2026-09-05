@@ -195,3 +195,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .mc-comp-row > :first-child { grid-column: 1 / -1; }
   .mc-comp-row > :last-child { display: none; }
 }
+
+/* Skeleton placeholders (etappe 73). A slow opacity pulse rather than a shimmer sweep:
+   on a page with a dozen of them, a sweep is what the eye follows, and a placeholder
+   that draws attention is doing the opposite of its job. */
+@keyframes mc-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.8; }
+}
+
+/* Respect a reader who has asked for less motion — a pulsing block is exactly the kind
+   of thing that setting exists for. */
+@media (prefers-reduced-motion: reduce) {
+  [style*="mc-pulse"] { animation: none !important; }
+}

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, Badge, Icon, Button, SectionTitle, Spinner, EmptyState } from "@/components/mc";
+import { Card, Badge, Icon, Button, SectionTitle, Spinner, EmptyState , SkeletonRows } from "@/components/mc";
 
 export const Route = createFileRoute("/rooms/$id")({ component: RoomDetail });
 
@@ -214,7 +214,7 @@ function RoomDetail() {
           {total > 0 && <span style={{ fontSize: 12, color: "var(--text-faint)" }}>{total}</span>}
         </div>
         {members.isFetching && list.length === 0 ? (
-          <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>
+          <div style={{ padding: "14px 16px" }}><SkeletonRows rows={4} height={15} /></div>
         ) : list.length === 0 ? (
           <EmptyState icon="users" title="Keine Mitglieder" sub="In diesem Raum ist niemand." />
         ) : (

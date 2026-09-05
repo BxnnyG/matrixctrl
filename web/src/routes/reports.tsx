@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner, Tabs } from "@/components/mc";
+import { Card, Badge, Icon, EmptyState, Button, SectionTitle, Spinner, Tabs , SkeletonRows } from "@/components/mc";
 import { MatrixConnect, clearConnectAttempt } from "@/components/MatrixConnect";
 import { orderReports, claimForPage } from "@/lib/paging";
 
@@ -525,7 +525,8 @@ function Reports() {
       {!notAdmin && !needsConnect && (
         <Card pad={false}>
           {active.isFetching && rowsAll.length === 0 ? (
-            <div style={{ padding: 24, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>
+            // See rooms.tsx: the shape of the queue rather than a spinner.
+            <div style={{ padding: "18px 20px" }}><SkeletonRows rows={4} height={18} /></div>
           ) : shown.length === 0 ? (
             // "No open reports" is a *result*, and a good one. It must never read as
             // "could not load", which is the failure this empty state exists to

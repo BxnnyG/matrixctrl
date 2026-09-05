@@ -310,3 +310,40 @@ export function useIsMobile(query = "(max-width: 860px)"): boolean {
   }, [query]);
   return mobile;
 }
+
+/** A placeholder with the shape of the thing that is loading.
+ *
+ *  A spinner says "something is happening"; a skeleton says "a table is coming, this
+ *  wide, with this many rows", which stops the layout jumping when the data lands
+ *  (etappe 73).
+ *
+ *  Deliberately not animated with a shimmer sweep: on a page with a dozen of them the
+ *  sweep is what the eye follows, and the point is to be ignorable. */
+export function Skeleton({ height = 14, width = "100%", radius = 6, style }: {
+  height?: number | string; width?: number | string; radius?: number; style?: CSSProperties;
+}) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "block", height, width, borderRadius: radius,
+        background: "var(--surface-2)", opacity: 0.7,
+        animation: "mc-pulse 1.6s ease-in-out infinite",
+        ...style,
+      }}
+    />
+  );
+}
+
+/** Several skeleton lines, for a list or table that is loading. */
+export function SkeletonRows({ rows = 3, gap = 10, height = 14 }: { rows?: number; gap?: number; height?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap }}>
+      {Array.from({ length: rows }, (_, i) => (
+        // The last row is shorter, because a real list rarely ends flush and a block of
+        // identical bars reads as a rendering fault rather than as loading.
+        <Skeleton key={i} height={height} width={i === rows - 1 ? "62%" : "100%"} />
+      ))}
+    </div>
+  );
+}

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, Badge, EmptyState, Button, SectionTitle, Spinner } from "@/components/mc";
+import { Card, Badge, EmptyState, Button, SectionTitle, Spinner , SkeletonRows } from "@/components/mc";
 import { MatrixConnect, clearConnectAttempt } from "@/components/MatrixConnect";
 
 export const Route = createFileRoute("/rooms")({
@@ -148,7 +148,9 @@ function Rooms() {
 
           <Card>
             {rooms.isFetching && list.length === 0 ? (
-              <div style={{ padding: 24, color: "var(--text-faint)", fontSize: 13 }}><Spinner size={14} /> Laden…</div>
+              // A table is coming; showing its shape stops the page jumping when it
+              // lands, which a spinner cannot do (etappe 73).
+              <div style={{ padding: "18px 20px" }}><SkeletonRows rows={5} height={16} /></div>
             ) : list.length === 0 ? (
               <EmptyState
                 icon="room"

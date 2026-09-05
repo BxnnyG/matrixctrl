@@ -2666,3 +2666,37 @@ not built here because it cannot be exercised here — the same token wall as P2
 backup path that has never successfully run is worse than a documented gap. Recorded with
 the route that works, so the next attempt starts from evidence rather than from "the
 volume is not mounted".
+
+### §4.72 — Changing a producer without re-checking its consumer (2026-09-05, agent, etappe 73)
+
+The operator asked whether backup and restore now worked together. Checking rather than
+answering found that they did not.
+
+E72 had moved the archive's contents under `matrixctrl/` and `homeserver/` an hour
+earlier. `Read()` still looked at the top level, and the root manifest of a full archive
+carries a matching `format_version` — so nothing was refused, nothing was found, and the
+restore reported *"0 Konfigurationsdateien und 0 Tabellen wiederhergestellt"* as success.
+
+**A silent no-op is the worst failure a backup feature can have.** Every other bug in
+this log announced itself eventually; this one waits for the person who needs it to work,
+at the moment they need it, and then tells them their archive was empty.
+
+The mechanism is worth naming precisely, because it is not carelessness and it will
+recur: I changed a *producer* and did not re-check its *consumer*. Both were mine, both
+were correct in isolation, and the format they agreed on was implicit — a set of path
+prefixes with no schema anywhere and no test crossing the two. The same absence that let
+§4.61's constants be declared and never performed, one layer up: nothing failed when the
+agreement broke.
+
+The defence that worked was the operator's question. "Should everything work now?" is
+exactly the prompt that turns an assumption into a check, and it is the third time in
+this session that answering one honestly has produced a defect (§4.60's rollback trigger,
+§4.71's media route, this). **A question about whether something works is a test
+somebody else wrote for you.**
+
+Written as a failing test first, which mattered here: it failed with *no error and no
+data*, which is what made the severity legible. An assertion that expects a specific
+error would have passed on the broken code.
+
+Both layouts are read now. Flat archives already exist in the wild, and a reader that
+silently ignores half of a file it does not recognise is what caused this.

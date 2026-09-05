@@ -49,6 +49,11 @@ func Read(r io.Reader) (*Archive, error) {
 	a := &Archive{tables: map[string][]byte{}, config: map[string][]byte{}}
 	tr := tar.NewReader(gz)
 	seenManifest := false
+	// A full archive (etappe 72) puts MatrixCtrl's part under matrixctrl/ and Synapse's
+	// under homeserver/. Both layouts are accepted: archives in the flat one already
+	// exist, and a reader that silently ignores half of a newer file is exactly what
+	// this function did before etappe 73 — no error, nothing restored, success reported.
+	const nested = "matrixctrl/"
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -67,16 +72,44 @@ func Read(r io.Reader) (*Archive, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Everything below matrixctrl/ is read as if it were at the root; homeserver/
+		// is deliberately skipped, because Synapse's tables belong to another database
+		// and are restored with psql, not written into this one.
+		inner := clean
+		if strings.HasPrefix(clean, nested) {
+			inner = strings.TrimPrefix(clean, nested)
+		} else if strings.HasPrefix(clean, "homeserver/") {
+			continue
+		}
+
 		switch {
 		case clean == "manifest.json":
-			if err := json.Unmarshal(data, &a.Manifest); err != nil {
+			// The root manifest of a full archive is a FullManifest; its nested Config
+			// field carries what a flat archive keeps at the top. Decoded into both so
+			// either layout produces the same Manifest.
+			var full FullManifest
+			if json.Unmarshal(data, &full) == nil && len(full.Parts) > 0 {
+				a.Manifest = full.Config
+				a.Manifest.FormatVersion = full.FormatVersion
+				a.Manifest.ESS = full.ESS
+				a.Manifest.CreatedAt = full.CreatedAt
+				a.Manifest.AppVersion = full.AppVersion
+				a.Manifest.NotIncluded = full.NotIncluded
+			} else if err := json.Unmarshal(data, &a.Manifest); err != nil {
 				return nil, fmt.Errorf("Manifest unlesbar: %w", err)
 			}
 			seenManifest = true
-		case strings.HasPrefix(clean, "db/") && strings.HasSuffix(clean, ".csv"):
-			a.tables[strings.TrimSuffix(strings.TrimPrefix(clean, "db/"), ".csv")] = data
-		case strings.HasPrefix(clean, "config-repo/"):
-			a.config[strings.TrimPrefix(clean, "config-repo/")] = data
+		case inner == "manifest.json":
+			// The nested manifest is authoritative for the table list.
+			var m Manifest
+			if json.Unmarshal(data, &m) == nil && len(m.Tables) > 0 {
+				a.Manifest.Tables = m.Tables
+				a.Manifest.ConfigFiles = m.ConfigFiles
+			}
+		case strings.HasPrefix(inner, "db/") && strings.HasSuffix(inner, ".csv"):
+			a.tables[strings.TrimSuffix(strings.TrimPrefix(inner, "db/"), ".csv")] = data
+		case strings.HasPrefix(inner, "config-repo/"):
+			a.config[strings.TrimPrefix(inner, "config-repo/")] = data
 		}
 	}
 	if !seenManifest {
