@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -285,11 +286,26 @@ func NewStatusHandler(k8sClient *k8s.Client, helmClient *helm.Client, essNS, ess
 	}
 }
 
+// Concrete types, not interface{}.
+//
+// A nil slice in an interface{} marshals to `null`, and the dashboard reads
+// `components` as a list: on a fresh install, where there is no ESS namespace yet,
+// ComponentHealth fails, `components` stays nil, the response says null, and
+// `data.components.filter(...)` throws a TypeError. React unmounts the route and the
+// operator gets TanStack Router's default screen — "Something went wrong!", no cause,
+// no way on. Which is what happened: they logged into a new server and had to find
+// Setup by typing the URL.
+//
+// `null` where a list belongs is not an empty answer, it is a differently-shaped one.
 type statusResponse struct {
-	Release     interface{} `json:"release"`
-	Components  interface{} `json:"components"`
-	Nodes       interface{} `json:"nodes"`
-	EvictedPods int         `json:"evicted_pods"`
+	Release     *helm.ReleaseInfo     `json:"release"`
+	Components  []k8s.ComponentHealth `json:"components"`
+	Nodes       []k8s.NodeInfo        `json:"nodes"`
+	EvictedPods int                   `json:"evicted_pods"`
+	// Empty when everything answered. Names the sources that did not, so the UI can
+	// distinguish "nothing is deployed" from "we could not find out" — they look
+	// identical in the data and mean opposite things.
+	Unavailable []string `json:"unavailable,omitempty"`
 }
 
 // Get answers the dashboard poll (every 15 s). The four sources are independent,
@@ -302,12 +318,24 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var (
-		components interface{}
-		nodes      interface{}
-		release    interface{}
-		evicted    int
-		wg         sync.WaitGroup
+		components  []k8s.ComponentHealth
+		nodes       []k8s.NodeInfo
+		release     *helm.ReleaseInfo
+		evicted     int
+		unavailable []string
+		mu          sync.Mutex
+		wg          sync.WaitGroup
 	)
+
+	// These errors used to be discarded with `_`. On a working cluster that is
+	// invisible; on a fresh one it is the whole story, and it was thrown away at the
+	// exact moment it was the only thing worth saying.
+	fail := func(source string, err error) {
+		log.Printf("status: %s unavailable: %v", source, err)
+		mu.Lock()
+		unavailable = append(unavailable, source)
+		mu.Unlock()
+	}
 
 	run := func(f func()) {
 		wg.Add(1)
@@ -318,21 +346,54 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.k8s != nil {
-		run(func() { components, _ = h.k8s.ComponentHealth(ctx, h.essNS) })
-		run(func() { nodes, _ = h.k8s.NodeInfo(ctx) })
+		run(func() {
+			got, err := h.k8s.ComponentHealth(ctx, h.essNS)
+			if err != nil {
+				fail("components", err)
+				return
+			}
+			components = got
+		})
+		run(func() {
+			got, err := h.k8s.NodeInfo(ctx)
+			if err != nil {
+				fail("nodes", err)
+				return
+			}
+			nodes = got
+		})
 		run(func() { evicted = h.k8s.EvictedPodCount(ctx, h.essNS) })
 	}
 	if h.helm != nil {
-		run(func() { release, _ = h.helm.GetRelease(h.essRelease) })
+		run(func() {
+			got, err := h.helm.GetRelease(h.essRelease)
+			if err != nil {
+				// Not an error worth naming: "no release" is the normal state of a
+				// fresh install, and the dashboard reads a null release as exactly that.
+				log.Printf("status: no ESS release %q: %v", h.essRelease, err)
+				return
+			}
+			release = got
+		})
 	}
 
 	wg.Wait()
+
+	// A list is always a list. See the type comment.
+	if components == nil {
+		components = []k8s.ComponentHealth{}
+	}
+	if nodes == nil {
+		nodes = []k8s.NodeInfo{}
+	}
+	sort.Strings(unavailable)
 
 	JSON(w, http.StatusOK, statusResponse{
 		Release:     release,
 		Components:  components,
 		Nodes:       nodes,
 		EvictedPods: evicted,
+		Unavailable: unavailable,
 	})
 }
 

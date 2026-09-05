@@ -73,9 +73,15 @@ interface ComponentStatus {
 interface NodeInfo { name: string; cpu_used_millis: number; cpu_total_millis: number; mem_used_mi: number; mem_total_mi: number }
 interface StatusResponse {
   release?: { name: string; chart_version: string; revision: number; status: string; deployed_at?: string };
-  components: ComponentStatus[];
-  nodes: NodeInfo[];
+  /** Null from servers before the fix in internal/api/handlers/status.go: a failed
+   *  ComponentHealth left it nil and it marshalled as null. Optional here so an old
+   *  server cannot take the page down. */
+  components?: ComponentStatus[] | null;
+  nodes?: NodeInfo[] | null;
   evicted_pods: number;
+  /** Sources that could not be reached. Distinguishes "nothing deployed" from
+   *  "could not find out" — identical in the data, opposite in meaning. */
+  unavailable?: string[];
 }
 interface SysInfoResponse {
   pvcs?: { name: string; phase: string; capacity?: string }[];
@@ -224,11 +230,32 @@ function Dashboard() {
   }
   if (!data) return null;
 
+  const components = data.components ?? [];
+
+  // A fresh install has no ESS. Every number below would be a truthful zero and the
+  // page would read as an outage: nothing running, nothing ready, no release. The
+  // operator who hit this had to guess that Setup was the way on, and typed the URL.
+  if (!data.release && components.length === 0) {
+    const blind = (data.unavailable ?? []).length > 0;
+    return (
+      <Card>
+        <EmptyState
+          icon={blind ? "alert" : "sparkle"}
+          title={blind ? "Der Cluster antwortet gerade nicht" : "Noch kein ESS auf diesem Server"}
+          sub={blind
+            ? `Nicht erreichbar: ${(data.unavailable ?? []).join(", ")}. Das ist etwas anderes als „nichts installiert" — die Logs des Pods sagen, was fehlschlägt.`
+            : "MatrixCtrl läuft, verwaltet aber noch nichts. Über Setup einen neuen Homeserver ausrollen oder ein bestehendes ESS übernehmen."}
+          action={<Button icon="arrow-right" onClick={() => navigate({ to: "/setup" })}>Zu Setup</Button>}
+        />
+      </Card>
+    );
+  }
+
   const node = data.nodes?.[0];
   const cpu = node ? pct(node.cpu_used_millis, node.cpu_total_millis) : 0;
   const mem = node ? pct(node.mem_used_mi, node.mem_total_mi) : 0;
-  const attention = data.components.filter(needsAttention);
-  const totalRestarts = data.components.reduce((n, c) => n + c.restarts, 0);
+  const attention = components.filter(needsAttention);
+  const totalRestarts = components.reduce((n, c) => n + c.restarts, 0);
   // Two different questions, and the banner used to ask only the first.
   //
   // `restarts > 20` is a lifetime count: it cannot tell a container dying every
@@ -237,8 +264,8 @@ function Dashboard() {
   // stable for the last seventeen hours, rendered as "postgres in Restart-Schleife"
   // — a red alert claiming the database was crash-looping, when postgres itself has
   // restarted exactly zero times (E53, §4.42 and §4.43 together).
-  const loopingComponents = data.components.filter((c) => c.looping);
-  const hotComponents = data.components.filter((c) => c.restarts > 20 && !c.looping);
+  const loopingComponents = components.filter((c) => c.looping);
+  const hotComponents = components.filter((c) => c.restarts > 20 && !c.looping);
 
   // What actually restarted. `restarts_by` is deliberately empty when no single
   // container carries the count, and the workload name is then the honest answer.
@@ -246,7 +273,7 @@ function Dashboard() {
 
   // Components the scheduler refused. "down" is what kubectl already says; this is
   // the sentence that was missing for 37 hours during the outage of 2026-08-16…18.
-  const unplaceable = data.components.filter((c) => c.unschedulable);
+  const unplaceable = components.filter((c) => c.unschedulable);
   const warnEvents = (events ?? []).filter((e) => e.type === "Warning");
   const rel = data.release;
   const ver = rel?.chart_version?.replace(/^matrix-stack-/, "") || "—";
@@ -269,7 +296,7 @@ function Dashboard() {
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-faint)" }}>
                 <span style={{ fontFamily: "var(--mono)" }}>matrix-stack {ver}</span>
                 <span>·</span><span>Revision #{rel?.revision ?? "—"}</span>
-                <span>·</span><span>{data.components.length} Komponenten</span>
+                <span>·</span><span>{components.length} Komponenten</span>
                 {node && <><span>·</span><span style={{ fontFamily: "var(--mono)" }}>{node.name}</span></>}
               </div>
             </div>
@@ -295,7 +322,7 @@ function Dashboard() {
           <Meter value={mem} tone="auto" />
           {node && <span style={{ fontSize: 10.5, color: "var(--text-faint)", fontFamily: "var(--mono)" }}>{node.mem_used_mi} / {node.mem_total_mi} MiB</span>}
         </Card>
-        <MiniStat label="Pods (ess)" value={essPods ?? data.components.reduce((n, c) => n + c.ready, 0)} unit={`/ ${boundPvcs} PVCs`} icon="server" />
+        <MiniStat label="Pods (ess)" value={essPods ?? components.reduce((n, c) => n + c.ready, 0)} unit={`/ ${boundPvcs} PVCs`} icon="server" />
         {/* "kritisch" means looping now, not merely high. A lifetime total above a
             threshold is not a critical condition, and colouring it red spends the
             operator's attention on something that already stopped (E53). */}
@@ -458,8 +485,8 @@ function Dashboard() {
             <span style={{ paddingLeft: 16 }}>Komponente</span><span>Status</span><span>Ready</span><span>Restarts</span><span />
           </div>
           <div style={{ padding: "0 6px 8px" }}>
-            {data.components.map((c, i) => <ComponentRow key={c.name} c={c} last={i === data.components.length - 1} onClick={() => setDrawer(c.name)} />)}
-            {data.components.length === 0 && <div style={{ padding: "24px 16px", fontSize: 13, color: "var(--text-faint)" }}>Keine Komponenten gefunden.</div>}
+            {components.map((c, i) => <ComponentRow key={c.name} c={c} last={i === components.length - 1} onClick={() => setDrawer(c.name)} />)}
+            {components.length === 0 && <div style={{ padding: "24px 16px", fontSize: 13, color: "var(--text-faint)" }}>Keine Komponenten gefunden.</div>}
           </div>
         </Card>
 

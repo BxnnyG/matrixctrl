@@ -15,19 +15,30 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.72] — 2026-09-05
+
 ### Fixed
 
-- **The installer rejected a valid hostname and printed it back unchanged.** Terminals
-  in bracketed-paste mode wrap pasted text in `ESC[200~ … ESC[201~`, and a Windows
-  clipboard adds a trailing `\r`. None of those bytes render, so the error message
-  showed a perfectly good hostname next to the claim that it was invalid. Input is now
-  stripped of paste markers, control characters and surrounding whitespace before
-  anything examines it, and a rejection prints the value escaped — the offending bytes
-  are the one thing such a message has to show.
-- The installer's "read it again with …" line printed `/dev/fd/63` when the script was
-  run as `bash <(curl …)`, which is what the README tells people to do.
-- A hostname with no dot is now a question, not a silent accept — and never a refusal
-  when it was passed explicitly as `--host`.
+- **Restoring the configuration repository could never work in the pod.** It staged the
+  archive at `<repo>.restoring` and swapped by renaming the repository itself — two
+  impossibilities at once: the config PVC is mounted at `/data/config-repo`, everything
+  above it is the container's read-only root filesystem, and a mount point cannot be
+  renamed. Operators got `unlinkat /data/config-repo.restoring: read-only file system`.
+  The restore now happens inside the repository: contents are moved aside, replaced, and
+  put back if anything fails. Every previous test passed a fresh `t.TempDir()`, whose
+  parent is writable — the one arrangement in which the defect is invisible; there is now
+  a test that builds the pod's actual layout, a read-only directory with a writable
+  volume mounted inside it.
+- **A fresh install answered the first login with "Something went wrong!"** The dashboard
+  asks for cluster status; with no ESS deployed yet, that lookup fails, its error was
+  discarded, and the nil list marshalled as `null`. The page called `.filter()` on it,
+  React unmounted the route, and TanStack Router's default error screen appeared — no
+  cause, no navigation. The operator had to type `/setup` to reach anything. Lists now
+  always serialise as lists, the failures are logged and reported in a new `unavailable`
+  field, and an empty cluster gets a dashboard that says so and offers the way on.
+- **An unhandled error anywhere in the UI no longer renders a bare "Something went
+  wrong!"** — the router now has an error screen that names the error and links to
+  Setup, System & Logs, and the overview.
 
 ## [0.1.71] — 2026-09-05
 

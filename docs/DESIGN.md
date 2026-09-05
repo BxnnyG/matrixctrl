@@ -2860,3 +2860,84 @@ einzeln raten kann und dann eine Seite hat, die halb funktioniert.
 
 Der Lauf endet nicht bei `STATUS: deployed`, sondern bei URL, Benutzer, Passwort und dem
 DNS-Record. Eine Installation ist fertig, wenn jemand eingeloggt ist.
+
+### §4.77 — Ein Restore, der im Pod nie funktionieren konnte (2026-09-05, operator, etappe 77)
+
+    Das Konfigurations-Repository konnte nicht wiederhergestellt werden:
+    unlinkat /data/config-repo.restoring: read-only file system
+
+`RestoreConfigRepo` legte das Archiv neben dem Repository ab und tauschte, indem es das
+Repository selbst umbenannte. Im Pod ist beides unmöglich: das Config-PVC ist auf
+`/data/config-repo` gemountet, alles darüber ist das read-only Root-Dateisystem
+(`readOnlyRootFilesystem: true`), und ein Mountpoint lässt sich ohnehin nicht umbenennen.
+Der Operator sah Schritt 1 von zweien, die beide nicht gehen. Die Funktion hat in einer
+Produktionsumgebung nie gearbeitet — durch drei Etappen Backup-Arbeit hindurch.
+
+**Jeder Test übergab ein frisches `t.TempDir()`.** Dessen Elternverzeichnis ist
+beschreibbar. Das ist die eine Anordnung, in der der Defekt unsichtbar ist, und alle
+Tests hatten sie, weil sie alle dieselbe bequeme Annahme über das Dateisystem teilten —
+dieselbe Form von blindem Fleck wie §4.73, einen Stock tiefer: dort ein falscher
+Kommentar über das Schema, hier eine unausgesprochene Annahme über die Umgebung.
+
+Der Fix arbeitet ausschließlich innerhalb des Mounts: Staging in
+`<repo>/.matrixctrl-restore-new`, Vorhandenes nach `…-old` zur Seite, Neues an seinen
+Platz, bei Fehlschlag zurück. Renames statt Kopien, weil alles im selben Verzeichnis
+liegt, und nichts außerhalb des beschreibbaren Volumes.
+
+Zwei neue Tests, beide fallen gegen den alten Code:
+
+- portabel: `os.SameFile(root)` vor und nach dem Restore. Der alte Code benennt um, also
+  ist es danach ein anderes Verzeichnis. Zusätzlich: im Elternverzeichnis darf nichts
+  entstehen.
+- die echte Anordnung, gebaut mit `syscall.Mount` — read-only Bind-Mount als Eltern,
+  tmpfs als Volume darin, Skip ohne `CAP_SYS_ADMIN`. Er prüft mit einer Canary-Datei
+  erst nach, dass die Anordnung wirklich die behauptete ist, bevor er etwas testet:
+  **eine aus einer Fehlermeldung abgeleitete Annahme ist keine Reproduktion.** Gegen den
+  alten Code liefert er die Meldung des Operators wörtlich zurück.
+
+Die Regel, allgemein: ein Test darf sich seine Umgebung aussuchen, aber nicht eine
+bequemere als die, in der der Code läuft. `t.TempDir()` ist bequem. Der Pod ist es nicht.
+
+### §4.78 — „Something went wrong!" beim ersten Login (2026-09-05, operator, etappe 77)
+
+Der Operator hat sich auf einem frisch installierten Server angemeldet und bekam einen
+grauen Bildschirm mit drei Wörtern. Danach hat er `/setup` von Hand in die Adresszeile
+getippt, weil nichts ihm gesagt hat, dass es das gibt.
+
+Der String stammt aus `@tanstack/react-router`, `CatchBoundary.js` — die
+Standard-Fehlerkomponente, die erscheint, wenn eine Route unbehandelt wirft. Die Kette,
+rückwärts:
+
+| | |
+|---|---|
+| 6 | Router zeigt seine Standardseite |
+| 5 | React hängt die Route aus |
+| 4 | `data.components.filter(...)` → TypeError |
+| 3 | `nil` in einem `interface{}` serialisiert als `null` |
+| 2 | **der Fehler wurde mit `_` verworfen**, `components` blieb `nil` |
+| 1 | kein Namespace `ess` auf einem frischen Server → `ComponentHealth` scheitert |
+
+Stufe 2 ist die, die zählt. Auf einem laufenden Cluster ist ein verworfener Fehler
+unsichtbar; auf einem frischen ist er das Einzige, was es zu sagen gab — und genau da
+wurde er weggeworfen. Der Rest der Kette ist Mechanik.
+
+Drei Konsequenzen:
+
+1. **Eine Liste ist immer eine Liste.** Konkrete Typen statt `interface{}`, und leere
+   Slices vor dem Serialisieren. `null` dort, wo eine Liste versprochen ist, ist keine
+   leere Antwort, sondern eine anders geformte — der Client kann darüber nicht iterieren
+   und hat keinen Grund, es zu erwarten.
+2. **Ein neues Feld `unavailable`.** „Nichts ausgerollt" und „konnte nicht nachsehen"
+   sehen in den Daten identisch aus und bedeuten das Gegenteil. Das Dashboard zeigt für
+   beide einen anderen Text.
+3. **Der leere Server bekommt einen leeren Zustand**, keine vier ehrlichen Nullen, die
+   wie ein Ausfall aussehen — plus den Knopf nach Setup, den der Operator sich selbst
+   suchen musste.
+
+Dazu ein `defaultErrorComponent` am Router. Was auch immer als Nächstes unbehandelt
+wirft: der Bildschirm nennt die Meldung und bietet drei Links. Ein Fehlerbildschirm ohne
+Ursache und ohne Ausgang ist eine Sackgasse mit Entschuldigung.
+
+Der Test dafür braucht keinen Cluster: **ein Zero-Value-Handler *ist* die
+Frischinstallation** — kein Kubernetes-Client, kein Helm-Client, nichts erreichbar. Die
+Antwort muss trotzdem ein gültiges Dashboard-Payload sein.

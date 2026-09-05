@@ -263,3 +263,94 @@ func indexOf(hay []string, needle string) int {
 	}
 	return -1
 }
+
+// The directory the restore is given must be the directory it leaves behind.
+//
+// This is not pedantry about inodes. In the pod that directory is a mount point: the
+// config PVC is mounted at /data/config-repo, and the filesystem above it is the
+// container's read-only root. A restore that stages beside it and renames it into
+// place needs to create an entry in a read-only directory and rename a mount point,
+// and the first version of this function did both. It failed for an operator with
+// `unlinkat /data/config-repo.restoring: read-only file system`.
+//
+// Every test of it passed a fresh t.TempDir(), whose parent is writable — so the code
+// was exercised only in the one arrangement where the defect is invisible.
+func TestRestoreConfigRepoKeepsTheDirectoryItWasGiven(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "config-repo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "old.yaml"), []byte("replaced"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := Read(bytes.NewReader(pack(t, map[string]string{
+		"manifest.json":            manifestJSON(t, Manifest{FormatVersion: FormatVersion}),
+		"config-repo/synapse.yaml": "## restored\n",
+		"config-repo/.git/HEAD":    "ref: refs/heads/master\n",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RestoreConfigRepo(root); err != nil {
+		t.Fatalf("RestoreConfigRepo: %v", err)
+	}
+
+	after, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Error("the config repository was replaced by a different directory; in the pod " +
+			"that directory is a mount point and cannot be replaced at all")
+	}
+
+	// Nothing may be left in, or ever have needed, the directory above it.
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "config-repo" {
+			t.Errorf("restore left %q beside the repository, where the pod cannot write", e.Name())
+		}
+	}
+
+	// The staging directories are the restore's own business and must not survive it.
+	for _, name := range []string{restoreStaging, restoreOld} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Errorf("%s left behind inside the repository", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "old.yaml")); !os.IsNotExist(err) {
+		t.Error("the previous contents must be replaced, not merged into")
+	}
+	if body, err := os.ReadFile(filepath.Join(root, "synapse.yaml")); err != nil || !strings.Contains(string(body), "restored") {
+		t.Errorf("config file not restored: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "HEAD")); err != nil {
+		t.Error("git history must come back with the configuration")
+	}
+}
+
+// An archive whose paths collide with the staging directories would have those files
+// swept aside by the move, and the restore would report a count it did not deliver.
+func TestRestoreConfigRepoRefusesReservedPaths(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "config-repo")
+	a, err := Read(bytes.NewReader(pack(t, map[string]string{
+		"manifest.json": manifestJSON(t, Manifest{FormatVersion: FormatVersion}),
+		"config-repo/" + restoreStaging + "/sneaky.yaml": "x\n",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RestoreConfigRepo(root); err == nil {
+		t.Error("an archive using a reserved staging path must be refused, not partly restored")
+	}
+}

@@ -414,23 +414,65 @@ func restoreTable(ctx context.Context, tx pgx.Tx, table string, csvData []byte) 
 	return int(n), err
 }
 
+// Staging directories for RestoreConfigRepo, both inside the repository itself.
+//
+// They have to be inside it. `root` is a mount point: in the pod the config PVC is
+// mounted at /data/config-repo and everything above it is the container's read-only
+// root filesystem (`readOnlyRootFilesystem: true`). The first version of this
+// function staged at root+".restoring" and swapped by renaming root itself, which
+// is two impossibilities in one: nothing can be created next to the mount point,
+// and a mount point cannot be renamed. It failed for the operator with
+//
+//	unlinkat /data/config-repo.restoring: read-only file system
+//
+// and could never have worked anywhere it actually runs. The tests missed it
+// because every one of them passed a fresh t.TempDir(), whose parent is writable —
+// the same shape of blind spot as etappe 74: a fixture that builds the one world in
+// which the defect cannot appear.
+const (
+	restoreStaging = ".matrixctrl-restore-new"
+	restoreOld     = ".matrixctrl-restore-old"
+)
+
 // RestoreConfigRepo replaces the config repository with the archive's copy.
 //
 // The whole directory including .git, so the restored configuration keeps its history
 // rather than becoming a snapshot with no past.
+//
+// The directory identified by root is emptied and refilled; it is never replaced. Its
+// contents are moved aside first and put back if the refill fails, so an interrupted
+// restore leaves the previous configuration rather than half of the new one.
 func (a *Archive) RestoreConfigRepo(root string) (int, error) {
 	if len(a.config) == 0 {
 		return 0, nil
 	}
-	// Written beside the live one and swapped, so a failure halfway does not leave a
-	// half-written config repository behind.
-	tmp := root + ".restoring"
-	if err := os.RemoveAll(tmp); err != nil {
+	if err := os.MkdirAll(root, 0o755); err != nil {
 		return 0, err
 	}
+	staging := filepath.Join(root, restoreStaging)
+	old := filepath.Join(root, restoreOld)
+	for _, dir := range []string{staging, old} {
+		if err := os.RemoveAll(dir); err != nil {
+			return 0, err
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return 0, err
+		}
+	}
+	defer func() {
+		_ = os.RemoveAll(staging)
+		_ = os.RemoveAll(old)
+	}()
+
 	n := 0
 	for rel, data := range a.config {
-		dst := filepath.Join(tmp, filepath.Clean("/" + rel)[1:])
+		clean := filepath.Clean("/" + rel)[1:]
+		// An archive that carried a path of our own staging names would have its
+		// files swept away by the move below, silently restoring less than it says.
+		if top, _, _ := strings.Cut(clean, string(filepath.Separator)); top == restoreStaging || top == restoreOld {
+			return 0, fmt.Errorf("archive contains a reserved path: %s", rel)
+		}
+		dst := filepath.Join(staging, clean)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return 0, err
 		}
@@ -439,15 +481,49 @@ func (a *Archive) RestoreConfigRepo(root string) (int, error) {
 		}
 		n++
 	}
-	old := root + ".replaced"
-	_ = os.RemoveAll(old)
-	if err := os.Rename(root, old); err != nil && !os.IsNotExist(err) {
+
+	// Move what is there aside. Same directory, so these are renames, not copies.
+	entries, err := os.ReadDir(root)
+	if err != nil {
 		return 0, err
 	}
-	if err := os.Rename(tmp, root); err != nil {
-		_ = os.Rename(old, root) // put the original back
+	moved := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.Name() == restoreStaging || e.Name() == restoreOld {
+			continue
+		}
+		if err := os.Rename(filepath.Join(root, e.Name()), filepath.Join(old, e.Name())); err != nil {
+			restoreBack(old, root, moved)
+			return 0, err
+		}
+		moved = append(moved, e.Name())
+	}
+
+	// Put the archive's copy in place. On failure the previous contents go back, so
+	// the operator is left where they started instead of with an empty repository.
+	staged, err := os.ReadDir(staging)
+	if err != nil {
+		restoreBack(old, root, moved)
 		return 0, err
 	}
-	_ = os.RemoveAll(old)
+	placed := make([]string, 0, len(staged))
+	for _, e := range staged {
+		if err := os.Rename(filepath.Join(staging, e.Name()), filepath.Join(root, e.Name())); err != nil {
+			for _, name := range placed {
+				_ = os.Rename(filepath.Join(root, name), filepath.Join(staging, name))
+			}
+			restoreBack(old, root, moved)
+			return 0, err
+		}
+		placed = append(placed, e.Name())
+	}
 	return n, nil
+}
+
+// restoreBack undoes the move-aside step. Best effort by necessity: it runs on a path
+// that is already failing, and there is nothing better to try if it fails too.
+func restoreBack(old, root string, names []string) {
+	for _, name := range names {
+		_ = os.Rename(filepath.Join(old, name), filepath.Join(root, name))
+	}
 }
