@@ -15,6 +15,20 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Fixed
+
+- **The installer rejected a valid hostname and printed it back unchanged.** Terminals
+  in bracketed-paste mode wrap pasted text in `ESC[200~ … ESC[201~`, and a Windows
+  clipboard adds a trailing `\r`. None of those bytes render, so the error message
+  showed a perfectly good hostname next to the claim that it was invalid. Input is now
+  stripped of paste markers, control characters and surrounding whitespace before
+  anything examines it, and a rejection prints the value escaped — the offending bytes
+  are the one thing such a message has to show.
+- The installer's "read it again with …" line printed `/dev/fd/63` when the script was
+  run as `bash <(curl …)`, which is what the README tells people to do.
+- A hostname with no dot is now a question, not a silent accept — and never a refusal
+  when it was passed explicitly as `--host`.
+
 ## [0.1.71] — 2026-09-05
 
 ### Added

@@ -46,6 +46,16 @@ else
 fi
 
 say()  { printf '%s\n' "$*"; }
+
+# `bash <(curl …)` makes $0 something like /dev/fd/63, which is useless in an
+# instruction the operator is meant to run later. Name a command that works.
+self_cmd() {
+  case "$0" in
+    /dev/fd/*|/proc/*|bash|-bash|sh|"")
+      printf 'bash <(curl -fsSL %s)' "https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh" ;;
+    *) printf '%s' "$0" ;;
+  esac
+}
 ok()   { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 info() { printf '%s·%s %s\n' "$DIM" "$RESET" "$*"; }
@@ -64,7 +74,7 @@ die() {
 # when this runs as `curl … | bash`, and reading it would consume the source and
 # answer every question with a line of shell.
 TTY=""
-if [ -r /dev/tty ]; then TTY=/dev/tty; fi
+if ( exec 3<>/dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
 
 ASSUME_YES=0
 DELETE_DATA=0
@@ -84,8 +94,31 @@ ask() { # ask <varname> <prompt> [default]
     printf '%s ' "$__prompt" > "$TTY"
   fi
   IFS= read -r __reply < "$TTY" || true
+  __reply=$(sanitise "$__reply")
   [ -n "$__reply" ] || __reply="$__default"
   printf -v "$__var" '%s' "$__reply"
+}
+
+# What a terminal delivers is not what the operator typed.
+#
+# An operator pasted a perfectly good hostname and the script rejected it while
+# printing it back unchanged — because the terminal was in bracketed-paste mode
+# and had wrapped it in ESC[200~ … ESC[201~. Those bytes do not render, so the
+# error message showed a valid hostname next to the claim that it was invalid.
+# A trailing CR from a Windows clipboard does exactly the same thing.
+#
+# Input is stripped of paste markers, control characters and surrounding
+# whitespace before anything looks at it. None of them can ever be part of an
+# answer to any question this script asks.
+sanitise() {
+  local v="$1"
+  v=${v//$'\e[200~'/}
+  v=${v//$'\e[201~'/}
+  v=${v//[$'\001'-$'\037']/}
+  v=${v//$'\177'/}
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "$v"
 }
 
 confirm() { # confirm <question> <default y|n>
@@ -311,7 +344,8 @@ print_access_details() {
   say "  User      ${BOLD}admin${RESET}"
   if [ -n "$password" ]; then
     say "  Password  ${BOLD}${password}${RESET}"
-    info "kept in secret/$SECRET across upgrades — re-read it any time with: $0 password"
+    info "kept in secret/$SECRET across upgrades — read it again any time with:"
+    say  "            $(self_cmd) password"
   else
     warn "no admin-password in secret/$SECRET"
     info "charts before 0.1.71 did not store one; upgrade and it will be generated"
@@ -397,8 +431,22 @@ cmd_install() {
     [ -n "$HOST" ] || die "A hostname is required." "Re-run with --host matrixctrl.example.com"
   fi
   case "$HOST" in
-    *[!a-zA-Z0-9.-]*) die "Hostname contains characters a hostname cannot have: $HOST" \
-      "If you copied this from documentation, check for a stray … or a quote." ;;
+    *[![:alnum:].-]*)
+      # %q, not %s: the whole point is that the offending bytes do not print.
+      die "That is not a hostname: $(printf '%q' "$HOST")" \
+        "The characters are shown escaped above — a \\E is an escape sequence your" \
+        "terminal added, a \\r a line ending from a Windows clipboard." \
+        "Type it rather than pasting it, or pass it as --host <name>." ;;
+  esac
+  # A single label is legal DNS and almost never what someone means for a panel
+  # they intend to reach from a browser. Worth one question, not a refusal.
+  case "$HOST" in
+    *.*) : ;;
+    *) warn "\"$HOST\" has no dot — a single-label name, which a browser outside this"
+       info "network cannot resolve. A public panel usually wants matrixctrl.example.com."
+       if [ -n "$TTY" ] && [ "$ASSUME_YES" = 0 ]; then
+         confirm "Use \"$HOST\" anyway?" n || die "Stopped." "Re-run and give the full name."
+       fi ;;
   esac
 
   if [ -z "$TLS_MODE" ]; then
@@ -505,9 +553,9 @@ cmd_password() {
   fi
   die "No admin-password in secret/$SECRET." \
     "Charts before 0.1.71 did not store one. Upgrade, and it is generated and kept:" \
-    "  $0 install" \
+    "  $(self_cmd) install" \
     "Or set one yourself:" \
-    "  $0 install --admin-password 'your-password'"
+    "  $(self_cmd) install --admin-password 'your-password'"
 }
 
 cmd_status() {
@@ -572,7 +620,7 @@ esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --host)           HOST="${2:-}"; shift 2 ;;
+    --host)           HOST=$(sanitise "${2:-}"); shift 2 ;;
     --tls)            TLS_MODE="${2:-}"; shift 2 ;;
     --issuer)         CERT_ISSUER="${2:-}"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="${2:-}"; shift 2 ;;
