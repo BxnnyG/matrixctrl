@@ -92,9 +92,7 @@ func ExportHomeserver(ctx context.Context, conn *pgx.Conn, dbName string, w io.W
 			"Die hochgeladenen Dateien (Media-Volume) — die liegen auf einem Volume, das nur der Synapse-Pod einbindet.",
 			"Die Konfiguration des Servers — die steckt im separaten MatrixCtrl-Backup.",
 		},
-		RestoreNote: "Zurückspielen ist bewusst kein Knopf: dafür muss Synapse gestoppt sein, " +
-			"und es im laufenden Betrieb zu tun beschädigt, was da ist. Das Archiv ist eine " +
-			"Datei, die bewusst mit psql eingespielt wird.",
+		RestoreNote: homeserverRestoreNote,
 	}
 	blob, err := json.MarshalIndent(man, "", "  ")
 	if err != nil {

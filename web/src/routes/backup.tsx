@@ -27,11 +27,32 @@ function BackupPage() {
   //
   // The cost is that the browser holds the archive in memory. That is a property of
   // authenticated downloads, not a design choice — the server still streams it.
-  const [downloading, setDownloading] = useState(false);
-  const [downloadErr, setDownloadErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [dlErr, setDlErr] = useState<string | null>(null);
 
-  // Restore is two steps on purpose: read the archive, show what it holds and which ESS
-  // release it came from, and only then write (etappe 69).
+  // One helper for all three downloads. There were two near-identical copies before,
+  // which is how the second one ended up with a different error message than the first.
+  const grab = async (path: string, fallback: string, label: string) => {
+    setBusy(label); setDlErr(null);
+    try {
+      const res = await fetch(path, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? fallback;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setDlErr(e instanceof Error ? e.message : "unbekannter Fehler");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const [preview, setPreview] = useState<BackupManifest | null>(null);
   const [archive, setArchive] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -59,29 +80,6 @@ function BackupPage() {
     }
   };
 
-  const [hsDownloading, setHsDownloading] = useState(false);
-  const [hsErr, setHsErr] = useState<string | null>(null);
-  const downloadHomeserver = async () => {
-    setHsDownloading(true); setHsErr(null);
-    try {
-      const res = await fetch("/api/v1/status/backup/homeserver", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "synapse-db.tar.gz";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setHsErr(e instanceof Error ? e.message : "unbekannter Fehler");
-    } finally {
-      setHsDownloading(false);
-    }
-  };
-
   const doRestore = async () => {
     if (!archive) return;
     setRestoring(true); setRestoreErr(null);
@@ -95,88 +93,52 @@ function BackupPage() {
       setRestoring(false);
     }
   };
-  const download = async () => {
-    setDownloading(true);
-    setDownloadErr(null);
-    try {
-      const res = await fetch("/api/v1/status/backup", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = (res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1])
-        ?? "matrixctrl-backup.tar.gz";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      // A backup that failed must say so. A button that flickers and produces no file
-      // is indistinguishable from one that worked, which is the worst outcome here.
-      setDownloadErr(e instanceof Error ? e.message : "unbekannter Fehler");
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   return (
     <div className="mc-page">
-      {/* Backup. The card states what the archive does NOT hold, because an operator
-          who believes they have a backup of their homeserver and discovers otherwise
-          during a restore is the failure this whole feature exists to avoid. */}
-      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* One archive, one button. This page used to show two downloads and three
+          warning blocks explaining what each half could not do — every sentence true,
+          and the arrangement still showed the order the features were built in rather
+          than the operator's task (etappe 72). */}
+      <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Icon name="download" size={17} />
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Backup</h2>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Vollständiges Backup</h2>
           </div>
-          <Button variant="primary" icon="download" onClick={() => void download()} disabled={downloading}>
-            {downloading ? "Wird erstellt…" : "Herunterladen"}
+          <Button variant="primary" icon="download" disabled={!!busy}
+            onClick={() => void grab("/api/v1/status/backup/full", "matrixctrl-full.tar.gz", "full")}>
+            {busy === "full" ? "Wird erstellt…" : "Herunterladen"}
           </Button>
         </div>
-        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
-          <strong style={{ color: "var(--text)" }}>Enthalten:</strong> das Konfigurations-Repository
-          mit vollständiger Git-Historie — also jeder ESS-Wert samt Änderungsverlauf — und die
-          Datenbank von MatrixCtrl: Hooks, Upgrade-Verlauf, Melde-Entscheidungen, Node-Verlauf.
-        </div>
-        {downloadErr && (
-          <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>
-            Das Backup konnte nicht erstellt werden: {downloadErr}
-          </div>
-        )}
-        <div style={{ fontSize: 12.5, color: "var(--status-warn)", lineHeight: 1.65 }}>
-          <strong>Nicht enthalten: der Homeserver selbst.</strong> Weder Synapses Datenbank
-          (Konten, Räume, Nachrichten) noch die hochgeladenen Dateien. Beide liegen auf Volumes,
-          die dieser Pod nicht einbindet. Dieses Archiv ersetzt kein Backup von Synapse.
-        </div>
-      </Card>
 
-      {/* The homeserver's own data. A second card rather than a second file in the
-          first archive: the two answer different questions, have different sizes, and
-          only one of them can be restored by pressing something (etappe 70). */}
-      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Icon name="database" size={17} />
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Homeserver-Datenbank</h2>
-          </div>
-          <Button variant="outline" icon="download" onClick={() => void downloadHomeserver()} disabled={hsDownloading}>
-            {hsDownloading ? "Wird exportiert…" : "Exportieren"}
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.7 }}>
+          Ein Archiv mit allem, was von hier aus erreichbar ist: die <strong style={{ color: "var(--text)" }}>vollständige
+          ESS-Konfiguration mit Git-Historie</strong> (Hostnames, serverName, TLS-Issuer, RTC),
+          die <strong style={{ color: "var(--text)" }}>MatrixCtrl-Datenbank</strong> mit Hooks und Verläufen,
+          und <strong style={{ color: "var(--text)" }}>Synapses Datenbank</strong> mit Konten, Räumen und Nachrichten.
+          Alle Tabellen aus jeweils einem Moment.
+        </div>
+
+        <div style={{ fontSize: 12, color: "var(--text-faint)", lineHeight: 1.6 }}>
+          Nicht enthalten sind die hochgeladenen Dateien — die liegen auf einem Volume,
+          das dieser Pod nicht einbindet.
+        </div>
+
+        {dlErr && <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>Download fehlgeschlagen: {dlErr}</div>}
+
+        {/* Kept because the sizes differ by two orders of magnitude: moving only the
+            configuration should not mean moving 300 MB. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", paddingTop: 4, borderTop: "1px solid var(--border-soft)" }}>
+          <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Einzeln:</span>
+          <Button variant="ghost" size="sm" icon="sliders" disabled={!!busy}
+            onClick={() => void grab("/api/v1/status/backup", "matrixctrl-backup.tar.gz", "config")}>
+            {busy === "config" ? "…" : "Nur Konfiguration"}
           </Button>
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
-          Synapses eigene Datenbank: <strong style={{ color: "var(--text)" }}>Konten, Räume und Nachrichten</strong>.
-          Das ist der Teil, der aus einem wiederhergestellten Server denselben Server macht
-          statt eines neuen mit denselben Hostnames. Alle Tabellen stammen aus einer einzigen
-          Transaktion, also aus demselben Moment.
-        </div>
-        {hsErr && <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>Export fehlgeschlagen: {hsErr}</div>}
-        <div style={{ fontSize: 12.5, color: "var(--status-warn)", lineHeight: 1.65 }}>
-          <strong>Nicht enthalten: die hochgeladenen Dateien.</strong> Die liegen auf einem
-          Volume, das nur der Synapse-Pod einbindet. Und <strong>Zurückspielen ist bewusst kein
-          Knopf</strong> — dafür muss Synapse gestoppt sein; im laufenden Betrieb beschädigt es,
-          was da ist. Das Archiv wird bewusst mit psql eingespielt.
+          <Button variant="ghost" size="sm" icon="database" disabled={!!busy}
+            onClick={() => void grab("/api/v1/status/backup/homeserver", "synapse-db.tar.gz", "hs")}>
+            {busy === "hs" ? "…" : "Nur Homeserver-Datenbank"}
+          </Button>
         </div>
       </Card>
 

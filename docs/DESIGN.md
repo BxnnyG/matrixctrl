@@ -2623,3 +2623,46 @@ Deliberately not done: moving the configuration to `/opt` on the host. It is wha
 compose setup" means literally and it would be a step backwards — a hostPath ties the pod
 to one node and survives no migration, which is exactly what a volume avoids. The request
 underneath was *knowing where it is*, and that was the part missing.
+
+### §4.71 — Honesty about a limit is not a licence to make it the operator's problem (2026-09-05, operator + agent, etappe 72)
+
+The Backup page, after E68 through E71, was three cards each carrying a yellow block
+explaining what it could not do. The operator:
+
+> und wiso sind da die gelben texte wiso gibbet nicht ein full backup mit allem!?
+
+Both halves are fair, and the second one is the sharper.
+
+Every sentence in those blocks was true, and each was written on purpose — §4.66's rule
+that an archive must state what it is not, because someone who believes they hold a
+backup of their homeserver and learns otherwise mid-restore is the failure the feature
+exists to prevent. Applied three times on one screen the effect inverted the intent: the
+product nags, and an operator who wants a backup must read three architecture lessons and
+then work out which two files to download and keep together.
+
+**The page was showing my build order, not their task.** Backup arrived in E68,
+homeserver data in E70, and the screen recorded that history rather than answering "give
+me a backup". The split had no reason to exist for the person using it.
+
+So: one archive, one button, with the parts inside it. The two single-purpose downloads
+stay as a subordinate line, because the sizes differ by two orders of magnitude and
+somebody moving configuration alone should not move 300 MB — a real reason, unlike the
+previous split.
+
+And the limit is stated **once**, in ordinary text rather than warning colour. Removing
+it entirely would be the opposite failure; the correction is proportion, not silence.
+
+A finding on the way, from checking rather than assuming. E68 said media was out because
+the volume is not mounted, and that was true and incomplete:
+
+| route | result |
+|---|---|
+| `/_matrix/media/v3/download/…` (unauthenticated) | 404 — removed in current Synapse |
+| `/_matrix/client/v1/media/download/…` | 401 — needs a Matrix token |
+
+There *is* a path: MatrixCtrl already holds the operator's Matrix token for rooms and
+moderation, and the media IDs are in the database it now exports. 67 files, 40 MB. It is
+not built here because it cannot be exercised here — the same token wall as P2-32 — and a
+backup path that has never successfully run is worse than a documented gap. Recorded with
+the route that works, so the next attempt starts from evidence rather than from "the
+volume is not mounted".

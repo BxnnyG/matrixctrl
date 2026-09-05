@@ -82,6 +82,55 @@ func (h *StatusHandler) Backup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GET /api/v1/status/backup/full — everything reachable, in one file (etappe 72).
+//
+// The page used to offer two downloads and three warning blocks explaining what each
+// half could not do. Every sentence was true and the arrangement still showed the order
+// the features were built in rather than the operator's task. "The backup" should be one
+// thing you can hold.
+//
+// Synapse's database is best-effort: without it the archive is still worth having, and
+// the manifest says which parts are inside.
+func (h *StatusHandler) BackupFull(w http.ResponseWriter, r *http.Request) {
+	if h.backupDB == nil {
+		Error(w, http.StatusServiceUnavailable, "Für diese Installation ist kein Backup verfügbar.")
+		return
+	}
+
+	var hs *pgx.Conn
+	if h.k8s != nil {
+		if dsn, err := h.synapseDSN(r.Context()); err == nil {
+			if conn, cerr := pgx.Connect(r.Context(), dsn); cerr == nil {
+				hs = conn
+				defer conn.Close(context.Background())
+			} else {
+				// Logged, never echoed: the message carries the DSN and the DSN carries
+				// the password.
+				log.Printf("full backup: synapse unreachable, continuing without it: %v", cerr)
+			}
+		}
+	}
+
+	name := "matrixctrl-full-" + time.Now().UTC().Format("2006-01-02-1504") + ".tar.gz"
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+
+	if err := backup.CreateFull(r.Context(), h.backupDB, hs, h.backupRepo, h.appVersion, h.essRelease_(r), w); err != nil {
+		log.Printf("full backup: failed partway through: %v", err)
+	}
+}
+
+// essRelease_ reads the managed release for a manifest, best effort.
+func (h *StatusHandler) essRelease_(r *http.Request) backup.Release {
+	var ess backup.Release
+	if h.helm != nil {
+		if rel, err := h.helm.GetRelease(h.essRelease); err == nil && rel != nil {
+			ess = backup.Release{Name: h.essRelease, Namespace: h.essNS, Chart: rel.Version, Revision: rel.Revision}
+		}
+	}
+	return ess
+}
+
 // GET /api/v1/status/backup/homeserver — Synapse's own database (etappe 70).
 //
 // Separate from the configuration archive because it answers a different question. That

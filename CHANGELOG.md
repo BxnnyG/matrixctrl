@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.68] — 2026-09-05
+
+### Changed
+
+- **One backup instead of two, and one caveat instead of three.** The Backup page offered
+  two separate downloads, each with a yellow block explaining what it could not do. Every
+  sentence was true; together they made the operator assemble the product's build history
+  instead of getting a backup. There is now a single archive containing the ESS
+  configuration with git history, MatrixCtrl's database, and Synapse's database — accounts,
+  rooms and messages included.
+- The single-purpose downloads remain, subordinate, because a configuration archive is
+  about 1 MB and a homeserver dump about 300 — moving only the configuration should not
+  mean moving both.
+- The remaining gap — uploaded files — is stated once, in ordinary text.
+
+### Notes
+
+- Checked while writing this rather than assumed: Synapse's unauthenticated media route
+  is gone (404) and the current one needs a Matrix token (401). MatrixCtrl already holds
+  such a token for rooms and moderation, so including media is possible — it is not built
+  yet because that path cannot be exercised without a live session, and a backup path
+  that has never run is worse than a documented gap.
+
 ## [0.1.67] — 2026-09-05
 
 ### Added

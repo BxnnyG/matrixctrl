@@ -141,18 +141,13 @@ func Create(ctx context.Context, db *pgxpool.Pool, configRepo, appVersion string
 		// used the pessimistic one for both. The configuration *is* the deployment —
 		// hostnames, server name, TLS issuer, RTC settings, the hooks that keep the SFU
 		// patched. What no archive here can return is what users made (etappe 69).
-		Restores: []string{
-			"Die vollständige ESS-Konfiguration mit Git-Historie: Hostnames, serverName, TLS-Issuer, RTC-Einstellungen.",
-			"Die Hooks, die manuelle Patches nach jedem Upgrade und Rollback wiederherstellen.",
-			"Upgrade-Verlauf, Melde-Entscheidungen und den aufgezeichneten Node-Verlauf.",
-		},
+		Restores: configRestores,
 		NotIncluded: []string{
 			"Was die Nutzer erzeugt haben: Konten, Räume, Nachrichten — Synapses Datenbank.",
 			"Die hochgeladenen Dateien (Media-Volume).",
 			"Beides liegt auf Volumes, die dieser Pod nicht einbindet. Ein wiederhergestellter Server ist derselbe Server, aber leer.",
 		},
-		SchemaNote: "Enthält nur Daten, kein Schema: das Schema entsteht beim Zurückspielen aus den Migrationen, " +
-			"damit ein Archiv auf den aktuellen Stand zurückkommt und nicht auf den, bei dem es entstanden ist.",
+		SchemaNote: schemaNote,
 	}
 	dump := func(t Table) ([]byte, error) { return copyTable(ctx, db, t) }
 	return assemble(tw, man, dump, configRepo, configFiles >= 0)

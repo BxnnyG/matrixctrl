@@ -123,6 +123,9 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/nodes/history", deps.Status.NodeHistory)
 			// The config repository and MatrixCtrl's own database (etappe 68). Not the
 			// homeserver's data — the archive's manifest says so itself.
+			// One archive with everything reachable — the button an operator actually
+			// wants (etappe 72). The two single-purpose downloads stay below it.
+			r.Get("/backup/full", deps.Status.BackupFull)
 			r.Get("/backup", deps.Status.Backup)
 			// Synapse's own database — the accounts, rooms and messages that make a
 			// rebuilt server the same server (etappe 70).
