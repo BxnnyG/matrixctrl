@@ -224,14 +224,14 @@ leftovers_from_previous_install() {
 delete_leftovers() {
   local pvc
   for pvc in matrixctrl-postgres matrixctrl-config; do
-    kubectl delete pvc "$pvc" -n "$NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete pvc "$pvc" -n "$NAMESPACE" --ignore-not-found --timeout=120s >/dev/null 2>&1 || true
   done
   kubectl delete secret "$SECRET" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
   # A PV with a Retain policy outlives its claim and comes back as Released,
   # where it is unusable but still counted. Only ones bound to this namespace.
   local pv
   for pv in $(kubectl get pv -o jsonpath='{range .items[?(@.spec.claimRef.namespace=="'"$NAMESPACE"'")]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true); do
-    kubectl delete pv "$pv" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete pv "$pv" --ignore-not-found --timeout=120s >/dev/null 2>&1 || true
   done
 }
 
@@ -420,9 +420,9 @@ cmd_install() {
   if [ "$upgrading" = 1 ]; then
     prev_values=$(mktemp)
     # Contains whatever the operator set, OIDC client secret included.
-    trap 'rm -f "$prev_values"' EXIT INT TERM
+    trap "rm -f '$prev_values'" EXIT INT TERM
     if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev_values" 2>/dev/null; then
-      if [ "$(head -c 5 "$prev_values")" = "null" ]; then : > "$prev_values"; fi
+      case "$(tr -d '[:space:]' < "$prev_values")" in null|"") : > "$prev_values" ;; esac
     else
       : > "$prev_values"
     fi
@@ -437,8 +437,10 @@ cmd_install() {
   [ "$DRY_RUN" = 0 ] || args+=(--dry-run=server)
   [ -z "$CHART_VERSION" ] || args+=(--version "$CHART_VERSION")
   [ -z "$prev_values" ] || [ ! -s "$prev_values" ] || args+=(-f "$prev_values")
-  # shellcheck disable=SC2046  # deliberate word splitting: tls_values emits flags
-  args+=($(tls_values "$TLS_MODE" "${CERT_ISSUER:-}"))
+  if [ -n "$TLS_MODE" ]; then
+    # shellcheck disable=SC2046  # deliberate word splitting: tls_values emits flags
+    args+=($(tls_values "$TLS_MODE" "${CERT_ISSUER:-}"))
+  fi
   [ -z "$ADMIN_PASSWORD" ] || args+=(--set "secrets.adminPassword=$ADMIN_PASSWORD")
 
   say "${DIM}helm ${args[*]}${RESET}"
