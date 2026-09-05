@@ -2531,3 +2531,51 @@ Three guards worth keeping:
 - The two halves can still end up from different moments — config restored, database
   not — and the error says so plainly instead of reporting a clean failure. An operator
   who does not know which half moved cannot choose what to do next.
+
+### §4.68 — A navigation entry that pointed at nothing (2026-09-05, operator + agent, etappe 70)
+
+The sidebar has carried a **Backup** item under "Betrieb · Day-2" since the design system
+shipped, greyed out because `NavRow` disables anything without a route. E68 and E69 then
+built backup and restore onto `/system`.
+
+> ok aber auf der website ist backup noch ausgegraut ...
+
+So the feature existed for two etappes and the label promising it stayed dark. **A
+disabled item beside a working feature is worse than no item at all** — an absent entry
+says nothing, a greyed one actively reports that the thing is not there. It is the same
+family as §4.61's declared-but-unwired constants, seen from the user's side rather than
+the code's: something rendered, nothing behind it. The sweep that found those looked at
+constants, endpoints and columns. It did not look at navigation.
+
+### §4.69 — The half that makes it the same server (2026-09-05, etappe 70)
+
+The operator's second question answered itself as they asked it:
+
+> aber wiso sollte man volumes sichern, ahh wegen chats und so, ja dann braucht man eig ..
+
+Measured: 4 accounts, 9 rooms, **19 057 events**, 67 media files — 304 MB of database and
+40 MB of media. E68's archive rebuilds the deployment; this is what makes the result the
+same server rather than a fresh one wearing the same hostnames.
+
+What is reachable decided the scope, not what would be nice. Synapse's database is
+network-reachable and its password sits in a secret this pod may read, so it ships. The
+media is on a PVC only the Synapse pod mounts, so it does not — and that is in the
+export's own manifest, where E68 and E69 put their limits too.
+
+**Consistency is the part worth getting right.** A live database read table by table
+yields tables from different moments: a room that exists with no creation event, a
+membership pointing at an event that is not there. The whole export therefore runs inside
+one `REPEATABLE READ` transaction, which is what `pg_dump` does and for the same reason.
+Without it the archive looks complete and is subtly torn — this project's recurring
+failure wearing new clothes, and one that would only be discovered while restoring.
+
+**No restore button for it.** Writing a homeserver database back needs Synapse stopped;
+doing it while the server runs corrupts what is there. The export is a file to be
+restored deliberately with `psql`. §4.39's rule about actions without a safe inverse
+applies at its strongest here — the thing being overwritten is every conversation on the
+server.
+
+Two smaller decisions: the password is read per request rather than held on the handler,
+because a credential kept for the life of a process outlives the reason it was needed;
+and a failed connection is logged rather than echoed, because the error carries the DSN
+and the DSN carries the password.

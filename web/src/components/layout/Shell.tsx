@@ -34,7 +34,7 @@ const NAV: NavGroup[] = [
   ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
   { group: "Betrieb · Day-2", phase: "3", items: [
-    { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database" },
+    { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
   ] },
   { group: "Netzwerk", phase: "4", items: [
     { id: "federation", label: "Föderation", icon: "globe" }, { id: "bridges", label: "Bridges", icon: "audit" },
@@ -53,6 +53,7 @@ const TITLES: Record<string, [string, string]> = {
   "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
+  "/backup": ["Backup", "Konfiguration und Datenbank sichern und zurückspielen"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
@@ -99,6 +100,7 @@ function activeId(path: string): string {
   if (path.startsWith("/hooks")) return "hooks";
   if (path.startsWith("/setup")) return "setup";
   if (path.startsWith("/system")) return "system";
+  if (path.startsWith("/backup")) return "backup";
   if (path.startsWith("/audit")) return "audit";
   if (path.startsWith("/rtc")) return "rtc";
   return "";

@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.66] — 2026-09-05
+
+### Fixed
+
+- **The "Backup" navigation entry was greyed out** while backup and restore had shipped
+  two versions earlier — onto `/system`, where the sidebar never said to look. They now
+  live at `/backup`, which is what the entry always promised. A disabled item beside a
+  working feature is worse than no item: it actively reports the thing is absent.
+
+### Added
+
+- **Export of Synapse's own database** — the accounts, rooms and messages. The
+  configuration archive rebuilds the deployment; this is what makes a restored server the
+  *same* server rather than a fresh one wearing the same hostnames. On this install that
+  is 19 057 events.
+- The export is one `REPEATABLE READ` snapshot, so every table comes from the same
+  moment. Read table by table from a live database, a backup can contain a room whose
+  creation event is missing — complete-looking and subtly torn.
+
+### Notes
+
+- **Media is not included.** 40 MB on a volume only the Synapse pod mounts; reaching it
+  needs a Job with that PVC attached. Said in the export's manifest, not only here.
+- **No restore button for the homeserver database.** It needs Synapse stopped, and doing
+  it while the server runs corrupts what is there. The export is a file to restore
+  deliberately with `psql`.
+- The database password is read per request from the cluster secret, never held on the
+  handler and never echoed in an error — a failed connection message carries the DSN.
+
 ## [0.1.65] — 2026-09-04
 
 ### Added

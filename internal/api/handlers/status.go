@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
 	"github.com/bxnnyg/matrixctrl/internal/nodehist"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -77,6 +80,58 @@ func (h *StatusHandler) Backup(w http.ResponseWriter, r *http.Request) {
 		// file that unpacks halfway and is discovered during a restore.
 		log.Printf("backup: failed partway through: %v", err)
 	}
+}
+
+// GET /api/v1/status/backup/homeserver — Synapse's own database (etappe 70).
+//
+// Separate from the configuration archive because it answers a different question. That
+// one rebuilds the deployment; this one is what makes a rebuilt server *the same* server
+// — the accounts, the rooms, the 19 000 events.
+//
+// Credentials come from the cluster secret and are never logged. The export is one
+// REPEATABLE READ snapshot, which is the difference between a backup and a pile of
+// reads taken at different moments.
+func (h *StatusHandler) BackupHomeserver(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		Error(w, http.StatusServiceUnavailable, "Ohne Cluster-Zugriff ist kein Export möglich.")
+		return
+	}
+	dsn, err := h.synapseDSN(r.Context())
+	if err != nil {
+		Error(w, http.StatusBadGateway, "Die Zugangsdaten für Synapses Datenbank konnten nicht gelesen werden: "+err.Error())
+		return
+	}
+
+	conn, err := pgx.Connect(r.Context(), dsn)
+	if err != nil {
+		// Deliberately not echoing the error: a connection failure can carry the DSN,
+		// and the DSN carries the password.
+		log.Printf("homeserver export: connect failed: %v", err)
+		Error(w, http.StatusBadGateway, "Synapses Datenbank ist nicht erreichbar.")
+		return
+	}
+	defer conn.Close(context.Background())
+
+	name := "synapse-db-" + time.Now().UTC().Format("2006-01-02-1504") + ".tar.gz"
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+
+	if err := backup.ExportHomeserver(r.Context(), conn, "synapse", w); err != nil {
+		log.Printf("homeserver export: failed partway through: %v", err)
+	}
+}
+
+// synapseDSN builds the connection string from the cluster secret.
+//
+// The password is read per request and never stored on the handler: a credential held
+// in a struct for the life of the process is one that outlives the reason it was needed.
+func (h *StatusHandler) synapseDSN(ctx context.Context) (string, error) {
+	pw, err := h.k8s.SecretValue(ctx, h.essNS, "ess-generated", "POSTGRES_SYNAPSE_PASSWORD")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("postgres://synapse_user:%s@ess-postgres.%s.svc.cluster.local:5432/synapse?sslmode=disable",
+		url.QueryEscape(pw), h.essNS), nil
 }
 
 // POST /api/v1/status/restore/preview — read an archive without changing anything.
