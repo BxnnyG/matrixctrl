@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode } from "react";
 import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
-import { Icon, StatusDot, Avatar, Kbd, useIsMobile } from "@/components/mc";
+import { Icon, StatusDot, Avatar, Kbd, useIsMobile, ConfirmDialog } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
 interface NavItem { id: string; label: string; icon: string; to?: string; phase?: string }
@@ -136,15 +136,100 @@ function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }
         <button title="Abmelden" onClick={() => { localStorage.removeItem("matrixctrl_token"); window.location.href = "/auth/login"; }}
           style={{ background: "transparent", border: "none", color: "var(--text-faint)", cursor: "pointer", padding: 4, display: "grid", placeItems: "center" }}><Icon name="logout" size={16} /></button>
       </div>
+      <VersionFooter />
     </aside>
   );
 }
+
+interface VersionResp {
+  version: string;
+  commit: string;
+  update?: { current: string; latest?: string; available: boolean; checked_at?: string; error?: string };
+}
+
+/** The documented upgrade path, verbatim. A command shown to be run must be one that
+ *  can be pasted — a README line with a "…" in it cost an operator an evening (§4.76). */
+const UPDATE_COMMAND = "bash <(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh)";
 
 interface StatusResp { release?: { chart_version?: string }; components?: { status: string }[] }
 
 // Backend reports healthy | degraded | down | scaled-zero — anything that is
 // neither healthy nor deliberately scaled to zero needs the operator's attention.
 const isDegraded = (s: string) => s === "degraded" || s === "down";
+
+
+/** Which MatrixCtrl is running, and whether a newer one exists.
+ *
+ *  Both were unanswerable from inside the product until etappe 79: the version
+ *  reached a startup log line and backup manifests and nowhere else. An operator
+ *  asked all three questions in one breath — which version, how do I see there is an
+ *  update, how do I install it — so all three are answered in one place.
+ *
+ *  Its own component with its own query, deliberately: the rail must render whether
+ *  or not this endpoint answers, and a hook belongs somewhere it cannot end up behind
+ *  an early return (§4.79). */
+function VersionFooter() {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["version"],
+    queryFn: () => api.get<VersionResp>("/api/v1/version"),
+    staleTime: 10 * 60_000,
+    refetchInterval: 30 * 60_000,
+  });
+
+  const update = data?.update;
+  const available = !!update?.available && !!update.latest;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(UPDATE_COMMAND);
+      setCopied(true);
+    } catch {
+      // No clipboard without a secure context, and an install reachable over plain
+      // HTTP is a supported setup. The command stays selectable either way.
+      setCopied(false);
+    }
+  };
+
+  return (
+    <>
+      <div style={{ padding: "8px 16px 10px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          MatrixCtrl {data?.version ?? "…"}
+        </span>
+        {available && (
+          <button onClick={() => { setCopied(false); setOpen(true); }}
+            title={`Version ${update!.latest} ist verfügbar`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, padding: "2px 7px", fontSize: 10.5, fontWeight: 600, fontFamily: "var(--mono)", color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 999, cursor: "pointer" }}>
+            <StatusDot status="accent" size={5} /> {update!.latest}
+          </button>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={open}
+        tone="primary"
+        title={`MatrixCtrl ${update?.latest} ist verfügbar`}
+        confirmLabel={copied ? "Kopiert" : "Befehl kopieren"}
+        confirmIcon={copied ? "check" : "copy"}
+        onConfirm={() => void copy()}
+        onCancel={() => setOpen(false)}
+      >
+        <p style={{ margin: "0 0 10px" }}>
+          Installiert ist <strong>{data?.version}</strong>. Der Installer erkennt die
+          laufende Installation, aktualisiert sie und behält Daten und Passwort.
+        </p>
+        <pre style={{ margin: 0, padding: 11, fontSize: 11.5, fontFamily: "var(--mono)", lineHeight: 1.6, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "all" }}>{UPDATE_COMMAND}</pre>
+        {update?.checked_at && (
+          <p style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--text-faint)" }}>
+            Zuletzt geprüft: {new Date(update.checked_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
+          </p>
+        )}
+      </ConfirmDialog>
+    </>
+  );
+}
 
 function Topbar({ path, onMenu }: { path: string; onMenu?: () => void }) {
   const [title, sub] = TITLES[path] || (path.startsWith("/config/") ? ["Konfiguration", "YAML-Editor"] : ["MatrixCtrl", ""]);

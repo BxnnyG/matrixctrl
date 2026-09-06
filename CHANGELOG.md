@@ -15,6 +15,28 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.74] — 2026-09-06
+
+### Added
+
+- **MatrixCtrl now says which version it is, whether a newer one exists, and how to get
+  it.** All three were unanswerable from inside the product — the version reached a
+  startup log line and backup manifests and nowhere else. The running version sits in
+  the navigation rail; when a newer release is published, a chip next to it opens the
+  upgrade command, ready to copy.
+- `GET /api/v1/version` — version, commit, and the update check's result.
+- **`updateCheck.enabled`** (chart value, default `true`): whether the pod may ask GHCR
+  for newer releases. It is on by default because the cluster already pulls its own
+  image from that registry, so the check adds no dependency on anyone new. Turn it off
+  and the pod talks to nothing it does not have to — the running version is still shown,
+  only the comparison disappears.
+
+### Notes
+
+- A failed update check never becomes a failed response: the version is a local fact and
+  is reported either way, and the last version seen survives a registry that has gone
+  away — with the failure reported next to it rather than in place of it.
+
 ## [0.1.73] — 2026-09-06
 
 ### Fixed

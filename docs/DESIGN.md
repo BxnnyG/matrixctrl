@@ -2985,3 +2985,41 @@ Klasse, die abstürzt, und ein Rückstand, der sichtbar bleibt statt ausgeschalt
 
 `eslint .` läuft jetzt in `make check` **und** in CI. Gegenprobe: den Hook zurück unter
 die `return`s geschoben — Gate schlägt fehl, mit genau dieser Meldung.
+
+### §4.80 — Drei Fragen in einem Atemzug (2026-09-06, operator, etappe 79)
+
+> „dann wo sehe ich die matrixctrl version? wo sehe ich ob die geupdated werden kann …
+> wie updatet man die"
+
+Drei Fragen, und das Produkt konnte keine davon beantworten. `version.Version` ging in
+die Startzeile des Containers und in Backup-Manifeste. Kein Endpunkt, keine Anzeige,
+keine Prüfung. Der Ort, an dem in der Oberfläche eine Version stand, zeigte die des
+**ESS-Charts** — die Version des verwalteten Systems, nicht die des Verwalters.
+
+Dass die drei Fragen in einem Satz kamen, ist die eigentliche Information: sie gehören
+an **eine** Stelle. Getrennt beantwortet — Version in einer Fußzeile, Update-Hinweis in
+einer Benachrichtigung, Anleitung in der Dokumentation — hätte der Operator wieder
+suchen müssen. Jetzt steht die laufende Version in der Navigationsleiste, und wenn eine
+neuere existiert, öffnet ein Chip daneben den Befehl zum Kopieren.
+
+Zwei Entwurfsentscheidungen, beide aus früheren Fehlern:
+
+- **Ein fehlgeschlagener Check wird nie zu einer fehlgeschlagenen Antwort.** Welche
+  Version läuft, ist eine lokale Tatsache; sie von einer Netzverbindung zu einem Dritten
+  abhängig zu machen, ist genau die Kette aus §4.78. `Result.Error` steht **neben** der
+  Antwort, nicht an ihrer Stelle — und die zuletzt bekannte neueste Version überlebt
+  eine unerreichbare Registry, mit dem Hinweis, wann sie zuletzt bestätigt wurde.
+- **Fehlt das Feld, heißt das „nicht geprüft" — nicht „aktuell".** Bei abgeschaltetem
+  Check ist `update` abwesend statt `false`. Zwei verschiedene Aussagen brauchen zwei
+  verschiedene Zustände, sonst behauptet die Oberfläche Aktualität, die niemand geprüft
+  hat.
+
+Die Prüfung ist standardmäßig an. Sie fragt GHCR — dieselbe Registry, aus der der
+Cluster ohnehin sein eigenes Image zieht —, also entsteht keine neue Beziehung zu
+irgendwem. `updateCheck.enabled=false` schaltet sie ab; die laufende Version bleibt
+sichtbar, nur der Vergleich verschwindet.
+
+Und ein Test, der die echte Registry fragt (`RUN_LIVE=1`), neben dem mit dem
+httptest-Server. Der Mock beweist, dass der Code mit **meiner Vorstellung** von GHCR
+zurechtkommt — die wiederkehrende Lehre aus §4.73 und §4.77. Er meldet beim Schreiben
+dieser Zeilen: *„ghcr.io says the newest published chart is 0.1.73."*

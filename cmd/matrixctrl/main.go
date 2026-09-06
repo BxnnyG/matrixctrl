@@ -27,6 +27,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
+	"github.com/bxnnyg/matrixctrl/internal/updatecheck"
 	"github.com/bxnnyg/matrixctrl/internal/version"
 )
 
@@ -274,6 +275,17 @@ func main() {
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion, configRepoPath, configSeedPath)
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
 
+	// Whether MatrixCtrl may ask GHCR for newer releases. On by default: the cluster
+	// already pulls its own image from that registry, so this adds no dependency on
+	// anyone new. Off is a single value in the chart for anyone who wants the pod to
+	// talk to nothing it does not have to.
+	var updates *updatecheck.Checker
+	if env("MATRIXCTRL_UPDATE_CHECK", "1") != "0" {
+		updates = updatecheck.New(version.Version)
+	} else {
+		log.Printf("update check disabled by MATRIXCTRL_UPDATE_CHECK=0")
+	}
+
 	router := api.NewRouter(api.Deps{
 		Auth:    authHandler,
 		Status:  statusHandler,
@@ -288,6 +300,7 @@ func main() {
 		Users:   usersHandler,
 		Rooms:   roomsHandler,
 		Reports: reportsHandler,
+		Version: handlers.NewVersionHandler(version.Version, version.Commit, updates),
 
 		AuditSink: auditStore,
 	})

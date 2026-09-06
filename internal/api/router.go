@@ -25,6 +25,7 @@ type Deps struct {
 	Users   *handlers.UsersHandler
 	Rooms   *handlers.RoomsHandler
 	Reports *handlers.ReportsHandler
+	Version *handlers.VersionHandler
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -111,6 +112,13 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/rtc/status", deps.RTC.Status)
 			r.Get("/api/v1/rtc/history", deps.RTC.History)
 			r.Get("/api/v1/users", deps.Users.List)
+		}
+
+		// Which MatrixCtrl is running, and whether a newer one exists (etappe 79).
+		// Behind auth like everything else: the exact version of an admin panel is not
+		// something a stranger needs from the outside.
+		if deps.Version != nil {
+			r.Get("/api/v1/version", deps.Version.Get)
 		}
 
 		r.Route("/api/v1/status", func(r chi.Router) {

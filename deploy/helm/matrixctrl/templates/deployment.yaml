@@ -114,6 +114,13 @@ spec:
             - name: MATRIXCTRL_CONFIG_SEED
               value: {{ .Values.configSeedPath | quote }}
             {{- end }}
+            {{- if not .Values.updateCheck.enabled }}
+            # Off means the pod asks nobody whether a newer MatrixCtrl exists. The
+            # version it is running is still reported — that answer is local and must
+            # never depend on reaching a registry.
+            - name: MATRIXCTRL_UPDATE_CHECK
+              value: "0"
+            {{- end }}
             {{- if .Values.oidc.enabled }}
             - name: MATRIXCTRL_OIDC_ISSUER
               value: {{ .Values.oidc.issuer | quote }}

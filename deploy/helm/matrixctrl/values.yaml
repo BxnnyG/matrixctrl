@@ -96,6 +96,14 @@ secrets:
   # Setting it here is also how you *reset* it: it is applied on every start.
   adminPassword: ""
 
+# Ask GHCR whether a newer MatrixCtrl has been published.
+#
+# On by default, because the cluster already pulls this image from that same registry —
+# the check adds no dependency on anyone new. Set to false and the pod talks to nothing
+# it does not have to; the running version is still shown, only the comparison is gone.
+updateCheck:
+  enabled: true
+
 # OIDC via MAS — optional. Leave clientId empty to start in bootstrap mode and
 # wire OIDC later via the in-app Setup → "Connect Matrix Login" flow.
 oidc:
