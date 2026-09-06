@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Card, Icon, StatusDot, Badge, Button, SectionTitle, Meter, Spinner, EmptyState } from "@/components/mc";
+import { Card, Icon, StatusDot, Badge, Button, SectionTitle, Meter, Spinner, EmptyState, type IconName } from "@/components/mc";
 import { ComponentDrawer, EventRow, type EventInfo } from "@/components/status/ComponentDrawer";
 import type { CSSProperties } from "react";
 
@@ -111,7 +111,7 @@ function sinceText(iso: string): string {
 const isHealthy = (c: ComponentStatus) => c.status === "healthy";
 const needsAttention = (c: ComponentStatus) => c.status === "degraded" || c.status === "down";
 
-function compIcon(name: string): string {
+function compIcon(name: string): IconName {
   const n = name.toLowerCase();
   if (n.includes("postgres") || n.includes("redis")) return "database";
   if (n.includes("authentication") || n.includes("mas")) return "key";
@@ -130,7 +130,7 @@ const STATUS_DOT: Record<string, "ok" | "warn" | "err" | "idle"> = {
   healthy: "ok", degraded: "warn", down: "err", "scaled-zero": "idle",
 };
 
-function MiniStat({ label, value, unit, icon, tone }: { label: string; value: string | number; unit?: string; icon: string; tone?: "ok" | "warn" | "err" }) {
+function MiniStat({ label, value, unit, icon, tone }: { label: string; value: string | number; unit?: string; icon: IconName; tone?: "ok" | "warn" | "err" }) {
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -245,7 +245,7 @@ function Dashboard() {
           sub={blind
             ? `Nicht erreichbar: ${(data.unavailable ?? []).join(", ")}. Das ist etwas anderes als „nichts installiert" — die Logs des Pods sagen, was fehlschlägt.`
             : "MatrixCtrl läuft, verwaltet aber noch nichts. Über Setup einen neuen Homeserver ausrollen oder ein bestehendes ESS übernehmen."}
-          action={<Button icon="arrow-right" onClick={() => navigate({ to: "/setup" })}>Zu Setup</Button>}
+          action={<Button icon="settings" onClick={() => navigate({ to: "/setup" })}>Zu Setup</Button>}
         />
       </Card>
     );

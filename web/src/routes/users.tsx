@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState, Button, ConfirmDialog } from "@/components/mc";
+import { Card, Badge, Icon, EmptyState, Button, ConfirmDialog, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/users")({
   component: Users,
@@ -53,7 +53,7 @@ type ActionId = "lock" | "unlock" | "deactivate" | "erase" | "reactivate" | "gra
  * account needs to know that it does **not** end the attacker's session — that is
  * the difference between a handled incident and one that looks handled.
  */
-const ACTIONS: Record<ActionId, { label: string; title: string; body: string; danger: boolean; icon: string }> = {
+const ACTIONS: Record<ActionId, { label: string; title: string; body: string; danger: boolean; icon: IconName }> = {
   lock: {
     label: "Sperren", icon: "lock", danger: true,
     title: "Konto sperren?",

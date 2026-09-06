@@ -4,7 +4,13 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 /* ── Icons (24x24 line set) ── */
-export const ICONS: Record<string, string> = {
+// No Record<string, string> annotation, on purpose.
+//
+// It erased the literal keys, which made `keyof typeof ICONS` collapse to `string` —
+// and `type IconName = string` below finished the job. The result: every icon name in
+// the codebase typechecked, and a wrong one rendered nothing at all, because Icon
+// returns null for an unknown name. Two of them shipped that way.
+export const ICONS = {
   dashboard: "M3 13h8V3H3zM13 21h8V3h-8zM3 21h8v-6H3z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   // Added for the mobile drawer (etappe 57). `sliders` was the closest existing icon
@@ -57,7 +63,9 @@ export const ICONS: Record<string, string> = {
   settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
 };
 
-type IconName = string;
+/** Every name Icon can draw. Derived from ICONS, so adding an icon is one edit and a
+ *  wrong name is a type error rather than a silently empty square. */
+export type IconName = keyof typeof ICONS;
 export function Icon({ name, size = 18, stroke = 1.7, style, className }: { name: IconName; size?: number; stroke?: number; style?: CSSProperties; className?: string }) {
   const d = ICONS[name];
   if (!d) return null;
@@ -81,7 +89,7 @@ export function StatusDot({ status = "ok", size = 8, pulse = false }: { status?:
 }
 
 type Tone = "neutral" | "accent" | "ok" | "warn" | "err" | "info";
-export function Badge({ children, tone = "neutral", icon, size = "md", style }: { children?: ReactNode; tone?: Tone; icon?: string; size?: "sm" | "md"; style?: CSSProperties }) {
+export function Badge({ children, tone = "neutral", icon, size = "md", style }: { children?: ReactNode; tone?: Tone; icon?: IconName; size?: "sm" | "md"; style?: CSSProperties }) {
   const tones: Record<Tone, { bg: string; fg: string; bd: string }> = {
     neutral: { bg: "var(--surface-2)", fg: "var(--text-dim)", bd: "var(--border)" },
     accent: { bg: "var(--accent-soft)", fg: "var(--accent)", bd: "color-mix(in oklch, var(--accent) 30%, transparent)" },
@@ -101,7 +109,7 @@ export function Badge({ children, tone = "neutral", icon, size = "md", style }: 
 
 type ButtonVariant = "primary" | "outline" | "ghost" | "soft" | "danger" | "dangerGhost";
 export function Button({ children, variant = "outline", size = "md", icon, iconRight, onClick, disabled, full, active, style, title, type }: {
-  children?: ReactNode; variant?: ButtonVariant; size?: "sm" | "md" | "lg"; icon?: string; iconRight?: string;
+  children?: ReactNode; variant?: ButtonVariant; size?: "sm" | "md" | "lg"; icon?: IconName; iconRight?: IconName;
   onClick?: () => void; disabled?: boolean; full?: boolean; active?: boolean; style?: CSSProperties; title?: string; type?: "button" | "submit";
 }) {
   const [hover, setHover] = useState(false);
@@ -135,7 +143,7 @@ export function Card({ children, pad = true, style, hover = false, onClick, clas
   );
 }
 
-export function SectionTitle({ children, sub, right, icon }: { children?: ReactNode; sub?: ReactNode; right?: ReactNode; icon?: string }) {
+export function SectionTitle({ children, sub, right, icon }: { children?: ReactNode; sub?: ReactNode; right?: ReactNode; icon?: IconName }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
@@ -193,7 +201,7 @@ export function Avatar({ name, size = 32, accent }: { name: string; size?: numbe
   );
 }
 
-export function Tabs<T extends string>({ tabs, active, onChange, size = "md" }: { tabs: { id: T; label: string; icon?: string; count?: number }[]; active: T; onChange: (id: T) => void; size?: "sm" | "md" }) {
+export function Tabs<T extends string>({ tabs, active, onChange, size = "md" }: { tabs: { id: T; label: string; icon?: IconName; count?: number }[]; active: T; onChange: (id: T) => void; size?: "sm" | "md" }) {
   return (
     <div style={{ display: "flex", gap: 2, padding: 3, background: "var(--panel)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-soft)", width: "fit-content" }}>
       {tabs.map((t) => {
@@ -208,7 +216,7 @@ export function Tabs<T extends string>({ tabs, active, onChange, size = "md" }: 
   );
 }
 
-export function EmptyState({ icon = "sparkle", title, sub, action }: { icon?: string; title: string; sub?: string; action?: ReactNode }) {
+export function EmptyState({ icon = "sparkle", title, sub, action }: { icon?: IconName; title: string; sub?: string; action?: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "56px 24px", textAlign: "center", gap: 6 }}>
       <div style={{ display: "grid", placeItems: "center", width: 52, height: 52, borderRadius: "var(--radius)", background: "var(--surface-2)", color: "var(--text-faint)", marginBottom: 6 }}><Icon name={icon} size={24} /></div>
@@ -243,7 +251,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, confirmIcon
   title: string;
   children?: ReactNode;
   confirmLabel: string;
-  confirmIcon?: string;
+  confirmIcon?: IconName;
   /** Blocks confirmation while the dialog's own input is incomplete — an empty
    *  password field should not be able to reach the server at all. */
   confirmDisabled?: boolean;

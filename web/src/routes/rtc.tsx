@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Card, Badge, Icon, EmptyState, Button } from "@/components/mc";
+import { Card, Badge, Icon, EmptyState, Button, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/rtc")({
   component: RTCStatus,
@@ -105,7 +105,7 @@ interface ReachResp {
   verdict: { level: "ok" | "warn" | "unknown"; title: string; detail: string; action?: string };
 }
 
-const TONE = {
+const TONE: Record<string, { tone: "ok" | "warn" | "info"; icon: IconName; label: string }> = {
   ok: { tone: "ok" as const, icon: "check", label: "geprüft" },
   warn: { tone: "warn" as const, icon: "alert", label: "Problem" },
   // Its own visual weight on purpose. An unknown rendered like an OK is exactly

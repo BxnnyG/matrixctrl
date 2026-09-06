@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner } from "@/components/mc";
+import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner, type IconName } from "@/components/mc";
 import { Markdown } from "@/components/Markdown";
 import { cmpVersion, essVersion } from "@/lib/version";
 
@@ -32,7 +32,7 @@ interface ReleaseNotes {
 }
 
 
-const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: string }> = {
+const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: IconName }> = {
   deployed: { tone: "ok", icon: "check" },
   failed: { tone: "err", icon: "x" },
   "hooks-failed": { tone: "warn", icon: "alert" },

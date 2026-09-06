@@ -3154,3 +3154,54 @@ Fällen war die Annahme plausibel und falsch.
 Nebenbei: Manifest-Typ, Versions-Formatierung und der authentifizierte Upload liegen
 jetzt einmal statt zweimal. Die beiden Kopien waren bereits auseinandergelaufen — eine
 zeigte `matrix-stack-26.8.0`, die andere `26.8.0`.
+
+### §4.84 — Ein Typ, der `string` war (2026-09-06, agent, etappe 83)
+
+Beim Bau der Schrittanzeige wollte ich ein Icon namens `arrow-right`. Es gibt keines.
+Der Typecheck war zufrieden, der Linter war zufrieden, und die Stelle rendert ein
+leeres Quadrat — `Icon` gibt für einen unbekannten Namen `null` zurück.
+
+Dann fiel auf: dasselbe hatte ich in Etappe 77 schon einmal getan. **Zwei falsche
+Icon-Namen waren ausgeliefert**, beide meine, beide unsichtbar.
+
+Die Ursache sind zwei Zeilen:
+
+    export const ICONS: Record<string, string> = { … }
+    type IconName = string;
+
+Die erste löscht die literalen Schlüssel — mit `Record<string, string>` ist
+`keyof typeof ICONS` nur noch `string`. Die zweite macht es explizit. Es gab also einen
+Typ mit dem Namen `IconName`, der genau nichts einschränkte: die Form einer Prüfung ohne
+die Prüfung.
+
+Das ist dieselbe Familie wie §4.79 (der Linter, der nie lief) und §4.75 (der Guard hinter
+dem Tag), nur die stillste Variante davon. Der Linter war abgeschaltet, das erkennt man.
+Der Guard stand zu spät, das sah man im Log. Ein Typalias auf `string` sieht wie eine
+Absicherung aus und steht im selben Modul wie das, was es absichern soll.
+
+Behoben: `ICONS` ohne Annotation, `IconName = keyof typeof ICONS`, und jede Prop, die
+einen Icon-Namen nimmt, sagt es auch. Vierzehn locker typisierte Stellen mussten
+nachgezogen werden — Nav-Einträge, Statuskarten, Sektions-Icons —, was für sich schon
+zeigt, wie weit die Unschärfe getragen hat. Gegenprobe: `icon: "srever"` →
+
+    error TS2820: Type '"srever"' is not assignable to type … Did you mean '"server"'?
+
+Die Regel dahinter: **ein Typ, der alles erlaubt, ist teurer als kein Typ.** Ohne ihn
+hätte jemand gemerkt, dass hier nichts geprüft wird. Mit ihm sieht die Datei geprüft aus.
+
+### §4.85 — „Erledigt" ist keine Position (2026-09-06, operator, etappe 83)
+
+Unter dem Setup-Assistenten stand eine Karte mit drei Zeilen: ESS deployed, Config-
+Sektionen, Matrix-Login — jede mit Haken oder Warnung. Sie beantwortete „was ist wahr".
+Der Operator hat aber gefragt, was er als Nächstes tun soll, und ist dafür durch die
+Oberfläche geirrt.
+
+Eine Liste von Tatsachen ist keine Position in einem Ablauf. „OIDC: nein" und „du bist
+hier, das ist der letzte Schritt" beschreiben denselben Zustand und sagen verschiedene
+Dinge. Die Karte ist jetzt eine Folge: *erledigt* · *du bist hier* · *danach*, mit
+denselben Detailzeilen wie vorher.
+
+**Ersetzt, nicht ergänzt.** Zwei Darstellungen derselben Wahrheit laufen auseinander, und
+dann muss der Leser entscheiden, welche die echte ist. Der Zustand kommt weiterhin
+vollständig aus dem, was `/setup/status` ohnehin meldet — es wird nichts zusätzlich
+mitgeschrieben, also kann die Anzeige dem Cluster nicht widersprechen.

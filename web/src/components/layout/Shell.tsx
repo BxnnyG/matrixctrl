@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode } from "react";
 import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
-import { Icon, StatusDot, Avatar, Kbd, useIsMobile, ConfirmDialog } from "@/components/mc";
+import { Icon, StatusDot, Avatar, Kbd, useIsMobile, ConfirmDialog, type IconName } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
-interface NavItem { id: string; label: string; icon: string; to?: string; phase?: string }
+interface NavItem { id: string; label: string; icon: IconName; to?: string; phase?: string }
 interface NavGroup { group: string; phase?: string; items: NavItem[] }
 
 const NAV: NavGroup[] = [

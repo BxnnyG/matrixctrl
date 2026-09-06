@@ -4,7 +4,7 @@ import { useState, useRef, type ReactNode, type RefObject } from "react";
 import { api } from "@/lib/api";
 import { essVersion, type ArchiveManifest } from "@/lib/archive";
 import { useUpgradeStream } from "@/lib/ws";
-import { Card, Icon, Button, Spinner, StatusDot } from "@/components/mc";
+import { Card, Icon, Button, Spinner, StatusDot, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/setup")({
   component: Setup,
@@ -30,7 +30,7 @@ interface DeployResponse { upgrade_id: string }
 const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 13.5, fontFamily: "var(--font)" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 };
 
-function WizardHeader({ icon, title, sub }: { icon: string; title: string; sub: string }) {
+function WizardHeader({ icon, title, sub }: { icon: IconName; title: string; sub: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "var(--accent-soft)", borderBottom: "1px solid var(--border-soft)" }}>
       <div style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "var(--radius-sm)", background: "var(--accent)", color: "var(--accent-fg)", flexShrink: 0 }}><Icon name={icon} size={18} /></div>
@@ -58,20 +58,6 @@ function StatusInline({ done, status, map }: { done: boolean; status: string | n
 }
 
 const DEPLOY_MAP: Record<string, [string, "ok" | "warn" | "err"]> = { success: ["Erfolgreich", "ok"], "hooks-failed": ["Hooks fehlgeschlagen", "warn"], failed: ["Fehlgeschlagen", "err"] };
-
-function Row({ ok, warn, icon, title, detail }: { ok: boolean; warn?: boolean; icon: string; title: string; detail: string; }) {
-  const tone = ok ? "ok" : warn ? "warn" : "err";
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px" }}>
-      <div style={{ display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color: "var(--text-dim)", flexShrink: 0 }}><Icon name={icon} size={17} /></div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{title}</div>
-        <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)" }}>{detail}</p>
-      </div>
-      <Icon name={ok ? "check" : warn ? "alert" : "x"} size={18} stroke={2.2} style={{ color: `var(--status-${tone})`, flexShrink: 0 }} />
-    </div>
-  );
-}
 
 function Setup() {
   const qc = useQueryClient();
@@ -111,15 +97,7 @@ function Setup() {
         />
       )}
 
-      <Card pad={false}>
-        <Row ok={data.ess_installed} icon="server" title="ESS deployed"
-          detail={data.ess_installed ? `Release „${data.ess_release}" v${data.ess_version ?? "?"} (${data.ess_status ?? "?"}) in ${data.ess_namespace}` : `Kein Release „${data.ess_release}" in ${data.ess_namespace}`} />
-        <div style={{ borderTop: "1px solid var(--border-soft)" }} />
-        <Row ok={data.config_sections > 0} icon="sliders" title="Config-Sektionen" detail={`${data.config_sections} Sektions-Dateien im versionierten Config-Repo`} />
-        <div style={{ borderTop: "1px solid var(--border-soft)" }} />
-        <Row ok={data.oidc_configured} warn={!data.oidc_configured} icon="key" title="Matrix-Login (OIDC)"
-          detail={data.oidc_configured ? "Admin-only Login via MAS ist aktiv" : "Bootstrap-Modus (lokaler Admin) — nach ESS-Deploy auf OIDC umschalten"} />
-      </Card>
+      <SetupSteps data={data} />
 
       <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "var(--panel)" }}>
         <Icon name="info" size={16} style={{ color: "var(--text-faint)", flexShrink: 0, marginTop: 1 }} />
@@ -226,8 +204,78 @@ function ConnectedCard({ missing, masHost, onDone }: { missing: string[]; masHos
  *  Setup showed a deploy wizard or an adopt card depending on what it found. An
  *  operator moving from another server fitted neither: they had to deploy a homeserver
  *  they did not want yet, guess its version, and then find the backup page. */
+
+/** Where you are in the setup, and what is left.
+ *
+ *  There used to be a checklist under the wizard with the same three facts. A list of
+ *  what is true is not the same as a position in a sequence: it says "OIDC: nein"
+ *  where the operator needs "you are here, this is the last step". Replaced rather
+ *  than added to — two renderings of one truth drift, and the operator has to work out
+ *  which one is the real one.
+ *
+ *  The state comes entirely from what /setup/status already reported. Nothing new is
+ *  tracked, so this cannot disagree with the cluster. */
+function SetupSteps({ data }: { data: SetupStatus }) {
+  const steps: { icon: IconName; title: string; done: boolean; detail: string }[] = [
+    {
+      icon: "server",
+      title: "Homeserver",
+      done: data.ess_installed,
+      detail: data.ess_installed
+        ? `Release „${data.ess_release}" v${data.ess_version ?? "?"} (${data.ess_status ?? "?"}) in ${data.ess_namespace}`
+        : `Noch kein Release „${data.ess_release}" in ${data.ess_namespace}`,
+    },
+    {
+      icon: "sliders",
+      title: "Konfiguration",
+      done: data.config_sections > 0,
+      detail: data.config_sections > 0
+        ? `${data.config_sections} Sektions-Dateien im versionierten Config-Repo`
+        : "Noch keine Konfiguration übernommen",
+    },
+    {
+      icon: "key",
+      title: "Matrix-Login",
+      done: data.oidc_configured,
+      detail: data.oidc_configured
+        ? "Admin-only Login über MAS ist aktiv"
+        : "Noch Bootstrap-Modus — du meldest dich lokal an",
+    },
+  ];
+  // The current step is the first unfinished one. Everything after it is not yet
+  // reachable, and saying so is the point: a step that is merely "not done" reads as
+  // something forgotten.
+  const current = steps.findIndex((s) => !s.done);
+
+  return (
+    <Card pad={false}>
+      {steps.map((step, i) => {
+        const state = step.done ? "done" : i === current ? "current" : "todo";
+        const color = state === "done" ? "var(--status-ok)" : state === "current" ? "var(--accent)" : "var(--text-faint)";
+        return (
+          <div key={step.title} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px", borderTop: i ? "1px solid var(--border-soft)" : undefined, background: state === "current" ? "var(--accent-soft)" : undefined }}>
+            <div style={{ display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", color, flexShrink: 0 }}>
+              <Icon name={step.icon} size={17} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{step.title}</span>
+                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color }}>
+                  {state === "done" ? "erledigt" : state === "current" ? "du bist hier" : "danach"}
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)" }}>{step.detail}</p>
+            </div>
+            <Icon name={step.done ? "check" : state === "current" ? "play" : "clock"} size={18} stroke={2.2} style={{ color, flexShrink: 0 }} />
+          </div>
+        );
+      })}
+    </Card>
+  );
+}
+
 function StartChoice({ onPick }: { onPick: (m: "fresh" | "migrate") => void }) {
-  const options: { id: "fresh" | "migrate"; icon: string; title: string; sub: string }[] = [
+  const options: { id: "fresh" | "migrate"; icon: IconName; title: string; sub: string }[] = [
     { id: "fresh", icon: "rocket", title: "Neu aufsetzen", sub: "Einen frischen Homeserver ausrollen. Du brauchst eine Domain." },
     { id: "migrate", icon: "upload", title: "Von einem Backup umziehen", sub: "Archiv von einem anderen Server. Version, Server-Name und Konfiguration kommen daraus." },
   ];

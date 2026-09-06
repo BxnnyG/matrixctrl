@@ -15,11 +15,11 @@ interface ConfigLocation {
 }
 import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves } from "@/lib/schema";
 import { groupNav, orderKeys } from "@/lib/sections";
-import { Icon, Badge, Button, Toggle, Spinner, EmptyState } from "@/components/mc";
+import { Icon, Badge, Button, Toggle, Spinner, EmptyState, type IconName } from "@/components/mc";
 import { DiffView } from "@/components/config/DiffView";
 
 // Icon (mc set) per section file for a scannable, less flat UI.
-const SECTION_ICONS: Record<string, string> = {
+const SECTION_ICONS: Record<string, IconName> = {
   "general.yaml": "settings",
   "synapse.yaml": "server",
   "matrixAuthenticationService.yaml": "key",
@@ -30,7 +30,7 @@ const SECTION_ICONS: Record<string, string> = {
   "postgres.yaml": "database",
   "redis.yaml": "database",
 };
-const iconFor = (file: string): string => SECTION_ICONS[file] ?? "file";
+const iconFor = (file: string): IconName => SECTION_ICONS[file] ?? "file";
 
 export const Route = createFileRoute("/config/")({
   component: Settings,

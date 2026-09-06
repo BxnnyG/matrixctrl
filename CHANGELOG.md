@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.78] — 2026-09-06
+
+### Changed
+
+- **Setup says where you are, not just what is true.** The checklist under the wizard
+  listed three facts — homeserver, configuration, login — in the same shape whether a
+  step was finished, current or still out of reach. It is now a sequence: each step says
+  *erledigt*, *du bist hier* or *danach*, and carries the same detail it did before. One
+  rendering, replacing the other; two views of one truth drift, and then the operator
+  has to work out which is the real one.
+
+### Fixed
+
+- **Icon names were unchecked, and two wrong ones had shipped.** `ICONS` was annotated
+  `Record<string, string>`, which erased its literal keys, and `type IconName = string`
+  finished the job — so any name typechecked, and a wrong one rendered nothing at all,
+  because `Icon` returns null for a name it does not know. `IconName` is now derived from
+  `ICONS`, every prop that takes one says so, and a typo is a compile error that suggests
+  the right name. Fourteen loosely-typed sites were tightened in the process; both wrong
+  names were mine, from the last two releases.
+
 ## [0.1.77] — 2026-09-06
 
 ### Added
