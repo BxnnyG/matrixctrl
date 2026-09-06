@@ -3066,3 +3066,50 @@ angegebene Adresse gewinnt immer, weil er seinen Router sieht und der Cluster ni
 den man umgeht — und wer ihn umgeht, verliert auch alles andere, was er zu sagen hatte.
 Zeigen die Einträge noch nicht hierher, verlangt der Knopf eine Bestätigung und macht
 dann weiter.
+
+### §4.82 — Eine Frage, die niemand beantworten kann (2026-09-06, operator, etappe 81)
+
+> „er fragt mich nach mas url issuer, aber wenn man es dadurch doch deployed wiso sollte
+> ich die angeben wenn ich keine ahnung habe wie matrixctrl die deployed und auf welche
+> url"
+
+Zuerst habe ich die falsche Ursache vermutet: das Feld sei leer, weil die Vorbelegung
+fehle. Nachgesehen — sie existiert seit jeher (`useState(masHost ? …)`), und auf der
+laufenden Instanz steht der Wert auch in der Konfiguration. Die Beschwerde ist wörtlich
+zu nehmen und trifft etwas anderes:
+
+**Gefragt zu werden, wo eine Tatsache steht, ist keine Bequemlichkeitsfrage — es ist
+eine Prüfung, die der Gefragte nicht bestehen kann.** Wer MatrixCtrl seinen Homeserver
+ausrollen lässt, hat die Hostnames nie gewählt. Ein Eingabefeld mit der Aufschrift „MAS
+URL (Issuer)" verlangt von ihm, einen Wert zu bestätigen, den er nicht bewerten kann —
+egal ob er vorbelegt ist oder nicht. Vorbelegung macht die Frage bequemer, nicht
+beantwortbarer.
+
+Also: kein Formular, sondern zwei Aussagen mit ihrer Herkunft.
+
+    MAS (Issuer)         https://mas.example.com      aus deiner ESS-Konfiguration
+    MatrixCtrl-Adresse   https://panel.example.com    die Adresse, unter der du gerade bist
+
+Bearbeiten bleibt möglich, ist aber eine Handlung („abweichend konfigurieren") statt der
+Vorgabe. Der Unterschied zwischen beidem ist der Unterschied zwischen *jemandem etwas
+sagen* und *jemanden etwas fragen, das er nicht wissen kann*.
+
+Der zweite Teil des Satzes — „wie matrixctrl die deployed und auf welche url" — ist eine
+eigene Lücke: der Assistent hat nie gesagt, was er gleich anlegt. Jeder Wert, nach dem
+später gefragt wird, kommt dadurch ohne den Zusammenhang an, in dem er beurteilbar wäre.
+Vor dem Knopf steht jetzt, was passieren wird: Chart und Version, Release und Namespace,
+und die Hostnames (deren Liste seit §4.81 ohnehin darunter steht).
+
+**Nebenbefund, echt und behoben.** Der Issuer wurde in einem `useState`-Initialwert
+berechnet. Der liest sein Argument genau einmal — auf dem Render, der die Karte einhängt.
+Kommt der Wert einen Moment später, wie er es tut, wenn die Konfiguration vom gerade
+beendeten Deploy geschrieben wird, bleibt das Feld für den Rest der Sitzung leer, ohne
+dass irgendetwas erklärt, warum. Jetzt wird er bei jedem Render abgeleitet; der Zustand
+hält nur noch die *Abweichung*.
+
+**Was hier nicht geprüft ist.** Beides sind Formänderungen, abgesichert durch Typecheck
+und Linter. Eine Komponenten-Testumgebung gibt es in diesem Repo nicht — `web` hat
+vitest, aber keine DOM-Bibliothek, also ist nur reine Logik abgedeckt. Das ist eine
+echte Lücke und eine eigene Etappe wert. Sie hier mit einem Test zuzukleistern, der die
+Struktur nicht berührt, wäre dasselbe wie der gelöschte „Test", der Quelltext durchsucht
+hat statt Verhalten zu prüfen.

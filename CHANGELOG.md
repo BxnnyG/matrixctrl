@@ -15,6 +15,34 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.76] — 2026-09-06
+
+### Changed
+
+- **"Connect Matrix Login" states what it knows instead of asking.** It used to present
+  two blank-looking fields, "MAS URL (Issuer)" and "MatrixCtrl URL". An operator who let
+  MatrixCtrl deploy their homeserver never chose those hostnames, so being asked to
+  confirm them is being asked to check something they have no way to check. Both values
+  are known; they are now shown as facts with where each came from, and editing them is
+  a deliberate act behind "abweichend konfigurieren".
+- **The deploy wizard says what it is about to create** — chart and version, release and
+  namespace, and the hostnames — before the button, not after the fact.
+
+### Fixed
+
+- **A derived value that could never arrive.** The OIDC issuer was computed in a
+  `useState` initializer, which reads its input once, on the render that mounts the
+  card. When the value appeared a moment later — as it does when the config is written
+  by the deploy that just finished — the field stayed empty for the rest of the session
+  with nothing to explain why. It is derived on every render now.
+
+### Notes
+
+- These are shape changes to the setup screens, verified by typecheck and lint. There is
+  no component-rendering test in this repo — `web` has vitest but no DOM testing
+  library, so only pure logic is covered. Worth its own etappe; noted rather than
+  papered over with a test that would prove nothing.
+
 ## [0.1.75] — 2026-09-06
 
 ### Added

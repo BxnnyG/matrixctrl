@@ -87,7 +87,7 @@ function Setup() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
       {!data.ess_installed ? (
-        <DeployWizard release={data.ess_release} onDone={invalidate} />
+        <DeployWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} />
       ) : data.config_sections === 0 ? (
         <AdoptCard release={data.ess_release} version={data.ess_version} onDone={invalidate} />
       ) : !data.oidc_configured ? (
@@ -194,9 +194,41 @@ function ConnectedCard({ missing, masHost, onDone }: { missing: string[]; masHos
   );
 }
 
+
+/** A value the product worked out, shown with where it came from.
+ *
+ *  The difference between this and an input box is the difference between telling
+ *  someone something and asking them something they cannot answer. */
+function DerivedValue({ label, value, source }: { label: string; value: string; source: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "11px 14px", background: "var(--surface-2)" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)" }}>{label}</span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+        <code style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: value ? "var(--text)" : "var(--status-warn)", wordBreak: "break-all" }}>{value || "—"}</code>
+        <span style={{ fontSize: 11, color: "var(--text-faint)" }}>{source}</span>
+      </span>
+    </div>
+  );
+}
+
 function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void }) {
-  const [issuer, setIssuer] = useState(masHost ? `https://${masHost}` : "");
-  const [publicUrl, setPublicUrl] = useState(window.location.origin);
+  // Derived, not initial state.
+  //
+  // These used to be useState(masHost ? … : "") — which reads the prop once, on the
+  // render that happens to mount the card. Arrive a moment later, as the value does
+  // when the config is written by the deploy that just finished, and the field stays
+  // empty for the rest of the session with no way to tell why.
+  const derivedIssuer = masHost ? `https://${masHost}` : "";
+  const derivedPublicUrl = window.location.origin;
+
+  // Overrides start unset: the values above are facts, and the operator only sees a
+  // form if they say they want one.
+  const [override, setOverride] = useState(false);
+  const [issuerOverride, setIssuerOverride] = useState("");
+  const [publicUrlOverride, setPublicUrlOverride] = useState("");
+  const issuer = override ? issuerOverride : derivedIssuer;
+  const publicUrl = override ? publicUrlOverride : derivedPublicUrl;
+
   const [runId, setRunId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
@@ -217,18 +249,37 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
       <WizardHeader icon="key" title="Matrix-Login verbinden" sub="Registriert MatrixCtrl als OIDC-Client in MAS — automatisch, kein manuelles Patchen" />
       {!runId ? (
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="mc-dash-grid">
-            <div>
-              <label style={labelStyle}>MAS URL (Issuer)</label>
-              <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://mas.example.com" style={inputStyle} />
+          {/* Two facts, not two questions.
+              An operator who let MatrixCtrl deploy their homeserver cannot evaluate a
+              blank field labelled "MAS URL" — they never chose the hostname, so being
+              asked for it is being asked to confirm something they have no way to
+              check. Both values are known here; they are shown with where they came
+              from, and editing them is a deliberate act. */}
+          {!override ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              <DerivedValue label="MAS (Issuer)" value={derivedIssuer}
+                source={derivedIssuer ? "aus deiner ESS-Konfiguration" : "steht nicht in der Konfiguration — bitte selbst angeben"} />
+              <DerivedValue label="MatrixCtrl-Adresse" value={derivedPublicUrl}
+                source="die Adresse, unter der du gerade bist" />
             </div>
-            <div>
-              <label style={labelStyle}>MatrixCtrl URL</label>
-              <input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} style={inputStyle} />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="mc-dash-grid">
+              <div>
+                <label style={labelStyle}>MAS URL (Issuer)</label>
+                <input value={issuerOverride} onChange={(e) => setIssuerOverride(e.target.value)} placeholder={derivedIssuer || "https://mas.example.com"} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>MatrixCtrl URL</label>
+                <input value={publicUrlOverride} onChange={(e) => setPublicUrlOverride(e.target.value)} placeholder={derivedPublicUrl} style={inputStyle} />
+              </div>
             </div>
-          </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Button variant="primary" icon={connect.isPending ? undefined : "key"} disabled={!issuer || !publicUrl || connect.isPending} onClick={() => connect.mutate()}>{connect.isPending ? <><Spinner size={14} /> Verbinde…</> : "Verbinden"}</Button>
+            <button onClick={() => { setOverride((v) => !v); if (!override) { setIssuerOverride(derivedIssuer); setPublicUrlOverride(derivedPublicUrl); } }}
+              style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "var(--text-faint)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>
+              {override ? "Vorgaben verwenden" : "abweichend konfigurieren"}
+            </button>
             <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Schreibt den Client in die MAS-Config + helm upgrade ess + schaltet auf OIDC um</span>
             {connect.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(connect.error as Error).message}</span>}
           </div>
@@ -382,7 +433,7 @@ function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk:
 
 const dnsCell: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid var(--border-soft)", verticalAlign: "top", fontFamily: "var(--mono)", color: "var(--text-dim)" };
 
-function DeployWizard({ release, onDone }: { release: string; onDone: () => void }) {
+function DeployWizard({ release, namespace, onDone }: { release: string; namespace?: string; onDone: () => void }) {
   const [serverName, setServerName] = useState("");
   const [version, setVersion] = useState("");
   // Whether every record already points here. It never blocks the deploy — DNS
@@ -428,6 +479,19 @@ function DeployWizard({ release, onDone }: { release: string; onDone: () => void
             </div>
           </div>
           {validDomain && <DnsStep serverName={serverName} onReady={setDnsOk} />}
+
+          {/* What is about to happen, before it happens.
+              "wiso sollte ich die angeben wenn ich keine ahnung habe wie matrixctrl
+              die deployed und auf welche url" — the wizard never said what it was
+              about to create, so every value it asked for later arrived without a
+              context in which it could be judged. */}
+          {validDomain && version && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              <DerivedValue label="Chart" value={`matrix-stack ${version}`} source="Element Server Suite" />
+              <DerivedValue label="Release" value={release} source={namespace ? `Namespace ${namespace}` : "Helm-Release"} />
+              <DerivedValue label="Hostnames" value={`${serverName} und 5 weitere`} source="unten aufgelistet, mit Prüfung" />
+            </div>
+          )}
 
           {validDomain && !dnsOk && (
             <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
