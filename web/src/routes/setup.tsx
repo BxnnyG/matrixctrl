@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, type ReactNode, type RefObject } from "react";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
-import { Card, Icon, Button, Spinner } from "@/components/mc";
+import { Card, Icon, Button, Spinner, StatusDot } from "@/components/mc";
 
 export const Route = createFileRoute("/setup")({
   component: Setup,
@@ -247,9 +247,149 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
   );
 }
 
+
+interface DnsRecord {
+  type: string;
+  name: string;
+  purpose: string;
+  want: string[] | null;
+  resolved: string[] | null;
+  status: "ok" | "elsewhere" | "missing" | "unknown";
+  detail?: string;
+}
+interface DnsResponse {
+  server_name: string;
+  target: { addresses: string[] | null; source: string; usable: boolean; note?: string };
+  records: DnsRecord[];
+  all_ok: boolean;
+}
+
+const DNS_TONE: Record<DnsRecord["status"], { dot: "ok" | "warn" | "err" | "idle"; label: string }> = {
+  ok:        { dot: "ok",   label: "zeigt hierher" },
+  elsewhere: { dot: "warn", label: "zeigt woanders" },
+  missing:   { dot: "err",  label: "nicht gefunden" },
+  // Not an error about the record — an error about the lookup. Saying "missing" here
+  // sends people to fix DNS that is already correct.
+  unknown:   { dot: "idle", label: "nicht prüfbar" },
+};
+
+/** The step that did not exist.
+ *
+ *  All an operator got about the one part of the install nobody else can do for them
+ *  was an eleven-pixel line naming five prefixes — and it named five of the six,
+ *  because well-known delegation is served at the server name itself. */
+function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk: boolean) => void }) {
+  const [manualIp, setManualIp] = useState("");
+  const [appliedIp, setAppliedIp] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const q = new URLSearchParams({ server_name: serverName });
+  if (appliedIp) q.set("target", appliedIp);
+  const { data, isFetching, refetch, error } = useQuery({
+    queryKey: ["setup", "dns", serverName, appliedIp],
+    queryFn: async () => {
+      const r = await api.get<DnsResponse>(`/api/v1/setup/dns?${q.toString()}`);
+      onReady(r.all_ok);
+      return r;
+    },
+    enabled: !!serverName,
+    staleTime: 15_000,
+  });
+
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).then(() => { setCopied(text); setTimeout(() => setCopied(null), 1600); }).catch(() => {});
+  };
+
+  const target = data?.target;
+  const value = target?.addresses?.[0] ?? "—";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ ...labelStyle, marginBottom: 0 }}>Diese DNS-Einträge müssen existieren</label>
+        <Button size="sm" variant="ghost" icon="refresh" onClick={() => void refetch()} disabled={isFetching}>
+          {isFetching ? <><Spinner size={13} /> Prüfe…</> : "Erneut prüfen"}
+        </Button>
+      </div>
+
+      {target && !target.usable && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+          <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{target.note}</span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={manualIp} onChange={(e) => setManualIp(e.target.value.trim())} placeholder="203.0.113.10"
+              style={{ ...inputStyle, width: 190, fontFamily: "var(--mono)" }} />
+            <Button size="sm" disabled={!manualIp} onClick={() => setAppliedIp(manualIp)}>Adresse übernehmen</Button>
+          </div>
+        </div>
+      )}
+
+      {error && <span style={{ fontSize: 12.5, color: "var(--status-err)" }}>{(error as Error).message}</span>}
+
+      <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5 }}>
+          <thead>
+            <tr>
+              {["Typ", "Name", "Wert", "Status"].map((h) => (
+                <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-faint)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.records ?? []).map((r) => {
+              const tone = DNS_TONE[r.status];
+              return (
+                <tr key={r.name}>
+                  <td style={dnsCell}>{r.type}</td>
+                  <td style={dnsCell}>
+                    <button onClick={() => copy(r.name)} title="Namen kopieren"
+                      style={{ background: "none", border: "none", padding: 0, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12.5, cursor: "pointer", textAlign: "left" }}>
+                      {copied === r.name ? "kopiert" : r.name}
+                    </button>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font)", marginTop: 2, maxWidth: 340 }}>{r.purpose}</div>
+                  </td>
+                  <td style={dnsCell}>{value}</td>
+                  <td style={{ ...dnsCell, whiteSpace: "nowrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <StatusDot status={tone.dot} size={7} />
+                      <span style={{ color: "var(--text-dim)", fontFamily: "var(--font)" }}>{tone.label}</span>
+                    </span>
+                    {r.resolved?.length ? (
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>{r.resolved.join(", ")}</div>
+                    ) : null}
+                    {r.status === "unknown" && r.detail && (
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2, fontFamily: "var(--font)", maxWidth: 260 }}>{r.detail}</div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!data && (
+              <tr><td colSpan={4} style={{ ...dnsCell, color: "var(--text-faint)", fontFamily: "var(--font)" }}>
+                {isFetching ? "Einträge werden geprüft…" : "—"}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ margin: 0, fontSize: 11.5, color: "var(--text-faint)" }}>
+        DNS-Änderungen brauchen Zeit. Du kannst trotzdem deployen — die Dienste sind
+        erreichbar, sobald die Einträge greifen.
+      </p>
+    </div>
+  );
+}
+
+const dnsCell: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid var(--border-soft)", verticalAlign: "top", fontFamily: "var(--mono)", color: "var(--text-dim)" };
+
 function DeployWizard({ release, onDone }: { release: string; onDone: () => void }) {
   const [serverName, setServerName] = useState("");
   const [version, setVersion] = useState("");
+  // Whether every record already points here. It never blocks the deploy — DNS
+  // propagation takes time, and a wizard that insists is a wizard people work around.
+  // It only decides whether the button warns first.
+  const [dnsOk, setDnsOk] = useState(false);
+  const [dnsAcknowledged, setDnsAcknowledged] = useState(false);
   const [deployId, setDeployId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
@@ -277,7 +417,7 @@ function DeployWizard({ release, onDone }: { release: string; onDone: () => void
             <div>
               <label style={labelStyle}>Server Name</label>
               <input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="example.com" style={inputStyle} />
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--text-faint)" }}>Hostnames werden abgeleitet: matrix., mas., element., admin., mrtc.</p>
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--text-faint)" }}>Die nötigen DNS-Einträge stehen unten, sobald der Name gültig ist.</p>
             </div>
             <div>
               <label style={labelStyle}>ESS-Version</label>
@@ -287,8 +427,18 @@ function DeployWizard({ release, onDone }: { release: string; onDone: () => void
               </select>
             </div>
           </div>
+          {validDomain && <DnsStep serverName={serverName} onReady={setDnsOk} />}
+
+          {validDomain && !dnsOk && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
+              <input type="checkbox" checked={dnsAcknowledged} onChange={(e) => setDnsAcknowledged(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>Noch zeigen nicht alle Einträge hierher — trotzdem deployen. Die Dienste
+              werden erreichbar, sobald das DNS greift.</span>
+            </label>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Button variant="primary" icon={deploy.isPending ? undefined : "rocket"} disabled={!validDomain || !version || deploy.isPending} onClick={() => deploy.mutate()}>{deploy.isPending ? <><Spinner size={14} /> Deploye…</> : "ESS deployen"}</Button>
+            <Button variant="primary" icon={deploy.isPending ? undefined : "rocket"} disabled={!validDomain || !version || deploy.isPending || (!dnsOk && !dnsAcknowledged)} onClick={() => deploy.mutate()}>{deploy.isPending ? <><Spinner size={14} /> Deploye…</> : "ESS deployen"}</Button>
             {serverName && !validDomain && <span style={{ fontSize: 12, color: "var(--status-warn)" }}>Bitte eine gültige Domain eingeben</span>}
             {deploy.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(deploy.error as Error).message}</span>}
           </div>

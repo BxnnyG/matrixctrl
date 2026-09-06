@@ -3023,3 +3023,46 @@ Und ein Test, der die echte Registry fragt (`RUN_LIVE=1`), neben dem mit dem
 httptest-Server. Der Mock beweist, dass der Code mit **meiner Vorstellung** von GHCR
 zurechtkommt — die wiederkehrende Lehre aus §4.73 und §4.77. Er meldet beim Schreiben
 dieser Zeilen: *„ghcr.io says the newest published chart is 0.1.73."*
+
+### §4.81 — Die elf Pixel, die für DNS zuständig waren (2026-09-06, operator, etappe 80)
+
+> „wiso zeigt setup nicht an bitte lege folgenden records an, check records ob die
+> resolven … und ggf trotzdem weiter machen quasi overide"
+
+Der gesamte Hinweis des Deploy-Assistenten zu DNS war eine graue Zeile in 11px:
+
+    Hostnames werden abgeleitet: matrix., mas., element., admin., mrtc.
+
+Das ist die einzige Anleitung zu dem einen Teil der Installation, den **niemand außer
+dem Operator erledigen kann**. Keine Einträge, kein Ziel, keine Prüfung, kein Weiter.
+
+Und sie war unvollständig. `greenfieldHostnames` schreibt sechs Werte, nicht fünf: der
+erste ist `serverName` selbst, weil die Well-Known-Delegation unter dem Domainnamen
+ausgeliefert wird. Wer die Fußnote wörtlich befolgte, legte fünf von sechs Einträgen an
+und hatte danach eine Föderation, die nicht funktionierte — aus einem Grund, den nichts
+auf dem Bildschirm erwähnte.
+
+Die Liste wird jetzt aus **derselben Map abgeleitet**, die der Deploy schreibt. Kein
+zweiter Ort, an dem Hostnames stehen; ein Test scheitert, wenn beide auseinanderlaufen,
+und nennt den fehlenden Schlüssel beim Namen. Gegenprobe gemacht: einen Eintrag aus der
+Reihenfolge entfernt → *„the deploy writes matrixRTC.ingress.host = "mrtc.example.com",
+but no DNS record is shown for it"*.
+
+Drei Entscheidungen, die die Form bestimmen:
+
+**Vier Zustände, kein Boolean.** „Löst nicht auf" und „konnte nicht nachgeschlagen
+werden" sehen in den Daten gleich aus und bedeuten das Gegenteil: das eine heißt „lege
+den Eintrag an", das andere „die Prüfung ist kaputt". Zusammengelegt schickt man Leute
+los, DNS zu reparieren, das in Ordnung ist — derselbe Fehler wie in §4.78, eine Ebene
+höher.
+
+**Hinter NAT wird die Unwissenheit ausgesprochen.** Ein Node, der nur eine private
+Adresse kennt, kann nicht sagen, was zu veröffentlichen ist. `192.168.x.x` in eine
+Record-Tabelle zu schreiben wäre schlimmer als nichts zu schreiben: eine präzise,
+selbstbewusste, falsche Anweisung. Stattdessen wird gefragt — und die vom Operator
+angegebene Adresse gewinnt immer, weil er seinen Router sieht und der Cluster nicht.
+
+**DNS blockiert nie.** Propagation dauert. Ein Assistent, der darauf besteht, ist einer,
+den man umgeht — und wer ihn umgeht, verliert auch alles andere, was er zu sagen hatte.
+Zeigen die Einträge noch nicht hierher, verlangt der Knopf eine Bestätigung und macht
+dann weiter.

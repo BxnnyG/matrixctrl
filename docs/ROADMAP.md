@@ -66,7 +66,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 77 | Was ein frischer Server beim ersten Kontakt zeigt — ein Restore, der im Pod nie ging, und ein Login, das mit drei Wörtern endete | ✅ 2026-09-05 · `v0.1.72` · [plan](plans/etappe-77-first-contact.md) |
 | 78 | Der Absturz, den der Linter die ganze Zeit kannte — und ein Gate, das niemand las | ✅ 2026-09-06 · `v0.1.73` · [plan](plans/etappe-78-setup-neu.md) |
 | 79 | Drei Fragen in einem Atemzug: welche Version, gibt es eine neuere, wie kommt sie her | ✅ 2026-09-06 · `v0.1.74` · [plan](plans/etappe-78-setup-neu.md) |
-| 80–84 | Das Setup, von vorne gedacht: DNS-Schritt · ableiten statt fragen · Umzug per Backup · geführter Ablauf · Self-Update | 📋 geplant · [plan](plans/etappe-78-setup-neu.md) |
+| 80 | Die elf Pixel, die für DNS zuständig waren — Records, Prüfung, Override, und der Eintrag, den die Fußnote vergaß | ✅ 2026-09-06 · `v0.1.75` · [plan](plans/etappe-78-setup-neu.md) |
+| 81–84 | Das Setup, von vorne gedacht: ableiten statt fragen · Umzug per Backup · geführter Ablauf · Self-Update | 📋 geplant · [plan](plans/etappe-78-setup-neu.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

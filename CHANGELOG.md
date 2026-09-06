@@ -15,6 +15,36 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.75] — 2026-09-06
+
+### Added
+
+- **The deploy wizard now shows the DNS records it needs, and checks them.** A table of
+  every name with its target, a copy button, a re-check, and what each record costs when
+  it is missing. All an operator got before was a grey eleven-pixel line naming five
+  prefixes — the entire guidance about the one part of an install nobody else can do for
+  them.
+- **The record that line left out.** Well-known delegation is served at the server name
+  itself, so the bare domain needs a record too. Following the old footnote exactly
+  produced five records out of six, and federation that did not work for a reason
+  nothing on screen mentioned. The list is now derived from the same map the deploy
+  writes, and a test fails if the two ever drift apart.
+- `GET /api/v1/setup/dns` — the records, what they should point at, and what they
+  actually resolve to.
+
+### Notes
+
+- **DNS never blocks a deploy.** Propagation takes time, and a wizard that insists is a
+  wizard people work around. When records do not point here yet, the deploy button asks
+  for one acknowledgement and then proceeds.
+- **A resolver failure is not a missing record.** They look identical in the data and
+  mean opposite things — one says "create this", the other says "the check is broken" —
+  so they are separate states and read differently on screen.
+- **Behind NAT the target is admitted to be unknown.** A node that only knows a private
+  address cannot tell you what to publish, and printing `192.168.x.x` into a record
+  table is worse than printing nothing: it is a precise, confident, wrong instruction.
+  The wizard asks for the public address instead.
+
 ## [0.1.74] — 2026-09-06
 
 ### Added

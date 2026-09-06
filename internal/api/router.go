@@ -202,6 +202,8 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/discover", deps.Setup.Discover)
 			r.Post("/adopt", deps.Setup.Adopt)
 			r.Get("/chart-defaults", deps.Setup.ChartDefaults)
+			// Which records have to exist, and whether they do (etappe 80).
+			r.Get("/dns", deps.Helm.SetupDNS)
 			r.Post("/deploy-ess", deps.Helm.DeployESS)
 			r.Post("/connect-oidc", deps.Helm.ConnectOIDC)
 		})

@@ -3,10 +3,12 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -138,4 +140,56 @@ func memToMi(s string) int64 {
 		v, _ := strconv.ParseInt(s, 10, 64)
 		return v / (1024 * 1024)
 	}
+}
+
+// NodeAddress is what a DNS record has to point at.
+//
+// Kept separate from NodeInfo, which answers a different question (how loaded is this
+// node) and is polled every fifteen seconds by the dashboard. Addresses change when a
+// node is rebuilt, not when it gets busy.
+type NodeAddress struct {
+	Node     string `json:"node"`
+	External string `json:"external,omitempty"`
+	Internal string `json:"internal,omitempty"`
+}
+
+// NodeAddresses lists the addresses Kubernetes knows for each node.
+//
+// On a rented VM with a public address this gives the right answer directly. Behind
+// NAT — a home server, a router, most self-hosting — the node only knows its private
+// address, and the public one is genuinely unknowable from in here. The caller is
+// expected to say so rather than present a 192.168 address as the record's target.
+func (c *Client) NodeAddresses(ctx context.Context) ([]NodeAddress, error) {
+	nodes, err := c.Static.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]NodeAddress, 0, len(nodes.Items))
+	for _, n := range nodes.Items {
+		a := NodeAddress{Node: n.Name}
+		for _, addr := range n.Status.Addresses {
+			switch addr.Type {
+			case corev1.NodeExternalIP:
+				if a.External == "" {
+					a.External = addr.Address
+				}
+			case corev1.NodeInternalIP:
+				if a.Internal == "" {
+					a.Internal = addr.Address
+				}
+			}
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// IsPrivate reports whether an address is one the public internet cannot reach, which
+// is what decides whether MatrixCtrl may present it as a DNS target.
+func IsPrivate(addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return true // not an address at all; certainly not one to publish
+	}
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }
