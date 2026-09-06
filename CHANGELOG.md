@@ -15,6 +15,25 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.73] — 2026-09-06
+
+### Fixed
+
+- **The configuration page crashed with "Something went wrong!"** whenever it was opened
+  without a warm query cache. A `useQuery` sat below two early returns, so the first
+  render (still loading) ran one hook fewer than the second — React minified error #310,
+  "Rendered more hooks than during the previous render". The hook now sits with the
+  others, above every return.
+
+### Changed
+
+- **`eslint` is now a gate**, in `make check` and in CI. It was configured for this all
+  along — `react-hooks/rules-of-hooks` names the defect above at its exact line — and was
+  never run, because 59 of its 78 errors came from a rule about dev-server hot-reload
+  ergonomics and buried the one that mattered. That rule is off; `rules-of-hooks` is an
+  error; the remaining react-hooks rules are warnings so the gate is live today instead
+  of after a cleanup nobody had scheduled.
+
 ## [0.1.72] — 2026-09-05
 
 ### Fixed

@@ -89,6 +89,13 @@ jobs:
       - name: Typecheck
         run: npx tsc -b --noEmit
 
+      # The rules-of-hooks gate. tsc cannot see a hook after an early return: it is
+      # valid TypeScript and a guaranteed React crash. One shipped, and the config
+      # page died with "Something went wrong!" for anyone opening it cold (§4.79).
+      # eslint has been configured for this the whole time and was never run.
+      - name: Lint
+        run: npx eslint .
+
       - name: Unit tests
         run: npm run test -- --run
 

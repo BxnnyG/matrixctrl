@@ -55,6 +55,9 @@ test:
 check:
 	$(GO) test ./...
 	cd web && ./node_modules/.bin/tsc -b --noEmit
+	# The rules-of-hooks gate. tsc cannot see a hook after an early return —
+	# it is valid TypeScript and a guaranteed React crash (§4.79).
+	cd web && ./node_modules/.bin/eslint .
 	./scripts/check-sensitive.sh
 	./scripts/check-changelog.sh
 	./scripts/check-commands.sh

@@ -2941,3 +2941,47 @@ Ursache und ohne Ausgang ist eine Sackgasse mit Entschuldigung.
 Der Test dafür braucht keinen Cluster: **ein Zero-Value-Handler *ist* die
 Frischinstallation** — kein Kubernetes-Client, kein Helm-Client, nichts erreichbar. Die
 Antwort muss trotzdem ein gültiges Dashboard-Payload sein.
+
+### §4.79 — Der Absturz, den der Linter die ganze Zeit kannte (2026-09-06, operator, etappe 78)
+
+Der Operator öffnete den Config-Tab und bekam `Something went wrong!` mit
+`Minified React error #310`. Reacts eigene `codes.json` übersetzt das zu *"Rendered more
+hooks than during the previous render."*
+
+`web/src/routes/config/index.tsx` rief `useQuery` in Zeile 136 — **unterhalb** zweier
+früher `return`s in den Zeilen 125 und 127. Bei kaltem Cache kehrt der erste Render bei
+`isLoading` zurück und ruft zwölf Hooks; der zweite erreicht Zeile 136 und ruft
+dreizehn. React zählt und wirft. Bei warmem Cache passiert es nicht, weshalb die Seite
+sich im Alltag normal anfühlte und beim Neuladen starb.
+
+Der Kommentar über dem Hook lautete *"Cheap and static; asked once so the header can
+state where the configuration is"* — er stand dort, wo er sich **liest**, direkt neben
+dem, was ihn benutzt. Hooks gehören dorthin, wo die Regeln es erlauben, nicht dorthin,
+wo die Erzählung besser fließt.
+
+**Der interessante Teil ist nicht der Bug.** `eslint.config.js` bindet
+`reactHooks.configs.flat.recommended` ein, seit es die Datei gibt. `npm run lint`
+existiert in `package.json`. `eslint .` benennt die Stelle wörtlich:
+
+    136:30  error  React Hook "useQuery" is called conditionally … Did you accidentally
+                   call a React Hook after an early return?  react-hooks/rules-of-hooks
+
+Das Werkzeug war da, richtig konfiguriert, und wurde von keinem Gate aufgerufen — weder
+`make check` noch CI. Der Grund steht in derselben Ausgabe: **59 der 78 Fehler waren
+`react-refresh/only-export-components`**, eine Regel über Hot-Reload-Ergonomie des
+Dev-Servers, die in diesem Projekt jede Route-Datei trifft und über Korrektheit nichts
+aussagt. Genau eine echte Verletzung im ganzen Repo, begraben unter 59 belanglosen.
+
+Das ist ein eigenes Muster, und es ist das dritte dieser Woche nach §4.75 (Guard hinter
+dem Tag): **ein Check, dessen Ausgabe zu drei Vierteln Rauschen ist, wird abgeschaltet —
+und nimmt das eine Viertel mit.** Ein Gate ist nicht scharf, weil es existiert, sondern
+weil jemand es liest.
+
+Konsequenz: die Ergonomie-Regel aus, `rules-of-hooks` auf `error`, die übrigen
+react-hooks-Regeln auf `warn`. Warnungen und nicht Fehler, weil es dort zwanzig echte,
+kleinere Befunde gibt — sie zu Fehlern zu machen hätte bedeutet, das Gate erst nach einer
+Aufräumaktion einzuschalten, die niemand terminiert hat. Also: heute scharf für die
+Klasse, die abstürzt, und ein Rückstand, der sichtbar bleibt statt ausgeschaltet.
+
+`eslint .` läuft jetzt in `make check` **und** in CI. Gegenprobe: den Hook zurück unter
+die `return`s geschoben — Gate schlägt fehl, mit genau dieser Meldung.

@@ -58,6 +58,22 @@ function Settings() {
 
   const [mode, setMode] = useState<Mode>("standard");
   const [fileSel, setFileSel] = useState<string | null>(null);
+  // Cheap and static; asked once so the header can state where the configuration is.
+  //
+  // It used to sit further down, next to the header that reads it — which put it after
+  // two early returns. On a cold cache the first render returns at `isLoading` and this
+  // hook never runs; the second render reaches it, and React counts one hook more than
+  // last time: minified error #310, "Rendered more hooks than during the previous
+  // render". The whole page became "Something went wrong!" whenever it was opened
+  // without a warm query cache.
+  //
+  // Hooks go where the rules allow, not where the narrative reads best.
+  const { data: location } = useQuery({
+    queryKey: ["config", "location"],
+    queryFn: () => api.get<ConfigLocation>("/api/v1/config/location"),
+    staleTime: 5 * 60_000,
+  });
+
   const [query, setQuery] = useState("");
   const [changes, setChanges] = useState<Record<string, unknown>>({});
   const [saved, setSaved] = useState(false);
@@ -131,13 +147,6 @@ function Settings() {
         .filter((l) => l.path.toLowerCase().includes(query.toLowerCase()) || (data?.comments[l.path] ?? "").toLowerCase().includes(query.toLowerCase()))
         .slice(0, 120)
     : null;
-
-  // Cheap and static; asked once so the header can state where the configuration is.
-  const { data: location } = useQuery({
-    queryKey: ["config", "location"],
-    queryFn: () => api.get<ConfigLocation>("/api/v1/config/location"),
-    staleTime: 5 * 60_000,
-  });
 
   const segBtn = (on: boolean): React.CSSProperties => ({
     display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", fontSize: 12.5, fontWeight: 550, fontFamily: "var(--font)",
