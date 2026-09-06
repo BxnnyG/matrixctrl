@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bxnnyg/matrixctrl/internal/backup"
+	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
 	"github.com/bxnnyg/matrixctrl/internal/nodehist"
@@ -189,13 +190,45 @@ func (h *StatusHandler) synapseDSN(ctx context.Context) (string, error) {
 // Separate from the restore itself on purpose: an operator should see the ESS release
 // and the contents of an archive *before* it overwrites what is there, not discover
 // afterwards that they put a 26.8.0 configuration onto a different cluster (etappe 69).
+// restorePreview is the manifest plus what can be worked out from the archive itself.
+//
+// The manifest is the archive's own record and is not edited. ServerName is derived:
+// it is in the archived configuration, and knowing it is the difference between
+// "restore this onto a server you prepared yourself" and "this archive knows which
+// server it is, let me rebuild it" (etappe 82).
+type restorePreview struct {
+	backup.Manifest
+	ServerName string `json:"server_name,omitempty"`
+}
+
 func (h *StatusHandler) RestorePreview(w http.ResponseWriter, r *http.Request) {
 	a, err := h.readArchive(r)
 	if err != nil {
 		Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	JSON(w, http.StatusOK, a.Manifest)
+	JSON(w, http.StatusOK, restorePreview{Manifest: a.Manifest, ServerName: archiveServerName(a)})
+}
+
+// archiveServerName reads serverName out of the archived configuration.
+//
+// Best effort by design: an archive without it is still restorable, the operator just
+// has to name the server themselves. Returning "" is a fine answer; guessing is not.
+func archiveServerName(a *backup.Archive) string {
+	sections := a.ConfigSections()
+	if len(sections) == 0 {
+		return ""
+	}
+	contents := make([]string, 0, len(sections))
+	for _, c := range sections {
+		contents = append(contents, c)
+	}
+	merged, err := config.MergeToMap(contents)
+	if err != nil {
+		return ""
+	}
+	name, _ := merged["serverName"].(string)
+	return name
 }
 
 // POST /api/v1/status/restore — write an archive back.

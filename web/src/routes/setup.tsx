@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, type ReactNode, type RefObject } from "react";
 import { api } from "@/lib/api";
+import { essVersion, type ArchiveManifest } from "@/lib/archive";
 import { useUpgradeStream } from "@/lib/ws";
 import { Card, Icon, Button, Spinner, StatusDot } from "@/components/mc";
 
@@ -74,6 +75,10 @@ function Row({ ok, warn, icon, title, detail }: { ok: boolean; warn?: boolean; i
 
 function Setup() {
   const qc = useQueryClient();
+  // Which way in. Null means the question has not been asked yet, which is itself the
+  // first screen — before etappe 82 there were two answers and no question, and the
+  // third answer ("I am moving from another server") had nowhere to go at all.
+  const [mode, setMode] = useState<"fresh" | "migrate" | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ["setup", "status"],
     queryFn: () => api.get<SetupStatus>("/api/v1/setup/status"),
@@ -87,7 +92,13 @@ function Setup() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
       {!data.ess_installed ? (
-        <DeployWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} />
+        mode === null ? (
+          <StartChoice onPick={setMode} />
+        ) : mode === "migrate" ? (
+          <MigrateWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} onBack={() => setMode("fresh")} />
+        ) : (
+          <DeployWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} onMigrate={() => setMode("migrate")} />
+        )
       ) : data.config_sections === 0 ? (
         <AdoptCard release={data.ess_release} version={data.ess_version} onDone={invalidate} />
       ) : !data.oidc_configured ? (
@@ -199,6 +210,225 @@ function ConnectedCard({ missing, masHost, onDone }: { missing: string[]; masHos
  *
  *  The difference between this and an input box is the difference between telling
  *  someone something and asking them something they cannot answer. */
+
+/** Rebuilding a server from an archive.
+ *
+ *  The path that did not exist. Migrating meant: deploy ESS by hand, guess which
+ *  version the old one ran, then find the backup page and upload there. The order was
+ *  written down nowhere, and the archive knew the answer to the guess the whole time —
+ *  the preview even displayed it (etappe 82).
+ *
+ *  It reverses the order of the greenfield wizard: the archive first, and everything
+ *  else derived from it. */
+
+/** The first question, which used to not be asked.
+ *
+ *  Setup showed a deploy wizard or an adopt card depending on what it found. An
+ *  operator moving from another server fitted neither: they had to deploy a homeserver
+ *  they did not want yet, guess its version, and then find the backup page. */
+function StartChoice({ onPick }: { onPick: (m: "fresh" | "migrate") => void }) {
+  const options: { id: "fresh" | "migrate"; icon: string; title: string; sub: string }[] = [
+    { id: "fresh", icon: "rocket", title: "Neu aufsetzen", sub: "Einen frischen Homeserver ausrollen. Du brauchst eine Domain." },
+    { id: "migrate", icon: "upload", title: "Von einem Backup umziehen", sub: "Archiv von einem anderen Server. Version, Server-Name und Konfiguration kommen daraus." },
+  ];
+  return (
+    <WizardCard>
+      <WizardHeader icon="sparkle" title="Was hast du vor?" sub="Hier läuft noch kein Homeserver" />
+      <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+        {options.map((o) => (
+          <button key={o.id} onClick={() => onPick(o.id)}
+            style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 8, padding: 16, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", cursor: "pointer", color: "var(--text)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <Icon name={o.icon} size={17} style={{ color: "var(--accent)" }} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{o.title}</span>
+            </span>
+            <span style={{ fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.55 }}>{o.sub}</span>
+          </button>
+        ))}
+      </div>
+    </WizardCard>
+  );
+}
+
+function MigrateWizard({ release, namespace, onDone, onBack }: { release: string; namespace?: string; onDone: () => void; onBack: () => void }) {
+  const [archive, setArchive] = useState<File | null>(null);
+  const [manifest, setManifest] = useState<ArchiveManifest | null>(null);
+  const [readErr, setReadErr] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+
+  const [serverOverride, setServerOverride] = useState("");
+  const [versionOverride, setVersionOverride] = useState("");
+  const [dnsOk, setDnsOk] = useState(false);
+  const [dnsAcknowledged, setDnsAcknowledged] = useState(false);
+
+  const [deployId, setDeployId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [deployDone, setDeployDone] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
+  const [restoreErr, setRestoreErr] = useState<string | null>(null);
+
+  const { data: versions } = useQuery({ queryKey: ["helm", "versions"], queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions") });
+
+  const serverName = serverOverride || manifest?.server_name || "";
+  const archivedVersion = essVersion(manifest?.ess?.chart);
+  const version = versionOverride || archivedVersion;
+  const versionAvailable = !versions || !archivedVersion || versions.some((v) => v.version === archivedVersion);
+  const validDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(serverName);
+
+  const pick = async (f: File | null) => {
+    setArchive(f); setManifest(null); setReadErr(null);
+    if (!f) return;
+    setReading(true);
+    try {
+      // The file as the body, not multipart: readArchive() gunzips the request body
+      // directly. A FormData envelope reaches it as "kein gültiges gzip-Archiv" —
+      // which is what the first version of this did, and it would have failed on the
+      // one path built to rescue an operator.
+      setManifest(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f));
+    } catch (e) {
+      setReadErr(e instanceof Error ? e.message : "Archiv unlesbar");
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const deploy = useMutation({
+    mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName }),
+    onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDeployDone(false); setDeployStatus(null); },
+  });
+
+  // The restore runs by itself once the deploy succeeds — that is the whole point of
+  // the path. It stays a visible, repeatable step rather than a hidden side effect: if
+  // the tab is closed between the two, the button is still there afterwards.
+  const runRestore = async () => {
+    if (!archive) return;
+    setRestoring(true); setRestoreErr(null); setRestoreMsg(null);
+    try {
+      const r = await api.upload<{ config_files: number; tables?: string[] }>("/api/v1/status/restore", archive);
+      setRestoreMsg(`${r.config_files} Konfigurationsdateien und ${r.tables?.length ?? 0} Tabellen eingespielt.`);
+      onDone();
+    } catch (e) {
+      setRestoreErr(e instanceof Error ? e.message : "Wiederherstellung fehlgeschlagen");
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  useUpgradeStream(deployId, {
+    onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
+    onDone: (s) => {
+      setDeployDone(true); setDeployStatus(s);
+      if (s === "success") void runRestore();
+    },
+  });
+
+  return (
+    <WizardCard>
+      <WizardHeader icon="upload" title="Von einem Backup umziehen"
+        sub="Archiv zuerst — ESS-Version, Server-Name und Konfiguration kommen daraus" />
+
+      {!deployId ? (
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Archiv</label>
+            <input type="file" accept=".tar.gz,.tgz,application/gzip"
+              onChange={(e) => void pick(e.target.files?.[0] ?? null)}
+              style={{ ...inputStyle, padding: 8, fontSize: 12.5 }} />
+            {reading && <span style={{ fontSize: 12, color: "var(--text-faint)" }}><Spinner size={12} /> Archiv wird gelesen…</span>}
+            {readErr && <span style={{ fontSize: 12.5, color: "var(--status-err)" }}>{readErr}</span>}
+          </div>
+
+          {manifest && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+                <DerivedValue label="ESS-Version" value={version || "—"}
+                  source={archivedVersion ? "aus dem Archiv — wird genau so deployed" : "nicht im Archiv vermerkt — bitte wählen"} />
+                <DerivedValue label="Server Name" value={serverName || "—"}
+                  source={manifest.server_name ? "aus der archivierten Konfiguration" : "nicht im Archiv gefunden — bitte angeben"} />
+                <DerivedValue label="Wird eingespielt" value={`${manifest.config_repo_files} Dateien · ${manifest.tables?.length ?? 0} Tabellen`}
+                  source="nach dem Deploy, automatisch" />
+                <DerivedValue label="Release" value={release} source={namespace ? `Namespace ${namespace}` : "Helm-Release"} />
+              </div>
+
+              {(!manifest.server_name || serverOverride) && (
+                <div>
+                  <label style={labelStyle}>Server Name</label>
+                  <input value={serverOverride} onChange={(e) => setServerOverride(e.target.value.trim())}
+                    placeholder={manifest.server_name || "example.com"} style={inputStyle} />
+                </div>
+              )}
+
+              {!versionAvailable && (
+                <div>
+                  <label style={labelStyle}>ESS-Version</label>
+                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--status-warn)" }}>
+                    Version {archivedVersion} wird nicht mehr angeboten — bitte eine verfügbare wählen.
+                  </p>
+                  <select value={versionOverride} onChange={(e) => setVersionOverride(e.target.value)} style={inputStyle}>
+                    <option value="">Version wählen…</option>
+                    {versions?.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {validDomain && <DnsStep serverName={serverName} onReady={setDnsOk} />}
+
+              {validDomain && !dnsOk && (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={dnsAcknowledged} onChange={(e) => setDnsAcknowledged(e.target.checked)} style={{ marginTop: 2 }} />
+                  <span>Noch zeigen nicht alle Einträge hierher — trotzdem fortfahren.</span>
+                </label>
+              )}
+            </>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Button variant="primary" icon={deploy.isPending ? undefined : "rocket"}
+              disabled={!manifest || !validDomain || !version || deploy.isPending || (!dnsOk && !dnsAcknowledged)}
+              onClick={() => deploy.mutate()}>
+              {deploy.isPending ? <><Spinner size={14} /> Deploye…</> : "ESS deployen und einspielen"}
+            </Button>
+            <button onClick={onBack} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "var(--text-faint)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>
+              doch neu aufsetzen
+            </button>
+            {deploy.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(deploy.error as Error).message}</span>}
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>1 · Deploy</span>
+            <StatusInline done={deployDone} status={deployStatus} map={DEPLOY_MAP} />
+          </div>
+          <LogTerm logs={logs} done={deployDone} logRef={logRef} />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>2 · Einspielen</span>
+            {restoring && <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}><Spinner size={13} /> läuft…</span>}
+            {restoreMsg && <span style={{ fontSize: 12.5, color: "var(--status-ok)" }}>{restoreMsg}</span>}
+            {restoreErr && <span style={{ fontSize: 12.5, color: "var(--status-err)" }}>{restoreErr}</span>}
+            {deployDone && !restoring && !restoreMsg && (
+              <Button size="sm" icon="upload" onClick={() => void runRestore()}>
+                {restoreErr ? "Nochmal einspielen" : "Jetzt einspielen"}
+              </Button>
+            )}
+          </div>
+          {restoreMsg && (
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)" }}>
+              MatrixCtrl sollte jetzt neu gestartet werden, damit die eingespielte
+              Konfiguration überall greift.
+            </p>
+          )}
+        </div>
+      )}
+    </WizardCard>
+  );
+}
+
 function DerivedValue({ label, value, source }: { label: string; value: string; source: string }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "11px 14px", background: "var(--surface-2)" }}>
@@ -433,7 +663,7 @@ function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk:
 
 const dnsCell: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid var(--border-soft)", verticalAlign: "top", fontFamily: "var(--mono)", color: "var(--text-dim)" };
 
-function DeployWizard({ release, namespace, onDone }: { release: string; namespace?: string; onDone: () => void }) {
+function DeployWizard({ release, namespace, onDone, onMigrate }: { release: string; namespace?: string; onDone: () => void; onMigrate?: () => void }) {
   const [serverName, setServerName] = useState("");
   const [version, setVersion] = useState("");
   // Whether every record already points here. It never blocks the deploy — DNS
@@ -503,6 +733,11 @@ function DeployWizard({ release, namespace, onDone }: { release: string; namespa
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Button variant="primary" icon={deploy.isPending ? undefined : "rocket"} disabled={!validDomain || !version || deploy.isPending || (!dnsOk && !dnsAcknowledged)} onClick={() => deploy.mutate()}>{deploy.isPending ? <><Spinner size={14} /> Deploye…</> : "ESS deployen"}</Button>
+            {onMigrate && (
+              <button onClick={onMigrate} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "var(--text-faint)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>
+                Ich habe ein Backup
+              </button>
+            )}
             {serverName && !validDomain && <span style={{ fontSize: 12, color: "var(--status-warn)" }}>Bitte eine gültige Domain eingeben</span>}
             {deploy.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(deploy.error as Error).message}</span>}
           </div>

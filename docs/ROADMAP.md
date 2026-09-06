@@ -68,7 +68,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 79 | Drei Fragen in einem Atemzug: welche Version, gibt es eine neuere, wie kommt sie her | ✅ 2026-09-06 · `v0.1.74` · [plan](plans/etappe-78-setup-neu.md) |
 | 80 | Die elf Pixel, die für DNS zuständig waren — Records, Prüfung, Override, und der Eintrag, den die Fußnote vergaß | ✅ 2026-09-06 · `v0.1.75` · [plan](plans/etappe-78-setup-neu.md) |
 | 81 | Eine Frage, die niemand beantworten kann — Tatsachen statt Formularfelder, und eine Vorschau vor dem Deploy | ✅ 2026-09-06 · `v0.1.76` · [plan](plans/etappe-78-setup-neu.md) |
-| 82–84 | Das Setup, von vorne gedacht: Umzug per Backup · geführter Ablauf · Self-Update | 📋 geplant · [plan](plans/etappe-78-setup-neu.md) |
+| 82 | Das Archiv wusste es die ganze Zeit — Umzug als dritter Setup-Pfad | ✅ 2026-09-06 · `v0.1.77` · [plan](plans/etappe-78-setup-neu.md) |
+| 83–84 | Das Setup, von vorne gedacht: geführter Ablauf · Self-Update | 📋 geplant · [plan](plans/etappe-78-setup-neu.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

@@ -354,3 +354,38 @@ func TestRestoreConfigRepoRefusesReservedPaths(t *testing.T) {
 		t.Error("an archive using a reserved staging path must be refused, not partly restored")
 	}
 }
+
+// ConfigSections has to ignore everything in the config repository that is not a
+// configuration section — the repository carries its own .git objects and a
+// pre-migration backup directory, and a caller merging those as YAML fails on the
+// first git object it meets.
+func TestConfigSectionsAreOnlyTheSections(t *testing.T) {
+	a, err := Read(bytes.NewReader(pack(t, map[string]string{
+		"manifest.json":                                manifestJSON(t, Manifest{FormatVersion: FormatVersion}),
+		"config-repo/general.yaml":                     "serverName: example.com\n",
+		"config-repo/synapse.yaml":                     "synapse:\n  ingress:\n    host: matrix.example.com\n",
+		"config-repo/config-slices.json":               `{"slices":[]}`,
+		"config-repo/.git/HEAD":                        "ref: refs/heads/master\n",
+		"config-repo/.git/objects/ab/cdef":             "binary-ish",
+		"config-repo/_backup-pre-sections/values.yaml": "old: true\n",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := a.ConfigSections()
+	want := map[string]bool{"general.yaml": true, "synapse.yaml": true}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("%q is not a configuration section and must not be offered as one", name)
+		}
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Errorf("section %q is missing", name)
+		}
+	}
+	if body := got["general.yaml"]; !strings.Contains(body, "example.com") {
+		t.Errorf("section contents not returned: %q", body)
+	}
+}

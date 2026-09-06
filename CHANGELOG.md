@@ -15,6 +15,31 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.77] — 2026-09-06
+
+### Added
+
+- **Setup can rebuild a server from a backup.** A third way in, next to "deploy a fresh
+  homeserver" and "adopt the one already here": upload the archive first, and everything
+  else comes out of it — the ESS version it was running, the server name from its
+  configuration, the DNS records for that name. It deploys that version and then
+  restores into it, as two visible steps.
+  Until now, migrating meant deploying a homeserver by hand, guessing which version the
+  old one ran, and then finding the backup page. The order was written down nowhere, and
+  the archive had known the answer to the guess the whole time — the preview even
+  displayed it.
+- **Setup asks what you are trying to do** before showing a wizard, instead of picking
+  one from what it happens to find.
+- `server_name` on the restore preview, read out of the archived configuration.
+
+### Changed
+
+- The archive manifest type, the ESS-version formatting and the authenticated file
+  upload are shared between the backup and setup screens instead of copied. One of the
+  copies already rendered the chart version differently from the other
+  (`matrix-stack-26.8.0` against `26.8.0`), which is what a second copy of a rule
+  eventually produces.
+
 ## [0.1.76] — 2026-09-06
 
 ### Changed

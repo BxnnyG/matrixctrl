@@ -48,7 +48,31 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.json();
 }
 
+/** An authenticated POST that sends a body as-is.
+ *
+ *  request() sets Content-Type: application/json and JSON-encodes, which is wrong for a
+ *  file: multipart needs the boundary the browser generates, and setting the header by
+ *  hand breaks it. This existed as a private helper on the backup page; the setup page
+ *  needs the same thing now, and two copies of a fetch wrapper is how one of them ends
+ *  up with a different error message than the other. */
+async function upload<T>(path: string, body: BodyInit): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try { message = (JSON.parse(text || "{}") as { error?: string }).error ?? message; } catch { /* not JSON */ }
+    throw new ApiError(message, res.status);
+  }
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 export const api = {
+  upload,
   get: <T = unknown>(path: string) => request<T>("GET", path),
   post: <T = unknown>(path: string, body: unknown) => request<T>("POST", path, body),
   put: <T = unknown>(path: string, body: unknown) => request<T>("PUT", path, body),

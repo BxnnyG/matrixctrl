@@ -527,3 +527,22 @@ func restoreBack(old, root string, names []string) {
 		_ = os.Rename(filepath.Join(old, name), filepath.Join(root, name))
 	}
 }
+
+// ConfigSections returns the archive's top-level YAML section files, path → contents.
+//
+// Only the top level and only .yaml: the config repository also carries its own .git
+// objects and a pre-migration backup directory, and neither is configuration. A caller
+// merging everything in here as YAML would fail on the first git object.
+//
+// It exists so an archive can be *read* before anything is restored — which is what
+// turns "71 Konfigurationsdateien" from a number into a plan (etappe 82).
+func (a *Archive) ConfigSections() map[string]string {
+	out := make(map[string]string)
+	for path, data := range a.config {
+		if strings.Contains(path, "/") || !strings.HasSuffix(path, ".yaml") {
+			continue
+		}
+		out[path] = string(data)
+	}
+	return out
+}

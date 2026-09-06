@@ -3113,3 +3113,44 @@ vitest, aber keine DOM-Bibliothek, also ist nur reine Logik abgedeckt. Das ist e
 echte Lücke und eine eigene Etappe wert. Sie hier mit einem Test zuzukleistern, der die
 Struktur nicht berührt, wäre dasselbe wie der gelöschte „Test", der Quelltext durchsucht
 hat statt Verhalten zu prüfen.
+
+### §4.83 — Das Archiv wusste es die ganze Zeit (2026-09-06, operator, etappe 82)
+
+> „setup gibts keine option mit backup wieder einspielen, also muss ich dann auf setup
+> matrix deployen und dann backup wieder einspielen kann ich das voher zeigt die ui
+> nicht steht nirgends wiso kann er nicht die ess version aus backup ziehen und
+> deployen?!?!"
+
+Der Umzug von Server zu Server war kein Pfad, sondern eine Reihenfolge, die man erraten
+musste: ESS von Hand ausrollen, die Version des alten Servers raten, dann die
+Backup-Seite finden. Nirgends stand, dass es diese Reihenfolge gibt.
+
+Und die entscheidende Zeile im Bericht ist die Frage am Ende. `Manifest.ESS` trägt Chart
+und Revision, seit es Backups gibt. **Die Vorschau hat es sogar angezeigt** — „ESS 26.8.0
+(Revision 30)" stand auf dem Bildschirm, während der Operator daneben raten sollte.
+Angezeigte Daten, auf die nichts reagiert, sind schlimmer als fehlende: sie beweisen,
+dass die Information da war.
+
+Der dritte Pfad dreht die Reihenfolge um: **erst das Archiv, dann alles andere.** Aus
+dem Manifest kommt die Version, aus der archivierten Konfiguration der Server-Name (neu:
+`ConfigSections()` liefert nur die YAML-Sektionen der obersten Ebene — die Git-Objekte
+des Repositories sind keine Konfiguration und lassen jeden Merge scheitern), daraus die
+DNS-Namen für §4.81, und danach Deploy und Einspielen als zwei sichtbare Schritte.
+
+**Sichtbar und wiederholbar, nicht automatisch und versteckt.** Das Einspielen startet
+von selbst, wenn der Deploy erfolgreich war — aber es steht als eigener Schritt da, mit
+einem Knopf. Wer den Tab dazwischen schließt, findet ihn danach wieder. Ein verketteter
+Vorgang, dessen zweite Hälfte nur im Browser existierte, wäre ein stiller Datenverlust
+mit gutem Gewissen.
+
+**Ein Fehler, den ich beim Bauen selbst gemacht habe, und der Grund, warum er nicht
+ausgeliefert wurde.** Der erste Entwurf lud das Archiv als `FormData` hoch — die
+naheliegende Wahl für einen Datei-Upload. `readArchive()` liest den **rohen Body** als
+gzip. Der Operator hätte auf genau dem Pfad, der ihn retten sollte, „kein gültiges
+gzip-Archiv" bekommen. Gefunden, weil ich den Server nachgesehen habe, statt meinem
+eigenen Code zu glauben — dieselbe Bewegung wie in §4.77 und §4.82, und in allen drei
+Fällen war die Annahme plausibel und falsch.
+
+Nebenbei: Manifest-Typ, Versions-Formatierung und der authentifizierte Upload liegen
+jetzt einmal statt zweimal. Die beiden Kopien waren bereits auseinandergelaufen — eine
+zeigte `matrix-stack-26.8.0`, die andere `26.8.0`.

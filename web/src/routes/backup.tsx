@@ -1,16 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Card, Icon, Button } from "@/components/mc";
+import { api } from "@/lib/api";
+import { essVersion, type ArchiveManifest } from "@/lib/archive";
 
 export const Route = createFileRoute("/backup")({ component: BackupPage });
 
-interface BackupManifest {
-  created_at: string;
-  app_version: string;
-  ess?: { name?: string; chart?: string; revision?: number };
-  config_repo_files: number;
-  tables?: { name: string; rows: number; regenerable: boolean }[];
-}
 
 
 /** Backup and restore.
@@ -75,28 +70,17 @@ function BackupPage() {
     }
   };
 
-  const [preview, setPreview] = useState<BackupManifest | null>(null);
+  const [preview, setPreview] = useState<ArchiveManifest | null>(null);
   const [archive, setArchive] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const [restoreErr, setRestoreErr] = useState<string | null>(null);
 
-  const post = async (path: string, body: BodyInit) => {
-    const res = await fetch(path, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${localStorage.getItem("matrixctrl_token") ?? ""}` },
-      body,
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(JSON.parse(text || "{}").error ?? `HTTP ${res.status}`);
-    return text ? JSON.parse(text) : {};
-  };
-
   const pick = async (f: File | null) => {
     setArchive(f); setPreview(null); setRestoreErr(null); setRestoreMsg(null);
     if (!f) return;
     try {
-      setPreview(await post("/api/v1/status/restore/preview", f));
+      setPreview(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f));
     } catch (e) {
       setRestoreErr(e instanceof Error ? e.message : "Archiv unlesbar");
     }
@@ -106,7 +90,7 @@ function BackupPage() {
     if (!archive) return;
     setRestoring(true); setRestoreErr(null);
     try {
-      const r = await post("/api/v1/status/restore", archive);
+      const r = await api.upload<{ config_files: number; tables?: string[] }>("/api/v1/status/restore", archive);
       setRestoreMsg(`${r.config_files} Konfigurationsdateien und ${r.tables?.length ?? 0} Tabellen wiederhergestellt. MatrixCtrl sollte jetzt neu gestartet werden.`);
       setPreview(null); setArchive(null);
     } catch (e) {
@@ -187,7 +171,7 @@ function BackupPage() {
           <div style={{ fontSize: 12.5, color: "var(--text-dim)", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "10px 12px", lineHeight: 1.7 }}>
             <div><strong style={{ color: "var(--text)" }}>Archiv vom {new Date(preview.created_at).toLocaleString("de-DE")}</strong></div>
             <div>MatrixCtrl {preview.app_version}
-              {preview.ess?.chart ? ` · ESS ${preview.ess.chart} (Revision ${preview.ess.revision})` : " · ESS-Version nicht im Archiv vermerkt"}</div>
+              {preview.ess?.chart ? ` · ESS ${essVersion(preview.ess.chart)} (Revision ${preview.ess.revision})` : " · ESS-Version nicht im Archiv vermerkt"}</div>
             <div>{preview.config_repo_files} Konfigurationsdateien, {preview.tables?.length ?? 0} Tabellen</div>
           </div>
         )}
