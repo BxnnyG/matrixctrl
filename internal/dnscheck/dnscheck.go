@@ -34,6 +34,10 @@ const (
 )
 
 type Record struct {
+	// Key identifies the record in the deploy's own hostname map, so a client can offer
+	// to override exactly the names that will be created — without keeping a second
+	// list of them, which is the thing that drifts.
+	Key  string `json:"key,omitempty"`
 	Type string `json:"type"`
 	Name string `json:"name"`
 	// What breaks if this one is absent. An operator staring at six near-identical

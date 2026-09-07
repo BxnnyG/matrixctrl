@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.80] — 2026-09-07
+
+### Added
+
+- **The DNS records can be renamed.** The six hostnames were derived from the server
+  name, and that derivation was also a rule: an operator who wanted their homeserver on
+  a name other than `matrix.<domain>` had no way to say so. Each row is now editable in
+  place, the check follows the change, and the deploy creates what the table shows.
+  Overrides are matched against the keys the deploy actually writes, so one cannot
+  introduce a hostname the deploy path never sets.
+- **Setup says when Matrix login is configured but unreachable.** The backend has told
+  "this install uses local login" apart from "Matrix login exists, its issuer is down"
+  for a long time, and nothing displayed it — an operator whose MAS had moved kept a
+  working session until the pod restarted, then met a login screen with no explanation.
+  The banner also carries the command that switches back for good.
+
+### Notes
+
+- The record list carries the deploy's own key for each entry, so the editor is built
+  from the derivation rather than from a second list of hostnames in the frontend.
+
 ## [0.1.79] — 2026-09-07
 
 ### Fixed

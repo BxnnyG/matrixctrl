@@ -74,7 +74,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 85 | Kein „fertig", solange Helm noch läuft — Zustand statt Existenz | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
 | 86 | Der erste Matrix-Nutzer — MatrixCtrl legt ihn selbst an | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
 | 87 | Umschalten erst, wenn es funktioniert — MAS fragen statt die Datei lesen | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
-| 88–89 | Rückweg sichtbar + laufender Health-Check · Hostnames einzeln editierbar | 📋 geplant · [plan](plans/etappe-85-anmeldung.md) |
+| 88 | Der Zustand, den niemand angesehen hat — „eingerichtet, aber nicht erreichbar" | ✅ 2026-09-07 · `v0.1.80` · [plan](plans/etappe-85-anmeldung.md) |
+| 89 | Eine Ableitung, die zur Regel wurde — Hostnames einzeln editierbar | ✅ 2026-09-07 · `v0.1.80` · [plan](plans/etappe-85-anmeldung.md) |
 | 90–94 | Danach: Preflight · Rollback-Moment · Zustandsseite · Aufräumen · Komponenten-Tests | 📋 geplant · [plan](plans/etappe-85-sichtbarer-zustand.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |

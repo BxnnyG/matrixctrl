@@ -28,6 +28,10 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Version    string `json:"version"`
 		ServerName string `json:"server_name"`
+		// Per-record overrides, keyed like greenfieldHostnames. The derivation is a
+		// good default and was, until etappe 89, also a rule: an operator who wanted
+		// their homeserver on a name other than matrix.<domain> had no way to say so.
+		Hostnames map[string]string `json:"hostnames"`
 	}
 	if err := Decode(r, &req); err != nil || req.Version == "" || req.ServerName == "" {
 		Error(w, http.StatusBadRequest, "version and server_name are required")
@@ -86,7 +90,7 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		changes := greenfieldHostnames(sn)
+		changes := applyHostnameOverrides(greenfieldHostnames(sn), req.Hostnames)
 		if err := h.configStore.SetSectionValues(ctx, changes, greenfieldRemovals()); err != nil {
 			stream.emit("WARNING: could not apply hostnames: " + err.Error())
 		}
@@ -451,6 +455,25 @@ func (h *HelmHandler) reconcileMASClient(w http.ResponseWriter, r *http.Request,
 //
 // Before adding a component here, check its ingress block in
 // matrix-stack/values.schema.json actually accepts `host`.
+// applyHostnameOverrides replaces derived hostnames with ones the operator chose.
+//
+// Only keys the derivation already produces, and only non-empty values: an override
+// map is operator input, and it must not be able to introduce a value the deploy path
+// does not otherwise write.
+func applyHostnameOverrides(derived map[string]interface{}, overrides map[string]string) map[string]interface{} {
+	for key, value := range overrides {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := derived[key]; !ok {
+			continue
+		}
+		derived[key] = value
+	}
+	return derived
+}
+
 func greenfieldHostnames(serverName string) map[string]interface{} {
 	return map[string]interface{}{
 		"serverName":           serverName,

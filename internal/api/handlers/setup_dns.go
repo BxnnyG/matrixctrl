@@ -39,15 +39,15 @@ var recordPurpose = map[string]string{
 
 // greenfieldRecords derives the DNS records a greenfield deploy needs from the same
 // map that deploy writes into the config.
-func greenfieldRecords(serverName string) []dnscheck.Record {
-	hosts := greenfieldHostnames(serverName)
+func greenfieldRecords(serverName string, overrides map[string]string) []dnscheck.Record {
+	hosts := applyHostnameOverrides(greenfieldHostnames(serverName), overrides)
 	out := make([]dnscheck.Record, 0, len(recordOrder))
 	for _, key := range recordOrder {
 		name, ok := hosts[key].(string)
 		if !ok || name == "" {
 			continue
 		}
-		out = append(out, dnscheck.Record{Type: "A", Name: name, Purpose: recordPurpose[key]})
+		out = append(out, dnscheck.Record{Key: key, Type: "A", Name: name, Purpose: recordPurpose[key]})
 	}
 	return out
 }
@@ -85,8 +85,17 @@ func (h *HelmHandler) SetupDNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Overrides arrive as repeated ?override=<key>=<value>, keyed like the deploy's own
+	// hostname map — so the records checked here are the records that will be created.
+	overrides := map[string]string{}
+	for _, raw := range r.URL.Query()["override"] {
+		if key, value, ok := strings.Cut(raw, "="); ok {
+			overrides[key] = value
+		}
+	}
+
 	target := h.dnsTarget(r)
-	records := greenfieldRecords(serverName)
+	records := greenfieldRecords(serverName, overrides)
 	results := dnscheck.Check(r.Context(), nil, records, target.Addresses)
 
 	JSON(w, http.StatusOK, dnsResponse{

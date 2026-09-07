@@ -82,6 +82,7 @@ function Setup() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
+      <MatrixLoginHealth />
       {data.ess_state === "busy" ? (
         <WizardCard>
           <WizardHeader icon="clock" title="ESS wird gerade installiert"
@@ -533,6 +534,50 @@ interface MatrixAdmins { available: boolean; reason?: string; admins: string[]; 
  *  only "Invalid credentials" from MAS and had no way past it (§4.88). MatrixCtrl could
  *  lock, unlock, deactivate, erase, promote and set passwords; it could not create the
  *  first account. Now it can. */
+
+/** "Matrix login exists but its issuer is unreachable" — said out loud.
+ *
+ *  The backend has distinguished this from "this install uses local login" for a long
+ *  time, and its comment explains exactly why the two must not look alike: they lead to
+ *  opposite actions. Nothing displayed it. An operator whose MAS had moved kept a
+ *  working session until the pod restarted, and then met a login screen with no
+ *  explanation (§4.88).
+ *
+ *  A state that is only checked at startup is not a state, it is a memory — so this
+ *  polls. */
+function MatrixLoginHealth() {
+  const { data } = useQuery({
+    queryKey: ["auth", "oidc", "available"],
+    queryFn: () => api.get<{ enabled: boolean; retrying: boolean }>("/api/v1/auth/oidc/available"),
+    refetchInterval: 30_000,
+  });
+  if (!data?.retrying) return null;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <Icon name="alert" size={19} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <strong style={{ fontSize: 13.5, color: "var(--text)" }}>
+            Matrix-Login ist eingerichtet, antwortet aber nicht
+          </strong>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)" }}>
+            MatrixCtrl versucht weiter, den Issuer zu erreichen. Solange das so ist,
+            bleibt der lokale Admin-Login offen — du kommst also rein. Häufigste Ursache:
+            der MAS-Hostname zeigt nicht mehr auf diesen Server.
+          </p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)" }}>
+            Dauerhaft auf den lokalen Login zurückstellen:
+          </p>
+          <pre style={{ margin: 0, padding: 10, fontSize: 11.5, fontFamily: "var(--mono)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "all" }}>
+            bash &lt;(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh) recover-login
+          </pre>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function MatrixAccountCard({ onDone }: { onDone: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -696,6 +741,9 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
 
 
 interface DnsRecord {
+  /** Identifies the record in the deploy's hostname map — the editor is built from
+   *  this rather than from a second list in the frontend, which would drift. */
+  key?: string;
   type: string;
   name: string;
   purpose: string;
@@ -725,15 +773,26 @@ const DNS_TONE: Record<DnsRecord["status"], { dot: "ok" | "warn" | "err" | "idle
  *  All an operator got about the one part of the install nobody else can do for them
  *  was an eleven-pixel line naming five prefixes — and it named five of the six,
  *  because well-known delegation is served at the server name itself. */
-function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk: boolean) => void }) {
+function DnsStep({ serverName, overrides, onReady, onOverride }: {
+  serverName: string;
+  overrides?: Record<string, string>;
+  onReady: (allOk: boolean) => void;
+  /** Absent means the names are not editable here — the migration path takes them from
+   *  the archive, where changing one would contradict the configuration being restored. */
+  onOverride?: (key: string, value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
   const [manualIp, setManualIp] = useState("");
   const [appliedIp, setAppliedIp] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
   const q = new URLSearchParams({ server_name: serverName });
   if (appliedIp) q.set("target", appliedIp);
+  for (const [k, v] of Object.entries(overrides ?? {})) {
+    if (v.trim()) q.append("override", `${k}=${v.trim()}`);
+  }
   const { data, isFetching, refetch, error } = useQuery({
-    queryKey: ["setup", "dns", serverName, appliedIp],
+    queryKey: ["setup", "dns", serverName, appliedIp, JSON.stringify(overrides ?? {})],
     queryFn: async () => {
       const r = await api.get<DnsResponse>(`/api/v1/setup/dns?${q.toString()}`);
       onReady(r.all_ok);
@@ -754,9 +813,17 @@ function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk:
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <label style={{ ...labelStyle, marginBottom: 0 }}>Diese DNS-Einträge müssen existieren</label>
-        <Button size="sm" variant="ghost" icon="refresh" onClick={() => void refetch()} disabled={isFetching}>
-          {isFetching ? <><Spinner size={13} /> Prüfe…</> : "Erneut prüfen"}
-        </Button>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {onOverride && (
+            <button onClick={() => setEditing((v) => !v)}
+              style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "var(--text-faint)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>
+              {editing ? "fertig" : "Namen anpassen"}
+            </button>
+          )}
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => void refetch()} disabled={isFetching}>
+            {isFetching ? <><Spinner size={13} /> Prüfe…</> : "Erneut prüfen"}
+          </Button>
+        </span>
       </div>
 
       {target && !target.usable && (
@@ -788,10 +855,16 @@ function DnsStep({ serverName, onReady }: { serverName: string; onReady: (allOk:
                 <tr key={r.name}>
                   <td style={dnsCell}>{r.type}</td>
                   <td style={dnsCell}>
+                    {editing && onOverride && r.key ? (
+                      <input value={overrides?.[r.key] ?? r.name}
+                        onChange={(e) => onOverride(r.key!, e.target.value.trim())}
+                        style={{ ...inputStyle, padding: "5px 8px", fontSize: 12.5, fontFamily: "var(--mono)", minWidth: 210 }} />
+                    ) : (
                     <button onClick={() => copy(r.name)} title="Namen kopieren"
                       style={{ background: "none", border: "none", padding: 0, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12.5, cursor: "pointer", textAlign: "left" }}>
                       {copied === r.name ? "kopiert" : r.name}
                     </button>
+                    )}
                     <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font)", marginTop: 2, maxWidth: 340 }}>{r.purpose}</div>
                   </td>
                   <td style={dnsCell}>{value}</td>
@@ -837,6 +910,9 @@ function DeployWizard({ release, namespace, onDone, onMigrate }: { release: stri
   // It only decides whether the button warns first.
   const [dnsOk, setDnsOk] = useState(false);
   const [dnsAcknowledged, setDnsAcknowledged] = useState(false);
+  // Per-record hostname overrides, keyed the way the deploy keys them. The derivation
+  // stays the default; it stopped being a rule (etappe 89).
+  const [hostOverrides, setHostOverrides] = useState<Record<string, string>>({});
   const [deployId, setDeployId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [done, setDone] = useState(false);
@@ -845,7 +921,7 @@ function DeployWizard({ release, namespace, onDone, onMigrate }: { release: stri
 
   const { data: versions } = useQuery({ queryKey: ["helm", "versions"], queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions") });
   const deploy = useMutation({
-    mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName }),
+    mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName, hostnames: hostOverrides }),
     onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
   });
   useUpgradeStream(deployId, {
@@ -874,7 +950,10 @@ function DeployWizard({ release, namespace, onDone, onMigrate }: { release: stri
               </select>
             </div>
           </div>
-          {validDomain && <DnsStep serverName={serverName} onReady={setDnsOk} />}
+          {validDomain && (
+            <DnsStep serverName={serverName} overrides={hostOverrides} onReady={setDnsOk}
+              onOverride={(key, value) => setHostOverrides((o) => ({ ...o, [key]: value }))} />
+          )}
 
           {/* What is about to happen, before it happens.
               "wiso sollte ich die angeben wenn ich keine ahnung habe wie matrixctrl

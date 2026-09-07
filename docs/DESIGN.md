@@ -3317,3 +3317,50 @@ selbst antwortet über den Cluster-Service einwandfrei. Die Anmeldung funktionie
 trotzdem — weil OIDC beim **vorherigen** Start initialisiert worden war. Erst ein
 Neustart hat es sichtbar gemacht. **Ein Zustand, der nur beim Start geprüft wird, ist
 kein Zustand, sondern eine Erinnerung.**
+
+### §4.89 — Eine Ableitung, die zur Regel wurde (2026-09-07, operator, etappe 89)
+
+> „schade ist das man die nicht da ändern kann sagen kann ey ich möchte es anstatt auf
+> x.domain.tld auf y.domain.tld haben"
+
+`greenfieldHostnames` leitet sechs Namen aus dem Server-Namen ab. Das ist eine gute
+Vorgabe und war zugleich die einzige Möglichkeit: wer seinen Homeserver auf
+`chat.example.com` statt `matrix.example.com` wollte, konnte das im Assistenten nicht
+sagen. Die Ableitung war nicht als Zwang gemeint — sie war es trotzdem, weil niemand
+einen Weg daneben gebaut hat.
+
+Jetzt ist jede Zeile der Record-Tabelle direkt editierbar. Zwei Eigenschaften halten das
+zusammen:
+
+- **Die Prüfung folgt der Änderung.** Eine DNS-Prüfung, die die abgeleiteten Namen prüft
+  und die geänderten ausrollt, wäre schlimmer als keine.
+- **Überschrieben wird nur, was der Deploy ohnehin schreibt.** Die Override-Map ist
+  Eingabe des Operators; Schlüssel, die `greenfieldHostnames` nicht kennt, werden
+  ignoriert, leere Werte lassen die Vorgabe stehen. Ein Override kann keinen Hostnamen
+  in den Deploy einschleusen, den dieser sonst nie setzt.
+
+Und der Editor wird aus der Ableitung gebaut, nicht aus einer zweiten Liste im Frontend:
+jeder Record trägt seinen Schlüssel aus der Deploy-Map mit. Eine zweite Liste wäre genau
+die Kopie, die §4.81 einen Test wert war.
+
+### §4.90 — Der Zustand, den niemand angesehen hat (2026-09-07, operator, etappe 88)
+
+`GET /api/v1/auth/oidc/available` unterscheidet seit langem zwei Dinge, und der Kommentar
+darüber erklärt genau warum:
+
+> `retrying` distinguishes "this install uses local login" from "Matrix login exists but
+> its issuer is unreachable right now". Those look identical on screen and lead to
+> opposite actions.
+
+Angezeigt hat es niemand. Auf der produktiven Instanz löste der MAS-Name inzwischen auf
+Cloudflare auf und lieferte für die Discovery ein 404; MAS selbst antwortete über den
+Cluster-Service einwandfrei. Die Anmeldung lief weiter — weil OIDC beim **vorherigen**
+Start initialisiert worden war. Erst ein Neustart hat es sichtbar gemacht, und dann stand
+der Operator vor einem Anmeldebildschirm ohne Erklärung.
+
+**Ein Zustand, der nur beim Start geprüft wird, ist kein Zustand, sondern eine
+Erinnerung.** Das Setup fragt jetzt alle 30 Sekunden und sagt den Satz, den der Endpunkt
+schon immer beantworten konnte — samt dem Befehl, der dauerhaft zurückstellt.
+
+Bemerkenswert an dieser wie an §4.79 (der Linter) und §4.84 (der Typ): das Richtige war
+gebaut, benannt und begründet. Es hat nur nie jemand aufgerufen.

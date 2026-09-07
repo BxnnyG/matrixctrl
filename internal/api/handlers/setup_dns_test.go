@@ -17,7 +17,7 @@ import (
 // that impossible; this test is what keeps the derivation honest.
 func TestEveryDeployedHostnameHasARecord(t *testing.T) {
 	const sn = "example.com"
-	records := greenfieldRecords(sn)
+	records := greenfieldRecords(sn, nil)
 
 	byName := map[string]bool{}
 	for _, r := range records {
@@ -40,7 +40,7 @@ func TestEveryDeployedHostnameHasARecord(t *testing.T) {
 
 // The one the wizard's footnote omitted.
 func TestTheServerNameItselfNeedsARecord(t *testing.T) {
-	for _, r := range greenfieldRecords("example.com") {
+	for _, r := range greenfieldRecords("example.com", nil) {
 		if r.Name == "example.com" {
 			return
 		}
@@ -49,7 +49,7 @@ func TestTheServerNameItselfNeedsARecord(t *testing.T) {
 }
 
 func TestRecordsAreNamedAfterTheServer(t *testing.T) {
-	got := greenfieldRecords("example.com")
+	got := greenfieldRecords("example.com", nil)
 	if len(got) != len(recordOrder) {
 		t.Fatalf("got %d records, want %d", len(got), len(recordOrder))
 	}
@@ -117,5 +117,38 @@ func TestSetupDNSAgainstRealResolver(t *testing.T) {
 		if r.Status == "" {
 			t.Errorf("%s came back with no status", r.Name)
 		}
+	}
+}
+
+// An operator who wants their homeserver on a name other than the derived one has to
+// be able to say so — and the DNS check has to follow, or it verifies records that will
+// not be created.
+func TestHostnameOverridesReplaceOnlyWhatTheyName(t *testing.T) {
+	got := greenfieldRecords("example.com", map[string]string{
+		"synapse.ingress.host": "chat.example.com",
+		// Ignored: not a key the deploy writes. An override map is operator input and
+		// must not be able to introduce a hostname the deploy path never sets.
+		"something.else":          "evil.example.com",
+		"elementWeb.ingress.host": "   ", // blank means "leave the default alone"
+	})
+
+	byName := map[string]bool{}
+	for _, r := range got {
+		byName[r.Name] = true
+	}
+	if !byName["chat.example.com"] {
+		t.Error("the override was not applied")
+	}
+	if byName["matrix.example.com"] {
+		t.Error("the derived name is still there next to the override")
+	}
+	if byName["evil.example.com"] {
+		t.Error("an override for a key the deploy does not write must be ignored")
+	}
+	if !byName["element.example.com"] {
+		t.Error("a blank override must leave the derived name alone")
+	}
+	if len(got) != len(recordOrder) {
+		t.Errorf("got %d records, want %d — overriding must not add or drop rows", len(got), len(recordOrder))
 	}
 }
