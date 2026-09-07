@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Added
+
+- **`install.sh doctor`** — asks whether an install would work right now, and says what
+  is in the way if not. Release states (a `pending-upgrade` blocks every later command
+  until it is rolled back), namespaces stuck Terminating, volumes, pods that are neither
+  Running nor Completed, and a server-side dry run whose error message names the object
+  Helm cannot adopt.
+- **`install.sh purge`** — deletes everything: both releases, both namespaces, every
+  volume, the cluster-scoped RBAC. "Start over" had no command: `helm uninstall` keeps
+  the volumes, deleting one namespace leaves the other, and the ESS namespace carries
+  `resource-policy: keep`, so an operator following the obvious steps ends up with a
+  cluster that looks empty and behaves like it is not. It lists its victims first and
+  will not proceed until "delete everything" is typed back.
+- **`install.sh update`** — is there a newer version, and put it on. Carries the
+  existing values forward, waits for the rollout, and on failure says that the previous
+  version is still running and how to roll back.
+
+### Notes
+
+- These live in `scripts/install.sh`, which the README tells people to fetch from
+  `master`. Script changes therefore reach operators on merge, without a release — the
+  chart and image are unchanged here, so there is no version to bump.
+
 ## [0.1.78] — 2026-09-06
 
 ### Changed

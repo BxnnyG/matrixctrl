@@ -3205,3 +3205,48 @@ denselben Detailzeilen wie vorher.
 dann muss der Leser entscheiden, welche die echte ist. Der Zustand kommt weiterhin
 vollständig aus dem, was `/setup/status` ohnehin meldet — es wird nichts zusätzlich
 mitgeschrieben, also kann die Anzeige dem Cluster nicht widersprechen.
+
+### §4.86 — „Kann es nicht neu machen" (2026-09-07, operator, etappe 84)
+
+> „bei mir ist mein remote jetz verbugget also von den alten versionen ess cluster iwi
+> überbleibsel kann es nicht neu machen idk wie ich alles lösche maby ein delete all"
+
+**„Von vorne anfangen" hatte keinen Befehl.** Was ein Operator naheliegenderweise
+versucht, führt der Reihe nach nicht zum Ziel:
+
+| Versuch | Was bleibt |
+|---|---|
+| `helm uninstall matrixctrl` | beide PVCs, das Secret (`resource-policy: keep`) |
+| `helm uninstall ess` | `ess-postgres-data`, `ess-synapse-media` (ebenfalls `keep`) |
+| `kubectl delete ns matrixctrl` | der Namespace `ess` — und der trägt selbst `keep`, weil unser Chart ihn anlegt |
+| nochmal installieren | ein Upgrade auf allem, was oben übrig blieb |
+
+Jede dieser Entscheidungen ist einzeln richtig. Zusammen ergeben sie einen Cluster, der
+leer aussieht und sich nicht so verhält — und einen Operator, der das Wort „verbugget"
+benutzt, weil ihm kein besseres bleibt.
+
+`purge` löscht das alles in einem Zug, listet vorher auf, was stirbt, und verlangt, dass
+„delete everything" getippt wird. Es ist das zerstörerischste im Repository und darum das
+einzige, das `--yes` nicht abdeckt.
+
+**Und ein Fehler, den ich beim Bauen gemacht und sofort wieder herausgenommen habe.**
+`doctor` sollte „Objekte, die Helm nicht übernehmen kann" melden — die Ursache hinter der
+Textwand über *invalid ownership metadata*. Meine erste Fassung listete jedes Objekt im
+Namespace ohne Helm-Label. Gegen einen **gesunden** Cluster ergab das dreißig Zeilen:
+Pods (die legt ein ReplicaSet an), cert-managers TLS-Secrets, Helms eigene
+Release-Secrets, Jobs aus einem CronJob. Alles normal, nichts davon ein Problem.
+
+Ein Check, der zu drei Vierteln Rauschen ist — dieselbe Sache, die dieses Repository
+diese Woche dreimal dokumentiert hat (§4.75 der Guard hinter dem Tag, §4.79 der nie
+laufende Linter, §4.84 der Typ auf `string`). Ich habe sie gebaut, während die Einträge
+darüber schon dastanden.
+
+Ersetzt durch die tatsächliche Frage statt einer Vermutung über ihre Symptome: ein
+`helm upgrade --dry-run=server` rendert das Chart gegen den lebenden Cluster und
+verweigert aus exakt den Gründen, aus denen eine echte Installation verweigern würde.
+**Seine Fehlermeldung benennt das Objekt; keine Heuristik kann das besser.**
+
+`update` gehört bewusst ins Skript und nicht in die App: ein `helm upgrade` auf die
+eigene Release ersetzt den Pod, der ihn ausführt. Aus einer Shell ist das kein Problem.
+Aus dem Cluster heraus bräuchte es einen Job, der das überlebt, was er ersetzt — und
+einen Rückweg, wenn er scheitert.

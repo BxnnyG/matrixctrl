@@ -79,6 +79,7 @@ if ( exec 3<>/dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
 ASSUME_YES=0
 DELETE_DATA=0
 DRY_RUN=0
+PURGE_CONFIRMED=0
 
 ask() { # ask <varname> <prompt> [default]
   local __var="$1" __prompt="$2" __default="${3:-}" __reply=""
@@ -574,12 +575,307 @@ cmd_status() {
   fi
 }
 
+
+# ---------------------------------------------------------------- diagnosis
+
+# The states a cluster gets stuck in, and what each one looks like.
+#
+# An operator reported "mein remote ist verbugget … von den alten versionen ess
+# überbleibsel, kann es nicht neu machen". That is not one condition, it is a family of
+# them, and they are all invisible until a command fails with a message about ownership
+# metadata or a namespace that will not go away. Naming them is most of the fix.
+cmd_doctor() {
+  need_tools
+  find_kubeconfig
+  check_cluster
+  check_ingress_controller
+  detect_cert_manager
+
+  local problems=0
+
+  head_ "Helm releases"
+  local ns rel state
+  for ns_rel in "$NAMESPACE:$RELEASE" "$ESS_NAMESPACE:$ESS_RELEASE"; do
+    ns="${ns_rel%%:*}"; rel="${ns_rel##*:}"
+    if ! helm status "$rel" -n "$ns" >/dev/null 2>&1; then
+      info "$rel in $ns: nicht installiert"
+      continue
+    fi
+    state=$(helm status "$rel" -n "$ns" -o json 2>/dev/null | sed -n 's/.*"status":"\([a-z-]*\)".*/\1/p' | head -1)
+    case "$state" in
+      deployed)
+        ok "$rel in $ns: deployed" ;;
+      pending-install|pending-upgrade|pending-rollback)
+        warn "$rel in $ns: $state — a previous command was interrupted"
+        say  "    Helm will refuse the next upgrade until this is cleared:"
+        say  "      helm rollback $rel -n $ns"
+        problems=$((problems + 1)) ;;
+      failed)
+        warn "$rel in $ns: failed — the last operation did not complete"
+        say  "      helm rollback $rel -n $ns     # back to the last good revision"
+        problems=$((problems + 1)) ;;
+      *)
+        warn "$rel in $ns: $state" ; problems=$((problems + 1)) ;;
+    esac
+  done
+
+  # Would an install actually work right now?
+  #
+  # The first version of this listed every object in the namespace that Helm did not
+  # own, on the theory that those are what "invalid ownership metadata" refers to. Run
+  # against a healthy cluster it produced thirty lines: pods (made by ReplicaSets),
+  # cert-manager's TLS secrets, Helm's own release-state secrets, jobs from a CronJob.
+  # All normal, none of them a problem — a check that is three-quarters noise, which is
+  # the thing this repository has now watched fail three times (§4.75, §4.79, §4.84).
+  #
+  # So: ask the actual question instead of guessing at its symptoms. A server-side dry
+  # run renders the chart against the live cluster and refuses for exactly the reasons a
+  # real install would. Its error message names the object; no heuristic can do better.
+  head_ "Would an install work right now?"
+  if release_exists; then
+    local probe_values probe_out
+    probe_values=$(mktemp)
+    if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$probe_values" 2>/dev/null; then
+      case "$(tr -d '[:space:]' < "$probe_values")" in null|"") : > "$probe_values" ;; esac
+    else
+      : > "$probe_values"
+    fi
+    local -a probe=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --dry-run=server)
+    [ ! -s "$probe_values" ] || probe+=(-f "$probe_values")
+    if probe_out=$(helm "${probe[@]}" 2>&1 >/dev/null); then
+      ok "a dry run against this cluster renders cleanly"
+    else
+      warn "an upgrade would fail right now:"
+      printf '      %s\n' "$probe_out" | head -6
+      say  "      ${DIM}That message names the object in the way. If it mentions ownership"
+      say  "      metadata, something exists that no release created — delete that object,"
+      say  "      or start clean with: $(self_cmd) purge${RESET}"
+      problems=$((problems + 1))
+    fi
+    rm -f "$probe_values"
+  else
+    info "MatrixCtrl is not installed here — nothing to dry-run against"
+  fi
+
+  head_ "Namespaces"
+  for ns in "$NAMESPACE" "$ESS_NAMESPACE"; do
+    local phase
+    phase=$(kubectl get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    case "$phase" in
+      "")          info "$ns: does not exist" ;;
+      Active)      ok "$ns: active" ;;
+      Terminating) warn "$ns: stuck Terminating — something in it still has a finalizer"
+                   say  "      kubectl get all -n $ns          # what is left"
+                   problems=$((problems + 1)) ;;
+    esac
+  done
+
+  head_ "Storage"
+  kubectl get pvc -n "$NAMESPACE" -n "$ESS_NAMESPACE" >/dev/null 2>&1 || true
+  local pvcs
+  pvcs=$(kubectl get pvc -A --no-headers 2>/dev/null | awk -v a="$NAMESPACE" -v b="$ESS_NAMESPACE" '$1==a || $1==b {printf "      %-12s %-24s %-8s %s\n", $1, $2, $3, $5}')
+  if [ -n "$pvcs" ]; then printf '%s\n' "$pvcs"; else info "no volumes in $NAMESPACE or $ESS_NAMESPACE"; fi
+
+  head_ "Pods that are not running"
+  local bad
+  bad=$(kubectl get pods -A --no-headers 2>/dev/null | awk '$4 != "Running" && $4 != "Completed" {printf "      %-12s %-42s %-24s restarts=%s\n", $1, $2, $4, $5}')
+  if [ -n "$bad" ]; then printf '%s\n' "$bad"; problems=$((problems + 1)); else ok "everything is Running or Completed"; fi
+
+  head_ "Verdict"
+  if [ "$problems" = 0 ]; then
+    ok "nothing here explains a broken install"
+  else
+    warn "$problems area(s) above need attention"
+    say  "  A clean slate, if that is what you want: $(self_cmd) purge"
+  fi
+}
+
+# ------------------------------------------------------------------- purge
+
+# Everything. Both releases, both namespaces, every volume.
+#
+# This exists because "start over" had no command. `helm uninstall` keeps the volumes,
+# deleting the namespace leaves the other one, and the ESS namespace itself carries
+# resource-policy: keep — so an operator following the obvious steps ends up with a
+# cluster that looks empty and behaves like it is not.
+#
+# It is the most destructive thing in this repository, so it is the only command that
+# lists its victims first and demands they be typed back.
+cmd_purge() {
+  need_tools
+  find_kubeconfig
+  check_cluster
+
+  head_ "This will delete"
+  local anything=""
+  local ns rel
+  for ns_rel in "$NAMESPACE:$RELEASE" "$ESS_NAMESPACE:$ESS_RELEASE"; do
+    ns="${ns_rel%%:*}"; rel="${ns_rel##*:}"
+    if helm status "$rel" -n "$ns" >/dev/null 2>&1; then
+      say "  release   $rel (namespace $ns)"; anything="yes"
+    fi
+  done
+  local vols
+  vols=$(kubectl get pvc -A --no-headers 2>/dev/null | awk -v a="$NAMESPACE" -v b="$ESS_NAMESPACE" '$1==a || $1==b {printf "  volume    %s/%s  %s\n", $1, $2, $5}')
+  if [ -n "$vols" ]; then printf '%s\n' "$vols"; anything="yes"; fi
+  for ns in "$NAMESPACE" "$ESS_NAMESPACE"; do
+    if kubectl get ns "$ns" >/dev/null 2>&1; then say "  namespace $ns"; anything="yes"; fi
+  done
+
+  if [ -z "$anything" ]; then
+    ok "nothing to delete — this cluster is already clean"
+    return
+  fi
+
+  say ""
+  say "  ${YELLOW}This includes your homeserver's database and uploaded media.${RESET}"
+  say "  ${DIM}Nothing here is recoverable afterwards. If you want any of it, take a"
+  say "  backup first: MatrixCtrl → Backup → Vollständiges Archiv.${RESET}"
+  say ""
+
+  if [ "$PURGE_CONFIRMED" != 1 ]; then
+    if [ -z "$TTY" ]; then
+      die "purge needs a terminal, or --i-know-what-i-am-doing." \
+        "It deletes a homeserver. That is not something a script should do by accident."
+    fi
+    local reply=""
+    printf '%sType "delete everything" to continue:%s ' "$YELLOW" "$RESET" > "$TTY"
+    IFS= read -r reply < "$TTY" || true
+    reply=$(sanitise "$reply")
+    if [ "$reply" != "delete everything" ]; then
+      die "Not confirmed — nothing was deleted."
+    fi
+  fi
+
+  head_ "Removing"
+  for ns_rel in "$NAMESPACE:$RELEASE" "$ESS_NAMESPACE:$ESS_RELEASE"; do
+    ns="${ns_rel%%:*}"; rel="${ns_rel##*:}"
+    if helm status "$rel" -n "$ns" >/dev/null 2>&1; then
+      say "  helm uninstall $rel -n $ns"
+      helm uninstall "$rel" -n "$ns" --wait --timeout 3m >/dev/null 2>&1 || warn "uninstall of $rel reported a problem — continuing, the namespace goes next"
+    fi
+  done
+
+  # Deleting the namespace takes the kept volumes with it, which is the point: they
+  # are exactly what survives every gentler attempt.
+  for ns in "$NAMESPACE" "$ESS_NAMESPACE"; do
+    if kubectl get ns "$ns" >/dev/null 2>&1; then
+      say "  kubectl delete namespace $ns"
+      kubectl delete namespace "$ns" --timeout=180s >/dev/null 2>&1 || warn "namespace $ns did not finish deleting"
+    fi
+  done
+
+  # Cluster-scoped objects live outside every namespace and outlive all of it.
+  kubectl delete clusterrole matrixctrl --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete clusterrolebinding matrixctrl --ignore-not-found >/dev/null 2>&1 || true
+
+  # Released volumes only appear when a PV has a Retain policy; the default here is
+  # Delete, so this is normally a no-op and occasionally the thing that saves an hour.
+  local released
+  released=$(kubectl get pv -o jsonpath='{range .items[?(@.status.phase=="Released")]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+  for pv in $released; do
+    kubectl delete pv "$pv" --ignore-not-found >/dev/null 2>&1 || true
+  done
+
+  head_ "Left behind"
+  local rest
+  rest=$(kubectl get ns "$NAMESPACE" "$ESS_NAMESPACE" --no-headers 2>/dev/null || true)
+  if [ -n "$rest" ]; then
+    warn "these namespaces are still going away:"
+    printf '      %s\n' "$rest"
+    say  "      ${DIM}Deleting a namespace waits for everything inside it. If it stays"
+    say  "      Terminating for minutes: kubectl get all -n <namespace>${RESET}"
+  else
+    ok "nothing left — a fresh install will be a genuinely first install"
+    say ""
+    say "  $(self_cmd)"
+  fi
+}
+
+# ------------------------------------------------------------------- update
+
+# What an operator wants "update" to mean: is there a newer one, and put it on.
+#
+# Deliberately here rather than inside the app. Upgrading MatrixCtrl replaces the pod
+# that would be running the upgrade — from a shell that is not a problem, and from
+# inside the cluster it needs a separate Job that outlives the thing it replaces.
+cmd_update() {
+  need_tools
+  find_kubeconfig
+  check_cluster
+
+  if ! release_exists; then
+    die "No MatrixCtrl release in namespace $NAMESPACE." "Install it first: $(self_cmd)"
+  fi
+
+  local current latest
+  current=$(helm list -n "$NAMESPACE" -f "^${RELEASE}\$" -o json 2>/dev/null | sed -n 's/.*"app_version":"\([^"]*\)".*/\1/p' | head -1)
+  head_ "Version"
+  say "  installed  ${current:-unbekannt}"
+
+  # Ask the registry the same way the app does.
+  latest=$(helm show chart "$CHART" 2>/dev/null | awk '/^version:/{print $2; exit}')
+  if [ -z "$latest" ]; then
+    die "Could not reach the chart registry." \
+      "Check outbound access to ghcr.io, or pass --version <x.y.z> to upgrade anyway."
+  fi
+  say "  published  $latest"
+
+  if [ -n "$CHART_VERSION" ]; then
+    latest="$CHART_VERSION"
+    info "using the version you asked for: $latest"
+  elif [ "$current" = "$latest" ]; then
+    ok "already on the newest published version"
+    if [ "$ASSUME_YES" != 1 ] && ! confirm "Re-apply it anyway?" n; then
+      return
+    fi
+  fi
+
+  head_ "Upgrading to $latest"
+  local prev_values
+  prev_values=$(mktemp)
+  trap "rm -f '$prev_values'" EXIT INT TERM
+  if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev_values" 2>/dev/null; then
+    case "$(tr -d '[:space:]' < "$prev_values")" in null|"") : > "$prev_values" ;; esac
+  else
+    : > "$prev_values"
+  fi
+
+  local -a args=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --version "$latest" --wait --timeout 5m)
+  [ "$DRY_RUN" = 0 ] || args+=(--dry-run=server)
+  [ ! -s "$prev_values" ] || args+=(-f "$prev_values")
+  say "${DIM}helm ${args[*]}${RESET}"
+  say ""
+  if ! helm "${args[@]}"; then
+    rm -f "$prev_values"
+    die "The upgrade failed." \
+      "Your previous version is still running — Helm does not remove it on a failed upgrade." \
+      "What went wrong:  kubectl -n $NAMESPACE describe pod -l app=matrixctrl" \
+      "Back to the last good revision:  helm rollback $RELEASE -n $NAMESPACE"
+  fi
+  rm -f "$prev_values"
+
+  if [ "$DRY_RUN" = 1 ]; then
+    ok "dry run — nothing was applied"
+    return
+  fi
+
+  head_ "Now running"
+  kubectl -n "$NAMESPACE" get deploy matrixctrl -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' 2>/dev/null || true
+  kubectl -n "$NAMESPACE" get pods -l app=matrixctrl --no-headers 2>/dev/null || true
+  say ""
+  ok "done"
+}
+
 usage() {
   cat <<'USAGE'
 MatrixCtrl installer
 
   install     (default) install or upgrade, asking for anything not given
-  uninstall   remove the release and, after asking, the data it keeps
+  update      upgrade MatrixCtrl to the newest published version
+  doctor      diagnose a cluster that will not install or upgrade
+  purge       delete EVERYTHING — both releases, both namespaces, all volumes
+  uninstall   remove the MatrixCtrl release only, and ask about its data
   password    print the admin password from the release Secret
   status      release, pods, ingress, certificate
 
@@ -595,10 +891,13 @@ Options for install:
   --delete-data              also remove kept PVCs/Secret. Destroys the database.
                              Not implied by --yes, on purpose.
   --dry-run                  render everything, apply nothing
+  --i-know-what-i-am-doing   skip purge's typed confirmation. For scripts only.
 
 Examples:
   ./install.sh
   ./install.sh install --host matrixctrl.example.com --tls letsencrypt --issuer letsencrypt-prod --yes
+  ./install.sh update
+  ./install.sh doctor
   ./install.sh password
 USAGE
 }
@@ -611,10 +910,11 @@ CERT_ISSUER=""
 ADMIN_PASSWORD=""
 CHART_VERSION=""
 ESS_NAMESPACE="ess"
+ESS_RELEASE="ess"
 
 COMMAND="install"
 case "${1:-}" in
-  install|uninstall|password|status) COMMAND="$1"; shift ;;
+  install|uninstall|password|status|update|doctor|purge) COMMAND="$1"; shift ;;
   -h|--help|help) usage; exit 0 ;;
 esac
 
@@ -631,6 +931,8 @@ while [ $# -gt 0 ]; do
     --yes|-y)         ASSUME_YES=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
     --delete-data)    DELETE_DATA=1; shift ;;
+    --i-know-what-i-am-doing) PURGE_CONFIRMED=1; shift ;;
+    --ess-release)    ESS_RELEASE="${2:-}"; shift 2 ;;
     -h|--help)        usage; exit 0 ;;
     *) die "unknown option: $1" "Run '$0 --help' for the list." ;;
   esac
@@ -646,6 +948,9 @@ if [ -n "$TLS_MODE" ]; then tls_values "$TLS_MODE" "${CERT_ISSUER:-x}" >/dev/nul
 
 case "$COMMAND" in
   install)   cmd_install ;;
+  update)    cmd_update ;;
+  doctor)    cmd_doctor ;;
+  purge)     cmd_purge ;;
   uninstall) cmd_uninstall ;;
   password)  cmd_password ;;
   status)    cmd_status ;;
