@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 )
 
 const essChartOCI = "oci://ghcr.io/element-hq/ess-helm/matrix-stack"
@@ -31,6 +32,20 @@ func (c *Client) Upgrade(ctx context.Context, releaseName, toVersion string, val
 		values = map[string]interface{}{}
 	}
 
+	// Ask first whether this can work at all.
+	//
+	// An upgrade that is going to be refused is refused after the rollout has started
+	// and the operator has watched a progress line for three minutes — and the reason
+	// was knowable in a second. Worse, some refusals arrive after the release has
+	// already moved, which is how an install ends up in pending-upgrade and blocks
+	// every later command (§4.88).
+	//
+	// A server-side dry run renders against the live cluster: `lookup` works, ownership
+	// conflicts surface, and the schema is validated. Nothing is applied.
+	if err := c.preflight(ctx, releaseName, chart, values); err != nil {
+		return nil, err
+	}
+
 	// Same reasoning as Rollback: a failed upgrade may still have moved the release.
 	defer c.InvalidateRelease(releaseName)
 
@@ -43,6 +58,28 @@ func (c *Client) Upgrade(ctx context.Context, releaseName, toVersion string, val
 		Revision: rel.Version,
 		Status:   rel.Info.Status.String(),
 	}, nil
+}
+
+// preflight renders the upgrade against the live cluster without applying it.
+//
+// Deliberately server-side (DryRunOption "server"). A client-side dry run makes no API
+// calls, so it cannot see that an object already exists without Helm ownership — and it
+// renders templates guarded by `lookup` as if the cluster were empty, which produces
+// failures that a real install would not have and misses the ones it would (§4.83).
+func (c *Client) preflight(ctx context.Context, releaseName string, chart *chart.Chart, values map[string]interface{}) error {
+	dry := action.NewUpgrade(c.cfg)
+	dry.Namespace = c.namespace
+	dry.DryRun = true
+	dry.DryRunOption = "server"
+	// Nothing is applied, so there is nothing to wait for — and a hook that runs during
+	// a "would this work" question has already changed something.
+	dry.Wait = false
+	dry.DisableHooks = true
+
+	if _, err := dry.RunWithContext(ctx, releaseName, chart, values); err != nil {
+		return fmt.Errorf("preflight: this upgrade would fail, so nothing was changed: %w", err)
+	}
+	return nil
 }
 
 func (c *Client) Rollback(releaseName string, revision int) error {

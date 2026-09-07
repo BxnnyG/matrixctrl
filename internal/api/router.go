@@ -127,6 +127,9 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/release", deps.Status.Release)
 			r.Delete("/evicted-pods", deps.Status.DeleteEvictedPods)
 			r.Get("/sysinfo", deps.Status.SysInfo)
+			// The conditions that make operations fail — what `install.sh doctor` asks,
+			// from inside (etappe 92).
+			r.Get("/health", deps.Status.SystemHealth)
 			// Recorded node usage and capacity (etappe 59).
 			r.Get("/nodes/history", deps.Status.NodeHistory)
 			// The config repository and MatrixCtrl's own database (etappe 68). Not the

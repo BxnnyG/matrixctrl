@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { Card, Icon, Badge, SectionTitle, Meter, EmptyState } from "@/components/mc";
+import { Card, Icon, Badge, SectionTitle, Meter, EmptyState, Button } from "@/components/mc";
 
 export const Route = createFileRoute("/system")({
   component: SystemPage,
@@ -33,6 +33,98 @@ interface SysInfoResponse {
   pod_counts: Record<string, number>;
 }
 
+
+interface SystemHealth {
+  releases: { name: string; namespace: string; status: string; blocking: boolean; present: boolean }[];
+  dead_pods: { namespace: string; name: string; reason: string; age_hours: number }[];
+  problems: number;
+}
+
+const RECOVER_CMD = "bash <(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh) doctor";
+
+/** The conditions that make operations fail.
+ *
+ *  MatrixCtrl knew the state of ESS and nothing about the cluster it lives in, so
+ *  "mein remote ist verbugget" had no screen that answered it (§4.86). Read-only on
+ *  purpose: what removes things stays in the script, where there is no session to lose
+ *  and no button to hit by accident. */
+function ClusterHealth() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["system", "health"],
+    queryFn: () => api.get<SystemHealth>("/api/v1/status/health"),
+    refetchInterval: 30_000,
+  });
+  const cleanup = useMutation({
+    mutationFn: () => api.delete<{ deleted: number }>("/api/v1/status/evicted-pods"),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["system", "health"] }); void qc.invalidateQueries({ queryKey: ["status"] }); },
+  });
+
+  if (!data) return null;
+  const blocking = data.releases.filter((r) => r.blocking);
+  const dead = data.dead_pods;
+  if (blocking.length === 0 && dead.length === 0) return null;
+
+  return (
+    <Card>
+      <SectionTitle icon="alert" sub="Zustände, an denen weitere Operationen scheitern">Was im Weg steht</SectionTitle>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 14 }}>
+        {blocking.map((r) => (
+          <div key={r.name} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>
+              Release <code style={{ fontFamily: "var(--mono)" }}>{r.name}</code> steht in{" "}
+              <code style={{ fontFamily: "var(--mono)" }}>{r.status}</code>
+            </span>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)", maxWidth: "62ch" }}>
+              Solange das so ist, scheitert jeder Deploy, jedes Upgrade und „Matrix-Login
+              verbinden" daran. Auflösen lässt es sich auf der Helm-Seite mit einem
+              Rollback auf die letzte gute Revision.
+            </p>
+          </div>
+        ))}
+
+        {dead.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>
+              {dead.length} Pod{dead.length > 1 ? "s" : ""}, die nicht mehr zurückkommen
+            </span>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5 }}>
+                <tbody>
+                  {dead.slice(0, 8).map((p) => (
+                    <tr key={`${p.namespace}/${p.name}`}>
+                      <td style={healthCell}>{p.namespace}</td>
+                      <td style={{ ...healthCell, color: "var(--text)" }}>{p.name}</td>
+                      <td style={healthCell}>{p.reason}</td>
+                      <td style={healthCell}>{p.age_hours >= 48 ? `${Math.round(p.age_hours / 24)} Tage` : `${p.age_hours} h`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <Button size="sm" icon="trash" disabled={cleanup.isPending} onClick={() => cleanup.mutate()}>
+                {cleanup.isPending ? "Räume auf…" : `${dead.length} entfernen`}
+              </Button>
+              <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+                Beendete Pods, die nie wieder laufen — Evicted ist nur einer von mehreren Gründen.
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 12 }}>
+          <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--text-faint)" }}>
+            Alles über den Cluster, auch was diese Seite nicht anfasst:
+          </p>
+          <pre style={{ margin: 0, padding: 10, fontSize: 11.5, fontFamily: "var(--mono)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "all" }}>{RECOVER_CMD}</pre>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const healthCell: React.CSSProperties = { padding: "6px 10px 6px 0", fontFamily: "var(--mono)", color: "var(--text-faint)", borderBottom: "1px solid var(--border-soft)", whiteSpace: "nowrap" };
 
 function toneColor(v: number, base: string) {
   return v >= 90 ? "var(--status-err)" : v >= 70 ? "var(--status-warn)" : base;
@@ -141,6 +233,7 @@ function SystemPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 920 }}>
+      <ClusterHealth />
       {/* The reason the capacity columns are recorded at all. On 2026-08-16 this node
           went from 32 cores to 6; every reservation on it became unschedulable at the
           next reboot, and nothing in the panel could say the machine had changed. */}

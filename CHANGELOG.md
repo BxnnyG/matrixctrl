@@ -15,6 +15,39 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.81] — 2026-09-07
+
+### Added
+
+- **Every Helm upgrade is rendered against the live cluster before anything is applied.**
+  An upgrade that was going to be refused was refused after the rollout had started and
+  the operator had watched a progress line for three minutes — and some refusals arrive
+  after the release has already moved, which is how an install ends in `pending-upgrade`
+  and blocks every later command. The dry run is server-side, so `lookup` works and
+  ownership conflicts surface; a failure now costs a second and changes nothing.
+- **A rollback where it is needed.** The Helm page shows when a release sits in
+  `pending-*` or `failed` — the states in which everything else is refused — and offers
+  the rollback that has existed in the API all along and had no way to be reached.
+- **"Was im Weg steht" on the system page**: the release states that block operations and
+  the pods that will never run again, with the `doctor` command for everything this page
+  deliberately does not touch.
+- `GET /api/v1/status/health`.
+
+### Changed
+
+- **Cleaning up dead pods is no longer limited to the word "Evicted".** Every pod in
+  phase `Failed` is terminal; the filter insisted on one particular reason, and this
+  cluster carried two `ContainerStatusUnknown` pods for 105 days with running
+  replacements beside them, invisible to it. They are listed with reason and age before
+  anything is removed.
+
+### Notes
+
+- **Component tests exist now** — jsdom and Testing Library, wired into `make check`.
+  `web` had vitest from the start and could only ever run pure logic, so every component
+  shipped typechecked and otherwise unexercised. The gap was named in 0.1.76 rather than
+  covered with a test that touched nothing; this closes it.
+
 ## [0.1.80] — 2026-09-07
 
 ### Added

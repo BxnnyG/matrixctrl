@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner, type IconName } from "@/components/mc";
 import { Markdown } from "@/components/Markdown";
@@ -31,6 +31,10 @@ interface ReleaseNotes {
   reason?: string;
 }
 
+
+/** Release states in which Helm refuses everything else until they are cleared.
+ *  `superseded` is not one: it is what every old revision looks like. */
+const stuckStates = new Set(["pending-install", "pending-upgrade", "pending-rollback", "failed"]);
 
 const STATUS_MAP: Record<string, { tone: "ok" | "err" | "warn" | "info"; icon: IconName }> = {
   deployed: { tone: "ok", icon: "check" },
@@ -119,6 +123,14 @@ function HelmPage() {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  // Revision 0 is Helm's own "the previous release" — the caller does not have to work
+  // out which one that was, and cannot get it wrong.
+  const rollback = useMutation({
+    mutationFn: () => api.post(`/api/v1/helm/releases/${release?.name ?? "ess"}/rollback`, { revision: 0 }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["helm"] }); void qc.invalidateQueries({ queryKey: ["setup"] }); },
+  });
+
   const { data: release } = useQuery({
     queryKey: ["helm", "release"],
     queryFn: () => api.get<HelmRelease>("/api/v1/helm/releases/ess"),
@@ -172,6 +184,35 @@ function HelmPage() {
           </div>
           <Button variant="primary" icon="upload" onClick={() => navigate({ to: "/helm/upgrade" })}>Upgrade</Button>
         </div>
+
+        {/* A release that is not `deployed` blocks every later operation.
+            The rollback that clears it has existed in the API for a long time and had
+            no way to be reached from here — an operator met "another operation
+            (install/upgrade/rollback) is in progress" and had nothing to press (§4.88).
+            A capability nobody knows about is not a capability. */}
+        {release && stuckStates.has(release.status) && (
+          <div style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 24px", borderTop: "1px solid var(--border-soft)", background: "color-mix(in oklch, var(--status-warn) 9%, transparent)", flexWrap: "wrap" }}>
+            <Icon name="alert" size={17} style={{ color: "var(--status-warn)", marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 6 }}>
+              <strong style={{ fontSize: 13.5 }}>
+                {release.status === "failed"
+                  ? "Die letzte Operation ist fehlgeschlagen"
+                  : "Eine Operation wurde unterbrochen"}
+              </strong>
+              <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)", maxWidth: "62ch" }}>
+                Solange die Release in <code style={{ fontFamily: "var(--mono)" }}>{release.status}</code> steht,
+                scheitert jede weitere Helm-Operation daran — auch Deploy und „Matrix-Login
+                verbinden". Ein Rollback auf die letzte funktionierende Revision löst das.
+              </p>
+              {rollback.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(rollback.error as Error).message}</span>}
+              {rollback.isSuccess && <span style={{ fontSize: 12, color: "var(--status-ok)" }}>Zurückgerollt.</span>}
+            </div>
+            <Button icon={rollback.isPending ? undefined : "rotate"} disabled={rollback.isPending}
+              onClick={() => rollback.mutate()}>
+              {rollback.isPending ? <><Spinner size={13} /> Rolle zurück…</> : "Auf die letzte gute Revision zurück"}
+            </Button>
+          </div>
+        )}
 
         {/* Upgrade path: current → latest */}
         {behind.length > 0 && latest && (

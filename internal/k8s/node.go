@@ -82,16 +82,18 @@ func (c *Client) EvictedPodCount(ctx context.Context, namespace string) int {
 	if err != nil {
 		return 0
 	}
-	n := 0
-	for _, p := range pods.Items {
-		if p.Status.Reason == "Evicted" {
-			n++
-		}
-	}
-	return n
+	// Every pod in phase Failed is terminal — it will never run again, whatever put it
+	// there. The filter used to insist on Reason == "Evicted", which is one way among
+	// several: this cluster carried two cert-manager pods in ContainerStatusUnknown for
+	// 105 days, with running replacements beside them, invisible to a cleanup that only
+	// knew the word "Evicted".
+	return len(pods.Items)
 }
 
-// DeleteEvictedPods deletes all evicted pods in the given namespace and returns the count deleted.
+// DeleteEvictedPods deletes every terminal pod in the namespace and returns how many.
+//
+// Terminal, not "evicted": see EvictedPodCount. The name is kept because it is the
+// route's name and an audit-log entry that already exists.
 func (c *Client) DeleteEvictedPods(ctx context.Context, namespace string) (int, error) {
 	pods, err := c.Static.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: "status.phase=Failed",
@@ -101,14 +103,49 @@ func (c *Client) DeleteEvictedPods(ctx context.Context, namespace string) (int, 
 	}
 	deleted := 0
 	for _, p := range pods.Items {
-		if p.Status.Reason != "Evicted" {
-			continue
-		}
 		if err := c.Static.CoreV1().Pods(namespace).Delete(ctx, p.Name, metav1.DeleteOptions{}); err == nil {
 			deleted++
 		}
 	}
 	return deleted, nil
+}
+
+// DeadPod is a pod that has finished failing, with the two facts that decide whether
+// anyone still wants it: why, and how long ago.
+type DeadPod struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Reason    string `json:"reason"`
+	AgeHours  int    `json:"age_hours"`
+}
+
+// DeadPods lists terminal pods across the given namespaces.
+//
+// Shown before anything is deleted, because "dead" is a judgement and the operator is
+// entitled to see what it is being applied to.
+func (c *Client) DeadPods(ctx context.Context, namespaces ...string) ([]DeadPod, error) {
+	out := []DeadPod{}
+	for _, ns := range namespaces {
+		pods, err := c.Static.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+			FieldSelector: "status.phase=Failed",
+		})
+		if err != nil {
+			continue
+		}
+		for _, p := range pods.Items {
+			reason := p.Status.Reason
+			if reason == "" {
+				reason = "Failed"
+			}
+			out = append(out, DeadPod{
+				Namespace: ns,
+				Name:      p.Name,
+				Reason:    reason,
+				AgeHours:  int(time.Since(p.CreationTimestamp.Time).Hours()),
+			})
+		}
+	}
+	return out, nil
 }
 
 func cpuToMillis(s string) int64 {

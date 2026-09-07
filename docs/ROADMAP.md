@@ -76,7 +76,11 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 87 | Umschalten erst, wenn es funktioniert — MAS fragen statt die Datei lesen | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
 | 88 | Der Zustand, den niemand angesehen hat — „eingerichtet, aber nicht erreichbar" | ✅ 2026-09-07 · `v0.1.80` · [plan](plans/etappe-85-anmeldung.md) |
 | 89 | Eine Ableitung, die zur Regel wurde — Hostnames einzeln editierbar | ✅ 2026-09-07 · `v0.1.80` · [plan](plans/etappe-85-anmeldung.md) |
-| 90–94 | Danach: Preflight · Rollback-Moment · Zustandsseite · Aufräumen · Komponenten-Tests | 📋 geplant · [plan](plans/etappe-85-sichtbarer-zustand.md) |
+| 90 | Der Grund steht vorher da — Preflight vor jeder Helm-Operation | ✅ 2026-09-07 · `v0.1.81` · [plan](plans/etappe-85-sichtbarer-zustand.md) |
+| 91 | Eine Fähigkeit, von der niemand wusste — Rollback im richtigen Moment | ✅ 2026-09-07 · `v0.1.81` |
+| 92 | Was `doctor` weiß, in der App — „Was im Weg steht" | ✅ 2026-09-07 · `v0.1.81` |
+| 93 | „Evicted" ist ein Grund von mehreren | ✅ 2026-09-07 · `v0.1.81` |
+| 94 | Die Testumgebung, die es nie gab — jsdom in `make check` | ✅ 2026-09-07 · `v0.1.81` |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

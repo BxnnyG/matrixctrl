@@ -58,6 +58,9 @@ check:
 	# The rules-of-hooks gate. tsc cannot see a hook after an early return —
 	# it is valid TypeScript and a guaranteed React crash (§4.79).
 	cd web && ./node_modules/.bin/eslint .
+	# Frontend tests, including components. Until etappe 94 vitest could only run pure
+	# logic — no DOM — so every component shipped typechecked and otherwise unexercised.
+	cd web && npm run test -- --run
 	./scripts/check-sensitive.sh
 	./scripts/check-changelog.sh
 	./scripts/check-commands.sh

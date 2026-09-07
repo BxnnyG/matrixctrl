@@ -545,7 +545,7 @@ interface MatrixAdmins { available: boolean; reason?: string; admins: string[]; 
  *
  *  A state that is only checked at startup is not a state, it is a memory — so this
  *  polls. */
-function MatrixLoginHealth() {
+export function MatrixLoginHealth() {
   const { data } = useQuery({
     queryKey: ["auth", "oidc", "available"],
     queryFn: () => api.get<{ enabled: boolean; retrying: boolean }>("/api/v1/auth/oidc/available"),

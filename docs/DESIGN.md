@@ -3364,3 +3364,78 @@ schon immer beantworten konnte — samt dem Befehl, der dauerhaft zurückstellt.
 
 Bemerkenswert an dieser wie an §4.79 (der Linter) und §4.84 (der Typ): das Richtige war
 gebaut, benannt und begründet. Es hat nur nie jemand aufgerufen.
+
+### §4.91 — Drei Minuten für eine Antwort, die es sofort gab (2026-09-07, agent, etappe 90)
+
+Ein Helm-Upgrade, das abgelehnt wird, wurde bisher abgelehnt, **nachdem** der Rollout
+begonnen hatte: der Operator sah drei Minuten eine Fortschrittszeile und danach eine
+Textwand. Die Ursache war die ganze Zeit in einer Sekunde zu haben.
+
+Schlimmer: manche Ablehnungen kommen, **nachdem** die Release sich schon bewegt hat —
+genau so landet eine Installation in `pending-upgrade` und blockiert jeden weiteren
+Befehl (§4.88). Der Fehlschlag hinterlässt also einen Zustand, den der nächste Versuch
+nicht mehr erreichen kann.
+
+`Upgrade` rendert jetzt zuerst einen server-seitigen Dry-Run gegen den lebenden Cluster.
+Server-seitig ist nicht optional: ein client-seitiger macht keine API-Aufrufe, sieht also
+weder ein Objekt ohne Helm-Besitz noch rendert er `lookup`-abhängige Templates richtig —
+er erfindet Fehler, die eine echte Installation nicht hätte, und übersieht die, die sie
+hätte (§4.83).
+
+Geprüft am echten Chart und Cluster: ein `--dry-run=server` auf ess 26.8.0 rendert
+sauber, Revision und Pods bleiben unverändert.
+
+Das Gegenstück dazu ist §4.86: dort war der Dry-Run die richtige Antwort auf „warum geht
+nichts", hier ist er die richtige Antwort auf „geht das gleich schief". Dieselbe Frage,
+einmal rückwärts und einmal vorwärts gestellt.
+
+### §4.92 — Eine Fähigkeit, von der niemand weiß (2026-09-07, operator, etappe 91)
+
+`POST /api/v1/helm/releases/{name}/rollback` gibt es seit langem. Das Frontend hat es nie
+aufgerufen — der einzige Rollback in der Oberfläche war der der Konfigurations-Historie.
+
+Gebraucht wird er in genau einem Moment: wenn eine Release in `pending-upgrade`,
+`pending-install`, `pending-rollback` oder `failed` steht. Dann scheitert jede weitere
+Operation daran, mit einer Meldung über „another operation in progress", und der
+Operator hat nichts zum Drücken. Er hatte die ganze Zeit etwas — es stand nur nirgends.
+
+Das ist dasselbe Muster wie §4.79 (der Linter), §4.84 (der Typ) und §4.90 (der Zustand):
+**das Richtige war gebaut, benannt und begründet, und niemand hat es aufgerufen.** Vier
+Fälle in einer Woche ist kein Zufall, sondern eine Eigenschaft dieses Projekts: es baut
+gründlich und verdrahtet nachlässig.
+
+### §4.93 — „Evicted" ist ein Grund von mehreren (2026-09-07, agent, etappe 93)
+
+Das Aufräumen filterte auf `status.phase=Failed` **und** `Reason == "Evicted"`. Auf
+diesem Cluster standen zwei cert-manager-Pods seit 105 Tagen in
+`ContainerStatusUnknown`, mit laufendem Ersatz daneben — für den Filter unsichtbar.
+
+Jeder Pod in Phase `Failed` ist endgültig; er läuft nie wieder, was ihn auch dorthin
+gebracht hat. Der Filter hat eine Ursache mit der Klasse verwechselt. Aufgeräumt wird
+jetzt die Klasse, und vorher aufgelistet — mit Grund und Alter, weil „tot" ein Urteil ist
+und der Operator sehen darf, worauf es angewendet wird.
+
+### §4.94 — Die Testumgebung, die es nie gab (2026-09-07, agent, etappe 94)
+
+`web` hatte vitest von Anfang an und konnte ausschließlich reine Logik ausführen: keine
+DOM-Bibliothek, keine Umgebung. Jede Komponente ist typgeprüft und sonst ungeprüft
+ausgeliefert worden — was in §4.82 offen benannt statt mit einem Test zugekleistert
+wurde, der nichts berührt.
+
+Jetzt: jsdom plus Testing Library, `environment: "jsdom"` in der vite-Konfiguration, und
+`npm run test` in `make check`. Der erste Test ist der Befund aus §4.90 — dass „nicht
+erreichbar" und „nicht eingerichtet" verschieden aussehen müssen.
+
+Zwei Details, die nur ein echter Lauf zeigt:
+
+- Das aktuelle jsdom scheitert auf Node 20 an `webidl.util.markAsUncloneable is not a
+  function`. CI läuft auf Node 20, also ist jsdom auf 25 gepinnt — eine
+  `EBADENGINE`-Warnung beim Installieren ist kein Hinweis, den man wegklickt.
+- Die Test-Konfiguration steht in einer **eigenen Datei**. `vitest/config`s
+  `defineConfig` bringt seine eigene Kopie der vite-Typen mit; zusammen mit den Plugins
+  der Build-Konfiguration ergibt das einen Typfehler über `PluginOption`, der über nichts
+  Wirkliches etwas aussagt. Zwei Dateien, keine Überschneidung, beide typgeprüft.
+
+Gegenprobe: `if (true) return null` in die geprüfte Komponente → ein Test fällt, die
+beiden anderen bleiben grün. Ein Test, der nicht fällt, wenn das Verhalten verschwindet,
+prüft nichts.
