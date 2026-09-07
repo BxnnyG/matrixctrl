@@ -3250,3 +3250,70 @@ verweigert aus exakt den Gründen, aus denen eine echte Installation verweigern 
 eigene Release ersetzt den Pod, der ihn ausführt. Aus einer Shell ist das kein Problem.
 Aus dem Cluster heraus bräuchte es einen Job, der das überlebt, was er ersetzt — und
 einen Rückweg, wenn er scheitert.
+
+### §4.87 — Kein Terminal ist keine Zustimmung (2026-09-07, agent, etappe 84)
+
+`confirm()` fiel ohne Terminal auf die Vorgabe der Frage zurück:
+
+    if [ -z "$TTY" ]; then [ "$def" = "y" ]; return; fi
+
+Für jede Frage mit Vorgabe „nein" war das unauffällig. `recover-login` fragt mit Vorgabe
+**„ja"** — es ist eine Reparatur, und wer sie aufruft, will sie. Ein Testlauf ohne
+Terminal hat damit auf einer **produktiven Instanz** den Matrix-Login abgeschaltet und
+die Release von 0.1.70 auf 0.1.78 gezogen, ohne dass ein Mensch die Frage je gesehen hat.
+
+Zurückgestellt (`oidc.enabled=true`, Revision 75, Pod läuft), und die Ursache behoben.
+
+Die Regel: **eine Vorgabe gehört zu jemandem, der schnell entscheidet — nicht zur
+Abwesenheit von jemandem.** Ohne Terminal und ohne `--yes` ist die Antwort „nein", und
+das Skript sagt, dass es nicht gefragt werden konnte.
+
+Das ist verwandt mit dem `--yes`-Ausschluss bei `purge` und `--delete-data` (§4.76), nur
+eine Ebene tiefer: dort war die Frage geschützt, hier die Mechanik, die alle Fragen
+beantwortet. Eine geschützte Frage nützt nichts, wenn der Fragesteller sich selbst
+antwortet.
+
+### §4.88 — Die Kette, die aussperrt (2026-09-07, operator, etappe 85 ff.)
+
+Ein Operator hat neu aufgesetzt und ist aus dem eigenen Panel ausgesperrt worden. Nicht
+durch einen Fehler, sondern durch sechs Verhaltensweisen, die einzeln vertretbar sind:
+
+1. `ess_installed` ist wahr, sobald eine Release **existiert** — auch in
+   `pending-install`. `ess_status` wird im selben Objekt mitgeliefert und nirgends
+   benutzt. Setup zeigt also „Matrix-Login verbinden", während Helm noch installiert.
+2. `ConnectOIDC` schreibt den Client, committet, und ruft **`SaveOIDCConfig` — vor** dem
+   Upgrade, das die Umstellung erst wirksam macht.
+3. Das Upgrade scheitert an der noch laufenden Installation.
+4. Ab jetzt hält MatrixCtrl sich für umgestellt: der lokale Login antwortet 403
+   (`auth.go:157`). MAS kennt den Client nicht.
+5. Erneutes „Verbinden" antwortet 200 **ohne `upgrade_id`**; das Frontend startet einen
+   Stream auf `undefined` und zeigt nichts. „Registriert" wird an der Konfigurationsdatei
+   entschieden, nicht an MAS.
+6. Und selbst mit funktionierendem OIDC gäbe es niemanden zum Anmelden: ein frisch
+   ausgerolltes ESS hat null Nutzer. `internal/mas` kann sperren, entsperren,
+   deaktivieren, löschen, zum Admin machen, Passwort setzen — **nicht anlegen**.
+
+Schritt 2 ist der eigentliche Fehler und hat einen Namen: **die lokale Umstellung wurde
+vor der entfernten Änderung festgeschrieben, von der sie abhängt.** Wer sich auf etwas
+umstellt, das noch nicht funktioniert, hat nach dem Fehlschlag beides nicht mehr.
+
+Schritt 5 ist der zweite: eine Konfigurationsdatei ist kein Beleg für den Zustand eines
+fremden Dienstes. Dieselbe Verwechslung wie in §4.75 — dort war „getaggt" nicht
+„veröffentlicht", hier ist „in die Datei geschrieben" nicht „bei MAS angekommen".
+
+Geprüft, nicht vermutet: die MAS-Admin-API der laufenden Instanz führt
+`POST /api/admin/v1/users` („Create a new user"). MatrixCtrl kann den ersten Admin also
+selbst anlegen, über dieselbe API, mit der es ohnehin spricht — `set-password` und
+`set-admin` sind bereits implementiert.
+
+Ausweg heute schon im Skript: `install.sh recover-login` kennt beide Quellen der
+OIDC-Einstellung (Datenbank aus „Verbinden", Chart-Werte aus `oidc.enabled`) und stellt
+den lokalen Login wieder her, ohne einen Matrix-Account oder die ESS-Konfiguration
+anzufassen.
+
+**Nachtrag aus demselben Tag.** Auf der produktiven Instanz löst der MAS-Name inzwischen
+auf Cloudflare auf und liefert für `/.well-known/openid-configuration` ein 404; MAS
+selbst antwortet über den Cluster-Service einwandfrei. Die Anmeldung funktionierte
+trotzdem — weil OIDC beim **vorherigen** Start initialisiert worden war. Erst ein
+Neustart hat es sichtbar gemacht. **Ein Zustand, der nur beim Start geprüft wird, ist
+kein Zustand, sondern eine Erinnerung.**

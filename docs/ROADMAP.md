@@ -70,7 +70,9 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 81 | Eine Frage, die niemand beantworten kann — Tatsachen statt Formularfelder, und eine Vorschau vor dem Deploy | ✅ 2026-09-06 · `v0.1.76` · [plan](plans/etappe-78-setup-neu.md) |
 | 82 | Das Archiv wusste es die ganze Zeit — Umzug als dritter Setup-Pfad | ✅ 2026-09-06 · `v0.1.77` · [plan](plans/etappe-78-setup-neu.md) |
 | 83 | „Erledigt" ist keine Position — der geführte Ablauf, und ein Typ, der `string` war | ✅ 2026-09-06 · `v0.1.78` · [plan](plans/etappe-78-setup-neu.md) |
-| 84 | „Kann es nicht neu machen" — doctor, purge und update im Installer | ✅ 2026-09-07 · `scripts/` (kein Release nötig) · [plan](plans/etappe-84-lifecycle.md) |
+| 84 | „Kann es nicht neu machen" — doctor, purge, update und recover-login im Installer | ✅ 2026-09-07 · `scripts/` (kein Release nötig) · [plan](plans/etappe-84-lifecycle.md) |
+| 85–89 | **Vorgezogen:** die Kette, die aussperrt — Zustand statt Existenz · der erste Matrix-Nutzer · umschalten erst wenn es geht · Rückweg sichtbar · Hostnames editierbar | 📋 geplant · [plan](plans/etappe-85-anmeldung.md) |
+| 90–94 | Danach: Preflight · Rollback-Moment · Zustandsseite · Aufräumen · Komponenten-Tests | 📋 geplant · [plan](plans/etappe-85-sichtbarer-zustand.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

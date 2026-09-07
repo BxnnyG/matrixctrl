@@ -32,6 +32,20 @@ matching image, so a version identifies one exact pair
   existing values forward, waits for the rollout, and on failure says that the previous
   version is still running and how to roll back.
 
+- **`install.sh recover-login`** — puts MatrixCtrl's local admin login back. "Connect
+  Matrix Login" switches sign-in over to MAS and disables the local login from that
+  moment; if the switch does not complete, or MAS has no account yet, there is no way in
+  at all. It knows both places the setting lives (the database, written by the connect
+  flow, and the chart values) and touches no Matrix account and no ESS configuration.
+
+### Fixed
+
+- **A confirmation with a default of "yes" answered itself when no terminal was
+  attached.** `confirm` fell back to the question's own default, so running
+  `recover-login` non-interactively switched a live installation's Matrix login off
+  without anyone seeing the question. Without a terminal and without `--yes`, the answer
+  is now no, and the script says it could not ask.
+
 ### Notes
 
 - These live in `scripts/install.sh`, which the README tells people to fetch from

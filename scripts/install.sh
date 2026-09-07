@@ -126,7 +126,19 @@ confirm() { # confirm <question> <default y|n>
   local q="$1" def="${2:-n}" reply="" hint="y/N"
   [ "$def" = "y" ] && hint="Y/n"
   if [ "$ASSUME_YES" = 1 ]; then return 0; fi
-  if [ -z "$TTY" ]; then [ "$def" = "y" ]; return; fi
+  # No terminal is not consent.
+  #
+  # This used to fall back to the question's own default, so a confirmation written
+  # with a default of "yes" was answered "yes" by nobody. Running `recover-login`
+  # without a tty therefore switched a live installation's Matrix login off without a
+  # human ever seeing the question — which is exactly what happened, on a production
+  # panel, while this command was being tested.
+  #
+  # A default belongs to a person choosing quickly, not to the absence of a person.
+  if [ -z "$TTY" ]; then
+    info "no terminal to ask \"$q\" — assuming no. Pass --yes to answer in advance."
+    return 1
+  fi
   printf '%s %s[%s]%s ' "$q" "$DIM" "$hint" "$RESET" > "$TTY"
   IFS= read -r reply < "$TTY" || true
   [ -n "$reply" ] || reply="$def"
@@ -867,6 +879,109 @@ cmd_update() {
   ok "done"
 }
 
+
+# ------------------------------------------------------- recover-login
+
+# The way back from a Matrix login that cannot be used.
+#
+# "Connect Matrix Login" switches MatrixCtrl over to signing in through MAS, and the
+# local bootstrap login is refused from that moment on. Two things can go wrong after
+# that switch and both leave the operator with no way in at all:
+#
+#   * the switch is recorded before the upgrade that makes it work. If the ESS upgrade
+#     fails — say another Helm operation was still running — MAS never learns about the
+#     client, and MatrixCtrl is nonetheless convinced it should be using it.
+#   * MAS has no account yet. A freshly deployed homeserver has zero users, so there is
+#     nobody to log in as, and MAS answers every attempt with "Invalid credentials".
+#
+# This puts the local login back. It changes nothing about the homeserver: no Matrix
+# account is touched, no ESS configuration is rewritten. Only MatrixCtrl's own idea of
+# how you sign in to MatrixCtrl.
+cmd_recover_login() {
+  need_tools
+  find_kubeconfig
+  check_cluster
+
+  release_exists || die "No MatrixCtrl release in namespace $NAMESPACE." "Nothing to recover."
+
+  head_ "Where Matrix login is configured"
+  local from_db="" from_values=""
+
+  if kubectl -n "$NAMESPACE" exec deploy/matrixctrl -c postgres -- \
+       psql -U matrixctrl -d matrixctrl -tAc \
+       "SELECT count(*) FROM instance_settings WHERE key LIKE 'oidc.%'" 2>/dev/null | grep -qE '^[1-9]'; then
+    from_db="yes"
+    warn "in the database — written by \"Connect Matrix Login\""
+  else
+    ok "not in the database"
+  fi
+
+  if kubectl -n "$NAMESPACE" get deploy matrixctrl \
+       -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null | grep -q MATRIXCTRL_OIDC_CLIENT_ID; then
+    from_values="yes"
+    warn "in the chart values — oidc.enabled=true"
+  else
+    ok "not in the chart values"
+  fi
+
+  if [ -z "$from_db" ] && [ -z "$from_values" ]; then
+    ok "Matrix login is not configured — the local login should already work"
+    say ""
+    say "  Password:  $(read_password || echo '(not set)')"
+    return
+  fi
+
+  say ""
+  say "  ${DIM}This turns the local admin login back on. Your Matrix accounts, the"
+  say "  homeserver and its configuration are not touched — only how you sign in"
+  say "  to MatrixCtrl itself. You can connect Matrix login again afterwards.${RESET}"
+  say ""
+  if [ "$ASSUME_YES" != 1 ] && ! confirm "Switch MatrixCtrl back to the local login?" y; then
+    info "nothing changed"
+    return
+  fi
+
+  head_ "Switching back"
+  if [ -n "$from_db" ]; then
+    if kubectl -n "$NAMESPACE" exec deploy/matrixctrl -c postgres -- \
+         psql -U matrixctrl -d matrixctrl -c \
+         "DELETE FROM instance_settings WHERE key LIKE 'oidc.%'" >/dev/null 2>&1; then
+      ok "cleared the stored OIDC settings"
+    else
+      die "Could not reach the database inside the pod." \
+        "Is the pod running?  kubectl -n $NAMESPACE get pods"
+    fi
+  fi
+
+  if [ -n "$from_values" ]; then
+    say "  helm upgrade --set oidc.enabled=false"
+    local prev
+    prev=$(mktemp); trap "rm -f '$prev'" EXIT INT TERM
+    if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev" 2>/dev/null; then
+      case "$(tr -d '[:space:]' < "$prev")" in null|"") : > "$prev" ;; esac
+    else
+      : > "$prev"
+    fi
+    local -a args=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --set oidc.enabled=false --wait --timeout 5m)
+    [ ! -s "$prev" ] || args+=(-f "$prev")
+    helm "${args[@]}" >/dev/null 2>&1 || warn "the upgrade reported a problem — check: helm status $RELEASE -n $NAMESPACE"
+    rm -f "$prev"
+    ok "chart values updated"
+  else
+    # The settings live in the database and are read at start, so the process has to
+    # be replaced for the change to take effect.
+    kubectl -n "$NAMESPACE" rollout restart deploy/matrixctrl >/dev/null 2>&1 || true
+    kubectl -n "$NAMESPACE" rollout status deploy/matrixctrl --timeout=180s >/dev/null 2>&1 || warn "the pod is taking its time — check: kubectl -n $NAMESPACE get pods"
+    ok "restarted"
+  fi
+
+  head_ "Sign in again"
+  say "  User      ${BOLD}admin${RESET}"
+  say "  Password  ${BOLD}$(read_password || echo '(not set — run: '"$(self_cmd)"' install --admin-password ...)')${RESET}"
+  say ""
+  info "Before connecting Matrix login again, make sure a MAS account exists and is an admin."
+}
+
 usage() {
   cat <<'USAGE'
 MatrixCtrl installer
@@ -875,6 +990,7 @@ MatrixCtrl installer
   update      upgrade MatrixCtrl to the newest published version
   doctor      diagnose a cluster that will not install or upgrade
   purge       delete EVERYTHING — both releases, both namespaces, all volumes
+  recover-login  switch MatrixCtrl back to its local admin login
   uninstall   remove the MatrixCtrl release only, and ask about its data
   password    print the admin password from the release Secret
   status      release, pods, ingress, certificate
@@ -914,7 +1030,7 @@ ESS_RELEASE="ess"
 
 COMMAND="install"
 case "${1:-}" in
-  install|uninstall|password|status|update|doctor|purge) COMMAND="$1"; shift ;;
+  install|uninstall|password|status|update|doctor|purge|recover-login) COMMAND="$1"; shift ;;
   -h|--help|help) usage; exit 0 ;;
 esac
 
@@ -951,6 +1067,7 @@ case "$COMMAND" in
   update)    cmd_update ;;
   doctor)    cmd_doctor ;;
   purge)     cmd_purge ;;
+  recover-login) cmd_recover_login ;;
   uninstall) cmd_uninstall ;;
   password)  cmd_password ;;
   status)    cmd_status ;;
