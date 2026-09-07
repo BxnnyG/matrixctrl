@@ -15,42 +15,67 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
-### Added
-
-- **`install.sh doctor`** — asks whether an install would work right now, and says what
-  is in the way if not. Release states (a `pending-upgrade` blocks every later command
-  until it is rolled back), namespaces stuck Terminating, volumes, pods that are neither
-  Running nor Completed, and a server-side dry run whose error message names the object
-  Helm cannot adopt.
-- **`install.sh purge`** — deletes everything: both releases, both namespaces, every
-  volume, the cluster-scoped RBAC. "Start over" had no command: `helm uninstall` keeps
-  the volumes, deleting one namespace leaves the other, and the ESS namespace carries
-  `resource-policy: keep`, so an operator following the obvious steps ends up with a
-  cluster that looks empty and behaves like it is not. It lists its victims first and
-  will not proceed until "delete everything" is typed back.
-- **`install.sh update`** — is there a newer version, and put it on. Carries the
-  existing values forward, waits for the rollout, and on failure says that the previous
-  version is still running and how to roll back.
-
-- **`install.sh recover-login`** — puts MatrixCtrl's local admin login back. "Connect
-  Matrix Login" switches sign-in over to MAS and disables the local login from that
-  moment; if the switch does not complete, or MAS has no account yet, there is no way in
-  at all. It knows both places the setting lives (the database, written by the connect
-  flow, and the chart values) and touches no Matrix account and no ESS configuration.
+## [0.1.79] — 2026-09-07
 
 ### Fixed
 
+- **Setup announced a finished homeserver while Helm was still installing it.**
+  "Installed" meant a release object existed — which it does the moment `helm install`
+  writes its first revision, status `pending-install`, nothing running. Setup then
+  offered "connect Matrix login", and that flow collided with the install still in
+  flight: *another operation (install/upgrade/rollback) is in progress*. The status was
+  in the same response all along and read by nobody. Installing and failed are now their
+  own screens, and neither offers a next step.
+- **Connecting Matrix login switched sign-in over before the switch could work.** The
+  settings were stored, and then the upgrade that makes MAS load the client was started.
+  When that upgrade failed, MatrixCtrl was convinced it should sign people in through
+  MAS while MAS had never heard of the client — and the local login is refused from the
+  moment those settings exist. The switch now happens last: after the upgrade, after MAS
+  confirms it knows the client, and after there is an account to log in as. Every failure
+  before that point leaves the local login working and says so.
+- **Pressing "Verbinden" again did nothing.** Whether the client was registered was
+  decided by comparing the stored configuration fragment against what the generator
+  writes today. A file is not evidence about a running service: it said yes, MAS said
+  nothing at all, and the repair path answered "already registered" with no operation to
+  watch. It now asks MAS, and repairs by running the upgrade that never happened.
 - **A confirmation with a default of "yes" answered itself when no terminal was
-  attached.** `confirm` fell back to the question's own default, so running
-  `recover-login` non-interactively switched a live installation's Matrix login off
-  without anyone seeing the question. Without a terminal and without `--yes`, the answer
-  is now no, and the script says it could not ask.
+  attached.** `confirm` in `install.sh` fell back to the question's own default, so
+  running `recover-login` non-interactively switched a live installation's Matrix login
+  off without anyone seeing the question. Without a terminal and without `--yes`, the
+  answer is now no, and the script says it could not ask.
+
+### Added
+
+- **MatrixCtrl can create the first Matrix account.** A freshly deployed homeserver has
+  none, so switching sign-in over to MAS closed the local login and opened one nobody
+  could pass — the operator saw only "Invalid credentials". It could lock, unlock,
+  deactivate, erase, promote and set passwords; creating the first account was the one
+  thing missing. Setup now offers it as its own step, before the switch.
+- `GET /api/v1/setup/matrix-admins` and `POST /api/v1/setup/matrix-admin`.
+- `mas.CreateUser` and `mas.ClientKnown`; `auth.MASAdminClient`, which builds an admin
+  client from the credentials MatrixCtrl registered — MAS could previously only be
+  reached *after* the switch-over, which is the wrong side of the problem.
+- **`install.sh doctor`** — asks whether an install would work right now, and says what
+  is in the way: release states (`pending-upgrade` blocks every later command until it
+  is rolled back), namespaces stuck Terminating, volumes, pods that are neither Running
+  nor Completed, and a server-side dry run whose error names the object Helm cannot adopt.
+- **`install.sh purge`** — deletes everything: both releases, both namespaces, every
+  volume, the cluster-scoped RBAC. "Start over" had no command: `helm uninstall` keeps
+  the volumes, deleting one namespace leaves the other, and the ESS namespace carries
+  `resource-policy: keep`. It lists its victims first and will not proceed until
+  "delete everything" is typed back.
+- **`install.sh update`** — is there a newer version, and put it on. Carries the existing
+  values forward, waits for the rollout, and on failure says the previous version is
+  still running and how to roll back.
+- **`install.sh recover-login`** — puts MatrixCtrl's local admin login back, knowing both
+  places the setting lives (the database, written by the connect flow, and the chart
+  values). Touches no Matrix account and no ESS configuration.
 
 ### Notes
 
-- These live in `scripts/install.sh`, which the README tells people to fetch from
-  `master`. Script changes therefore reach operators on merge, without a release — the
-  chart and image are unchanged here, so there is no version to bump.
+- A timeout on OIDC discovery, where there was none: it used to be a bare `http.Get`,
+  which waits forever. A start that hangs on an unreachable issuer never reaches the
+  retry loop that exists for exactly that case.
 
 ## [0.1.78] — 2026-09-06
 

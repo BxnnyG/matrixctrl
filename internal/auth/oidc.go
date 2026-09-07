@@ -57,10 +57,23 @@ type OIDCService struct {
 // credentials and token cache rather than building a second one.
 func (o *OIDCService) MAS() *mas.Client { return o.mas }
 
-func NewOIDCService(cfg OIDCConfig, db *pgxpool.Pool, jwtKey []byte) (*OIDCService, error) {
-	svc := &OIDCService{cfg: cfg, db: db, jwtKey: jwtKey}
-	issuer := strings.TrimRight(cfg.Issuer, "/")
-	resp, err := http.Get(issuer + "/.well-known/openid-configuration")
+// discover reads the issuer's OpenID configuration.
+//
+// Extracted so the connect flow can reach MAS before MatrixCtrl has switched its own
+// login over. That order matters: registering the client, creating the first account
+// and switching sign-in are three steps, and the middle one needs an admin token that
+// only exists once the first has landed (§4.88).
+func discover(ctx context.Context, issuer string) (*oidcDiscovery, error) {
+	issuer = strings.TrimRight(issuer, "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issuer+"/.well-known/openid-configuration", nil)
+	if err != nil {
+		return nil, err
+	}
+	// A timeout, where there was none: discovery used to be a bare http.Get, which
+	// waits forever by default. A start that hangs on an unreachable issuer never
+	// reaches the retry loop that exists precisely for that case.
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
 	}
@@ -69,10 +82,37 @@ func NewOIDCService(cfg OIDCConfig, db *pgxpool.Pool, jwtKey []byte) (*OIDCServi
 	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
 		return nil, fmt.Errorf("oidc discovery parse: %w", err)
 	}
-	svc.discovery = &d
+	return &d, nil
+}
+
+// MASAdminClient builds an admin client for MAS from credentials that are not (yet)
+// MatrixCtrl's own login configuration.
+//
+// AuthHandler.MAS() only answers once the OIDC service exists, which is to say once
+// MatrixCtrl has already switched its sign-in over. Before that it has no way to talk
+// to MAS at all — which is why a freshly deployed homeserver could not be given its
+// first account by the product that just deployed it.
+func MASAdminClient(ctx context.Context, issuer, clientID, clientSecret string) (*mas.Client, error) {
+	d, err := discover(ctx, issuer)
+	if err != nil {
+		return nil, err
+	}
+	if d.TokenEndpoint == "" {
+		return nil, fmt.Errorf("the issuer's discovery document names no token endpoint")
+	}
+	return mas.New(issuer, d.TokenEndpoint, clientID, clientSecret), nil
+}
+
+func NewOIDCService(cfg OIDCConfig, db *pgxpool.Pool, jwtKey []byte) (*OIDCService, error) {
+	svc := &OIDCService{cfg: cfg, db: db, jwtKey: jwtKey}
+	d, err := discover(context.Background(), cfg.Issuer)
+	if err != nil {
+		return nil, err
+	}
+	svc.discovery = d
 	// Built here rather than lazily: discovery has just produced the token endpoint,
 	// and a second opinion about that value later is a bug waiting for a config change.
-	svc.mas = mas.New(cfg.Issuer, d.TokenEndpoint, cfg.ClientID, cfg.ClientSecret)
+	svc.mas = mas.New(strings.TrimRight(cfg.Issuer, "/"), d.TokenEndpoint, cfg.ClientID, cfg.ClientSecret)
 	return svc, nil
 }
 

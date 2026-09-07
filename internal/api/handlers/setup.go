@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -33,11 +34,32 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"ess_installed":    false,
 	}
 
+	// "Installed" means deployed, not "a release object exists".
+	//
+	// It used to mean the latter, so the moment `helm install` created its first
+	// revision — status pending-install, nothing running yet — Setup declared ESS
+	// finished and offered "connect Matrix login". The connect flow then collided with
+	// the install still in flight: "another operation (install/upgrade/rollback) is in
+	// progress". The status was even in this same response and read by nobody (§4.88).
+	resp["ess_state"] = "absent"
 	if h.helm != nil {
 		if rel, err := h.helm.GetRelease(h.essRelease); err == nil && rel != nil {
-			resp["ess_installed"] = true
 			resp["ess_version"] = rel.Version
 			resp["ess_status"] = rel.Status
+			switch {
+			case rel.Status == "deployed":
+				resp["ess_state"] = "deployed"
+				resp["ess_installed"] = true
+			case strings.HasPrefix(rel.Status, "pending-"):
+				// Busy, not absent and not ready. Offering either the deploy wizard or
+				// the next step here is wrong: one starts a second operation, the other
+				// runs into the first.
+				resp["ess_state"] = "busy"
+			default:
+				// failed, superseded, uninstalling — a state the operator has to see
+				// rather than have interpreted for them.
+				resp["ess_state"] = "failed"
+			}
 		}
 	}
 

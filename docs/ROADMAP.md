@@ -71,7 +71,10 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 82 | Das Archiv wusste es die ganze Zeit — Umzug als dritter Setup-Pfad | ✅ 2026-09-06 · `v0.1.77` · [plan](plans/etappe-78-setup-neu.md) |
 | 83 | „Erledigt" ist keine Position — der geführte Ablauf, und ein Typ, der `string` war | ✅ 2026-09-06 · `v0.1.78` · [plan](plans/etappe-78-setup-neu.md) |
 | 84 | „Kann es nicht neu machen" — doctor, purge, update und recover-login im Installer | ✅ 2026-09-07 · `scripts/` (kein Release nötig) · [plan](plans/etappe-84-lifecycle.md) |
-| 85–89 | **Vorgezogen:** die Kette, die aussperrt — Zustand statt Existenz · der erste Matrix-Nutzer · umschalten erst wenn es geht · Rückweg sichtbar · Hostnames editierbar | 📋 geplant · [plan](plans/etappe-85-anmeldung.md) |
+| 85 | Kein „fertig", solange Helm noch läuft — Zustand statt Existenz | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
+| 86 | Der erste Matrix-Nutzer — MatrixCtrl legt ihn selbst an | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
+| 87 | Umschalten erst, wenn es funktioniert — MAS fragen statt die Datei lesen | ✅ 2026-09-07 · `v0.1.79` · [plan](plans/etappe-85-anmeldung.md) |
+| 88–89 | Rückweg sichtbar + laufender Health-Check · Hostnames einzeln editierbar | 📋 geplant · [plan](plans/etappe-85-anmeldung.md) |
 | 90–94 | Danach: Preflight · Rollback-Moment · Zustandsseite · Aufräumen · Komponenten-Tests | 📋 geplant · [plan](plans/etappe-85-sichtbarer-zustand.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |

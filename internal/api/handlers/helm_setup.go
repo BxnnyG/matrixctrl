@@ -17,6 +17,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/auth"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
+	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
 // DeployESS performs a greenfield ESS install (Phase 1.5): seed the config from
@@ -132,6 +133,136 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 // matrixAuthenticationService section, then helm-upgrades ESS so MAS picks it up),
 // stores the OIDC settings in the DB, and hot-reloads auth into OIDC mode. This
 // closes the bootstrap→OIDC loop without manual MAS patching or a restart.
+// runConnect finishes a registration: upgrade ESS so MAS loads the client, confirm
+// with MAS that it did, confirm somebody can log in, and only then switch MatrixCtrl's
+// own sign-in over.
+//
+// Shared by both entry points — a fresh registration and the repair of one that was
+// written to the configuration but never reached MAS — because the second half of the
+// work is identical and the repair path is exactly the one that used to do nothing.
+func (h *HelmHandler) runConnect(stream *upgradeStream, clientID, secret, issuer, redirect string) {
+	ctx := context.Background()
+	stream.emit("MatrixCtrl client written into MAS config (client_id=" + clientID + ").")
+
+	rel, err := h.helm.GetRelease(h.essRelease)
+	if err != nil || rel == nil {
+		stream.emit("ERROR: ESS release not found — deploy ESS first.")
+		stream.finish("failed")
+		return
+	}
+	contents, _ := h.configStore.MergedContent(ctx)
+	merged, _ := config.MergeToMap(contents)
+
+	stream.emit("Upgrading ESS so MAS loads the new client (this restarts MAS)…")
+	stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
+	_, upgradeErr := h.helm.Upgrade(ctx, h.essRelease, rel.Version, merged)
+	stopProgress()
+	if err := upgradeErr; err != nil {
+		stream.emit("ERROR: helm upgrade: " + err.Error())
+		stream.finish("failed")
+		return
+	}
+
+	// Ask MAS, not the file. Until MAS answers with this client, nothing about
+	// MatrixCtrl's own sign-in may change.
+	stream.emit("Asking MAS whether it loaded the client…")
+	var admin *mas.Client
+	var known bool
+	for i := 0; i < 12; i++ {
+		time.Sleep(5 * time.Second)
+		c, id, err := h.masAdmin(ctx)
+		if err != nil {
+			stream.emit("  …MAS not answering yet")
+			continue
+		}
+		if k, kerr := c.ClientKnown(ctx, id); kerr == nil && k {
+			admin, known = c, true
+			break
+		}
+		stream.emit("  …MAS is up but has not loaded the client yet")
+	}
+	if !known {
+		stream.emit("ERROR: MAS never confirmed the client. Nothing was switched over —")
+		stream.emit("the local admin login still works. Try again once MAS is reachable.")
+		stream.finish("failed")
+		return
+	}
+	stream.emit("MAS knows the client.")
+
+	// And is there anybody to log in as?
+	//
+	// A freshly deployed homeserver has no accounts. Switching sign-in over to MAS
+	// at this point closes the local login and opens one that nobody can pass —
+	// which is exactly the lockout an operator hit. Stop here instead, and say so.
+	admins, err := admin.ListUsers(ctx, mas.UserQuery{AdminOnly: true, Limit: 5})
+	if err != nil || admins == nil || len(admins.Users) == 0 {
+		stream.emit("MAS has no admin account yet, so signing in through it is not possible.")
+		stream.emit("Nothing was switched over — the local admin login still works.")
+		stream.emit("Create the first Matrix account in Setup, then connect again.")
+		stream.finish("needs-account")
+		return
+	}
+
+	// Only now is the switch safe: the client exists, MAS confirms it, and somebody
+	// can actually get in.
+	if err := auth.SaveOIDCConfig(ctx, h.db, auth.OIDCConfig{
+		Issuer: issuer, ClientID: clientID, ClientSecret: secret, RedirectURI: redirect,
+	}); err != nil {
+		stream.emit("ERROR: could not store the login settings: " + err.Error())
+		stream.emit("Nothing was switched over — the local admin login still works.")
+		stream.finish("failed")
+		return
+	}
+
+	stream.emit("Switching MatrixCtrl over to Matrix login…")
+	var reloadErr error
+	for i := 0; i < 12; i++ {
+		if h.oidcReloader == nil {
+			break
+		}
+		if reloadErr = h.oidcReloader(ctx); reloadErr == nil {
+			break
+		}
+		stream.emit("  …not ready yet, retrying")
+		time.Sleep(5 * time.Second)
+	}
+	if reloadErr != nil {
+		stream.emit("WARNING: client registered but OIDC reload failed: " + reloadErr.Error())
+		stream.emit("Reload manually from Setup once MAS is ready.")
+		stream.finish("hooks-failed")
+		return
+	}
+
+	stream.emit("Matrix login connected. Log out and back in via Matrix.")
+	stream.finish("success")
+}
+
+// connectUpgrade repairs a registration that exists in the configuration but never
+// reached MAS.
+//
+// The old code answered "already registered" here, because it compared the stored
+// fragment against what the generator writes today. That is a question about a file.
+// The question the operator is asking is about MAS, and MAS had never heard of the
+// client — so pressing "Verbinden" again did nothing at all (§4.88).
+func (h *HelmHandler) connectUpgrade(w http.ResponseWriter, r *http.Request, publicURL string) {
+	_, clientID, secret, issuer, err := h.registeredMASClient(r.Context())
+	if err != nil {
+		Error(w, http.StatusServiceUnavailable, "MAS ist nicht erreichbar: "+err.Error())
+		return
+	}
+	redirect := strings.TrimRight(publicURL, "/") + "/api/v1/auth/oidc/callback"
+
+	upgradeID := uuid.New().String()
+	stream := &upgradeStream{status: "pending"}
+	h.mu.Lock()
+	h.streams[upgradeID] = stream
+	h.mu.Unlock()
+
+	go h.runConnect(stream, clientID, secret, issuer, redirect)
+
+	JSON(w, http.StatusAccepted, map[string]string{"upgrade_id": upgradeID, "client_id": clientID})
+}
+
 func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 	userID := authmw.UserIDFromContext(r.Context())
 	var req struct {
@@ -153,6 +284,26 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 	if contents, err := h.configStore.MergedContent(r.Context()); err == nil {
 		if merged, err := config.MergeToMap(contents); err == nil {
 			if existing, _ := nestedGet(merged, "matrixAuthenticationService", "additional", "0-matrixctrl-client", "config").(string); existing != "" {
+				// Ask MAS whether it actually knows this client before deciding there
+				// is nothing to do.
+				//
+				// This used to go straight to reconcile, which compares the stored
+				// fragment against what the generator writes today and answers "already
+				// registered" when they match. A file is not evidence about a running
+				// service: when the upgrade that hands MAS the config fails — say
+				// another Helm operation was still running — the file says yes and MAS
+				// has never heard of the client. The operator then pressed "Verbinden"
+				// again and nothing happened at all, because the product believed the
+				// file (§4.88).
+				if client, id, err := h.masAdmin(r.Context()); err == nil && id != "" {
+					if known, kerr := client.ClientKnown(r.Context(), id); kerr == nil && !known {
+						// Registered on paper only. Run the upgrade that makes it real,
+						// reusing the credentials already written rather than minting a
+						// second client.
+						h.connectUpgrade(w, r, req.PublicURL)
+						return
+					}
+				}
 				h.reconcileMASClient(w, r, existing, userID)
 				return
 			}
@@ -184,13 +335,14 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 		// non-fatal
 		_ = err
 	}
-	// Persist OIDC settings so MatrixCtrl can use them after reload.
-	if err := auth.SaveOIDCConfig(r.Context(), h.db, auth.OIDCConfig{
-		Issuer: issuer, ClientID: clientID, ClientSecret: secret, RedirectURI: redirect,
-	}); err != nil {
-		Error(w, http.StatusInternalServerError, "save oidc config: "+err.Error())
-		return
-	}
+	// Deliberately NOT saving the OIDC settings here.
+	//
+	// They used to be written at this point, before the upgrade that makes them work.
+	// When that upgrade failed, MatrixCtrl was convinced it should be signing people in
+	// through MAS while MAS had never heard of the client — and the local login is
+	// refused from the moment those settings exist. The switch now happens at the end
+	// of the goroutine below, after MAS has confirmed the client and an account exists
+	// to log in as (§4.88).
 
 	upgradeID := uuid.New().String()
 	stream := &upgradeStream{status: "pending"}
@@ -198,51 +350,7 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 	h.streams[upgradeID] = stream
 	h.mu.Unlock()
 
-	go func() {
-		ctx := context.Background()
-		stream.emit("MatrixCtrl client written into MAS config (client_id=" + clientID + ").")
-
-		rel, err := h.helm.GetRelease(h.essRelease)
-		if err != nil || rel == nil {
-			stream.emit("ERROR: ESS release not found — deploy ESS first.")
-			stream.finish("failed")
-			return
-		}
-		contents, _ := h.configStore.MergedContent(ctx)
-		merged, _ := config.MergeToMap(contents)
-
-		stream.emit("Upgrading ESS so MAS loads the new client (this restarts MAS)…")
-		stopProgress := stream.startProgressWithProbe("Waiting for Helm rollout", upgradeProgressInterval, h.rolloutProbe(ctx))
-		_, upgradeErr := h.helm.Upgrade(ctx, h.essRelease, rel.Version, merged)
-		stopProgress()
-		if err := upgradeErr; err != nil {
-			stream.emit("ERROR: helm upgrade: " + err.Error())
-			stream.finish("failed")
-			return
-		}
-
-		stream.emit("Waiting for MAS to come back up with the client…")
-		var reloadErr error
-		for i := 0; i < 12; i++ {
-			time.Sleep(5 * time.Second)
-			if h.oidcReloader == nil {
-				break
-			}
-			if reloadErr = h.oidcReloader(ctx); reloadErr == nil {
-				break
-			}
-			stream.emit("  …MAS not ready yet, retrying")
-		}
-		if reloadErr != nil {
-			stream.emit("WARNING: client registered but OIDC reload failed: " + reloadErr.Error())
-			stream.emit("Reload manually from Setup once MAS is ready.")
-			stream.finish("hooks-failed")
-			return
-		}
-
-		stream.emit("Matrix login connected. Log out and back in via Matrix.")
-		stream.finish("success")
-	}()
+	go h.runConnect(stream, clientID, secret, issuer, redirect)
 
 	JSON(w, http.StatusAccepted, map[string]string{"upgrade_id": upgradeID, "client_id": clientID})
 }

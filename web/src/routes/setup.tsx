@@ -14,6 +14,11 @@ interface SetupStatus {
   ess_namespace: string;
   ess_release: string;
   ess_installed: boolean;
+  /** "absent" | "busy" | "deployed" | "failed".
+   *  ess_installed used to be true the moment a release object existed — including
+   *  while `helm install` was still running, which is how Setup offered "connect
+   *  Matrix login" into an install in flight (§4.88). */
+  ess_state?: "absent" | "busy" | "deployed" | "failed";
   ess_version?: string;
   ess_status?: string;
   oidc_configured: boolean;
@@ -77,7 +82,33 @@ function Setup() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
-      {!data.ess_installed ? (
+      {data.ess_state === "busy" ? (
+        <WizardCard>
+          <WizardHeader icon="clock" title="ESS wird gerade installiert"
+            sub={`Helm ist noch dabei (${data.ess_status ?? "läuft"}) — der nächste Schritt wartet darauf`} />
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>
+              Solange eine Helm-Operation läuft, scheitert jede weitere daran
+              („another operation is in progress"). Diese Seite aktualisiert sich selbst.
+            </p>
+            <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> warte…</span>
+          </div>
+        </WizardCard>
+      ) : data.ess_state === "failed" ? (
+        <WizardCard>
+          <WizardHeader icon="alert" title="Die ESS-Installation steht nicht sauber da"
+            sub={`Zustand: ${data.ess_status ?? "unbekannt"}`} />
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>
+              Bevor hier etwas weitergeht, muss dieser Zustand aufgelöst werden — sonst
+              scheitert jede weitere Helm-Operation daran.
+            </p>
+            <pre style={{ margin: 0, padding: 11, fontSize: 11.5, fontFamily: "var(--mono)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflowX: "auto", userSelect: "all" }}>
+              helm rollback {data.ess_release} -n {data.ess_namespace}
+            </pre>
+          </div>
+        </WizardCard>
+      ) : !data.ess_installed ? (
         mode === null ? (
           <StartChoice onPick={setMode} />
         ) : mode === "migrate" ? (
@@ -88,7 +119,10 @@ function Setup() {
       ) : data.config_sections === 0 ? (
         <AdoptCard release={data.ess_release} version={data.ess_version} onDone={invalidate} />
       ) : !data.oidc_configured ? (
-        <ConnectCard masHost={data.mas_host} onDone={invalidate} />
+        <>
+          <MatrixAccountCard onDone={invalidate} />
+          <ConnectCard masHost={data.mas_host} onDone={invalidate} />
+        </>
       ) : (
         <ConnectedCard
           missing={data.oidc_client_missing ?? []}
@@ -489,6 +523,90 @@ function DerivedValue({ label, value, source }: { label: string; value: string; 
   );
 }
 
+
+interface MatrixAdmins { available: boolean; reason?: string; admins: string[]; client_known: boolean }
+
+/** The account that has to exist before Matrix login can be switched on.
+ *
+ *  A freshly deployed homeserver has none. Switching sign-in over to MAS at that point
+ *  closes the local login and opens one nobody can pass — the operator who hit it saw
+ *  only "Invalid credentials" from MAS and had no way past it (§4.88). MatrixCtrl could
+ *  lock, unlock, deactivate, erase, promote and set passwords; it could not create the
+ *  first account. Now it can. */
+function MatrixAccountCard({ onDone }: { onDone: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ["setup", "matrix-admins"],
+    queryFn: () => api.get<MatrixAdmins>("/api/v1/setup/matrix-admins"),
+    refetchInterval: 20_000,
+  });
+
+  const create = useMutation({
+    mutationFn: () => api.post<{ username: string }>("/api/v1/setup/matrix-admin", { username, password }),
+    onSuccess: (res) => {
+      setMsg(`${res.username} angelegt und zum Admin gemacht.`);
+      setUsername(""); setPassword("");
+      void refetch(); onDone();
+    },
+  });
+
+  const admins = data?.admins ?? [];
+
+  return (
+    <WizardCard>
+      <WizardHeader icon="users" title="Matrix-Konto für die Anmeldung"
+        sub="Ohne ein Admin-Konto in MAS ist der Umstieg auf Matrix-Login eine Tür ohne jemanden dahinter" />
+      <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+        {isLoading ? (
+          <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> frage MAS…</span>
+        ) : !data?.available ? (
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--status-warn)" }}>
+            MAS ist noch nicht erreichbar{data?.reason ? `: ${data.reason}` : ""}. Das ist normal, solange
+            der Client noch nicht geladen ist — „Verbinden" unten kümmert sich darum.
+          </p>
+        ) : admins.length > 0 ? (
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>
+            Es gibt {admins.length === 1 ? "ein Admin-Konto" : `${admins.length} Admin-Konten`}:{" "}
+            <strong style={{ fontFamily: "var(--mono)" }}>{admins.join(", ")}</strong>. Damit kannst du dich
+            nach dem Umstellen anmelden.
+          </p>
+        ) : (
+          <>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)" }}>
+              MAS hat noch kein Admin-Konto. Leg jetzt eines an — <strong>bevor</strong> du
+              die Anmeldung umstellst.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="mc-dash-grid">
+              <div>
+                <label style={labelStyle}>Benutzername</label>
+                <input value={username} onChange={(e) => setUsername(e.target.value.trim())} placeholder="admin" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Passwort</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+          </>
+        )}
+        {data?.available && admins.length === 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Button variant="primary" icon={create.isPending ? undefined : "users"}
+              disabled={!username || !password || create.isPending}
+              onClick={() => create.mutate()}>
+              {create.isPending ? <><Spinner size={14} /> Lege an…</> : "Konto anlegen und zum Admin machen"}
+            </Button>
+            {create.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(create.error as Error).message}</span>}
+          </div>
+        )}
+        {msg && <span style={{ fontSize: 12.5, color: "var(--status-ok)" }}>{msg}</span>}
+      </div>
+    </WizardCard>
+  );
+}
+
 function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void }) {
   // Derived, not initial state.
   //
@@ -566,7 +684,7 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Verbinde…</span>
-            <StatusInline done={done} status={status} map={{ success: ["Verbunden", "ok"], "hooks-failed": ["Teilweise", "warn"], failed: ["Fehlgeschlagen", "err"] }} />
+            <StatusInline done={done} status={status} map={{ success: ["Verbunden", "ok"], "hooks-failed": ["Teilweise", "warn"], "needs-account": ["Kein Matrix-Konto", "warn"], failed: ["Fehlgeschlagen", "err"] }} />
           </div>
           <LogTerm logs={logs} done={done} logRef={logRef} />
           {done && status === "success" && <p style={{ margin: 0, fontSize: 12, color: "var(--status-ok)" }}>Abmelden und über Matrix neu anmelden.</p>}

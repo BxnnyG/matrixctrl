@@ -204,6 +204,11 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/chart-defaults", deps.Setup.ChartDefaults)
 			// Which records have to exist, and whether they do (etappe 80).
 			r.Get("/dns", deps.Helm.SetupDNS)
+			// Who can log in through Matrix, and creating the first one (etappe 86).
+			// Without an account there, switching sign-in over to MAS is a door with
+			// nobody on the other side.
+			r.Get("/matrix-admins", deps.Helm.MatrixAdmins)
+			r.Post("/matrix-admin", deps.Helm.CreateMatrixAdmin)
 			r.Post("/deploy-ess", deps.Helm.DeployESS)
 			r.Post("/connect-oidc", deps.Helm.ConnectOIDC)
 		})
