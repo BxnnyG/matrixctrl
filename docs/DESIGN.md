@@ -3550,3 +3550,38 @@ Beides fiel nur auf, weil die Prüfung gegen eine absichtlich kaputte Datei lauf
 gelassen wurde statt ihr geglaubt. Das ist inzwischen das Muster der Woche in seiner
 kürzesten Form: **eine Prüfung, die nie fehlgeschlagen ist, ist keine Prüfung, sondern
 eine Behauptung.**
+
+### §4.98 — Sechs Bearbeitungen in fünf Dateien (2026-09-08, agent, etappe 98)
+
+P3-3 stand seit Monaten als ein Satz da: *„Changing the server name touches several
+files by hand today."* Nach Etappe 82 ist daraus ein konkreter Weg geworden, den
+jemand tatsächlich geht: ein Archiv von einem anderen Server bringt die **alte Domain**
+mit, in jedem Hostnamen, den es trägt. Wiederherstellen und dann von Hand sechs Werte
+suchen ist kein Umzug, sondern eine Aufgabe mit einer Fehlerquote.
+
+Die vergessene ist immer dieselbe: `serverName` selbst. Well-known wird dort
+ausgeliefert, also zeigt eine Umbenennung ohne sie auf eine Domain, auf der niemand
+antwortet — derselbe Eintrag, den die alte Deploy-Fußnote unterschlagen hat (§4.81).
+
+Zwei Entscheidungen tragen den Rest:
+
+**Was „abgeleitet" heißt, wird festgestellt, nicht geraten.** Jeder Wert wird gegen das
+gehalten, was der **alte** Server-Name erzeugt hätte. Stimmt er überein, war er
+abgeleitet und wandert mit; stimmt er nicht, hat ihn jemand selbst gewählt — er wird
+angezeigt, aber nicht angekreuzt. Eine Umbenennung darf keine Entscheidung rückgängig
+machen, die sie nicht getroffen hat. An einem Präfix zu erkennen, ob ein Name abgeleitet
+ist, wäre die naheliegende und falsche Variante: `chat.example.com` sieht abgeleitet aus
+und ist es nicht.
+
+**Der Plan wird beim Anwenden neu gerechnet.** Geschrieben wird, was sich aus der
+Konfiguration von jetzt ergibt — nicht das, was ein Browser vor zehn Minuten gesehen
+hat. Der Client nennt Schlüssel, keine Werte.
+
+Und ein Commit, nicht sechs: einen halb umbenannten Server will niemand als Zustand in
+der Historie haben, auf den man zurückrollen könnte.
+
+Die Rechnung selbst ist von der Speicherung getrennt (`renamePlanFrom` nimmt die
+zusammengeführte Konfiguration statt des Stores), damit prüfbar ist, was sie entscheidet,
+ohne ein Git-Repository dahinter. Vier Tests: der Server-Name ist dabei, ein selbst
+gewählter Host wird nicht vereinnahmt, bereits richtige Werte werden als solche gemeldet
+statt weggelassen, und eine Umbenennung auf denselben Namen ändert nichts.

@@ -132,6 +132,7 @@ function Setup() {
         />
       )}
 
+      {data.ess_state === "deployed" && data.config_sections > 0 && <RenameServerCard onDone={invalidate} />}
       <SetupSteps data={data} />
 
       <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "var(--panel)" }}>
@@ -545,6 +546,132 @@ interface MatrixAdmins { available: boolean; reason?: string; admins: string[]; 
  *
  *  A state that is only checked at startup is not a state, it is a memory — so this
  *  polls. */
+export 
+interface RenameChange { key: string; from: string; to: string; derived: boolean; purpose?: string }
+interface RenamePreview { current_server_name: string; new_server_name: string; changes: RenameChange[]; unchanged: string[] }
+
+/** Moving the whole installation to a different domain.
+ *
+ *  By hand this is six edits in five files, and the one always forgotten is
+ *  `serverName` itself — well-known delegation is served there, so a rename that
+ *  misses it leaves federation pointing at a domain nobody answers on (§4.81).
+ *
+ *  Not hypothetical: restoring a backup onto a different server brings the old domain
+ *  with it, in every hostname the archive carried (etappe 82). */
+function RenameServerCard({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState("");
+  const [chosen, setChosen] = useState<Record<string, boolean> | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const valid = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(target);
+  const { data: plan, isFetching } = useQuery({
+    queryKey: ["config", "rename", target],
+    queryFn: () => api.get<RenamePreview>(`/api/v1/config/rename/preview?server_name=${encodeURIComponent(target)}`),
+    enabled: open && valid,
+  });
+
+  // Derived hostnames are ticked; a hand-picked one is not. A rename must not quietly
+  // undo a decision it did not make — it shows it and waits.
+  const picked = (c: RenameChange) => chosen?.[c.key] ?? c.derived;
+
+  const apply = useMutation({
+    mutationFn: () => api.post<{ applied: string[]; warning?: string }>("/api/v1/config/rename", {
+      server_name: target,
+      keys: (plan?.changes ?? []).filter(picked).map((c) => c.key),
+    }),
+    onSuccess: (res) => {
+      setMsg(res.warning ?? `${res.applied.length} Einträge umgestellt. Jetzt über Config → Deploy anwenden.`);
+      onDone();
+    },
+  });
+
+  if (!open) {
+    return (
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>Server umbenennen</div>
+            <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--text-faint)", maxWidth: "58ch" }}>
+              Alle Hostnames auf eine andere Domain umstellen — in einem Vorgang statt
+              sechs Bearbeitungen in fünf Dateien. Nach einem Restore von einem anderen
+              Server ist das der fehlende Schritt.
+            </p>
+          </div>
+          <Button size="sm" icon="edit" onClick={() => setOpen(true)}>Öffnen</Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600 }}>Server umbenennen</div>
+        <div>
+          <label style={labelStyle}>Neue Domain</label>
+          <input value={target} onChange={(e) => { setTarget(e.target.value.trim()); setChosen(null); setMsg(null); }}
+            placeholder="example.com" style={inputStyle} />
+        </div>
+
+        {isFetching && <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> Rechne durch…</span>}
+
+        {plan && (
+          <>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)" }}>
+              Aktuell: <code style={{ fontFamily: "var(--mono)" }}>{plan.current_server_name || "—"}</code>
+              {plan.unchanged.length > 0 && <> · {plan.unchanged.length} bereits richtig</>}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              {plan.changes.map((c) => (
+                <label key={c.key} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: "var(--surface-2)", cursor: "pointer" }}>
+                  <input type="checkbox" checked={picked(c)} style={{ marginTop: 3 }}
+                    onChange={(e) => setChosen((p) => ({ ...(p ?? {}), [c.key]: e.target.checked }))} />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--text-faint)" }}>{c.from || "—"}</span>
+                    <span style={{ color: "var(--text-faint)" }}> → </span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--text)" }}>{c.to}</span>
+                    {!c.derived && (
+                      <span style={{ display: "block", fontSize: 11, color: "var(--status-warn)", marginTop: 2 }}>
+                        selbst gewählt — wird nur geändert, wenn du es ankreuzt
+                      </span>
+                    )}
+                    {c.purpose && <span style={{ display: "block", fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>{c.purpose}</span>}
+                  </span>
+                </label>
+              ))}
+              {plan.changes.length === 0 && (
+                <div style={{ padding: "10px 12px", background: "var(--surface-2)", fontSize: 12.5, color: "var(--text-faint)" }}>
+                  Nichts zu ändern — alles zeigt schon auf diese Domain.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Button variant="primary" icon={apply.isPending ? undefined : "check"}
+            disabled={!plan || plan.changes.length === 0 || apply.isPending}
+            onClick={() => apply.mutate()}>
+            {apply.isPending ? <><Spinner size={13} /> Ändere…</> : "Umbenennen"}
+          </Button>
+          <button onClick={() => { setOpen(false); setMsg(null); }}
+            style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "var(--text-faint)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>
+            abbrechen
+          </button>
+          {apply.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(apply.error as Error).message}</span>}
+        </div>
+
+        {msg && <span style={{ fontSize: 12.5, color: "var(--status-ok)" }}>{msg}</span>}
+        <p style={{ margin: 0, fontSize: 11.5, color: "var(--text-faint)" }}>
+          Ändert nur die Konfiguration. Wirksam wird es mit dem nächsten Deploy — und die
+          DNS-Einträge für die neue Domain müssen natürlich existieren.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 export function MatrixLoginHealth() {
   const { data } = useQuery({
     queryKey: ["auth", "oidc", "available"],

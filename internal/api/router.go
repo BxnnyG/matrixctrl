@@ -191,6 +191,10 @@ func NewRouter(deps Deps) http.Handler {
 			r.Post("/validate", deps.Config.Validate)
 			r.Post("/validate-merged", deps.Config.ValidateMerged)
 			r.Get("/schema", deps.Config.GetSchema)
+			// Renaming the server: one operation across every section that carries a
+			// hostname, instead of six edits in five files (etappe 98).
+			r.Get("/rename/preview", deps.Config.RenamePreview)
+			r.Post("/rename", deps.Config.Rename)
 			r.Get("/settings", deps.Config.GetSettings)
 			r.Post("/settings", deps.Config.PutSettings)
 			r.Get("/diff", deps.Config.GetDiff)

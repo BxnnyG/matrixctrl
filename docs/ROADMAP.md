@@ -84,6 +84,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 95 | Was tatsächlich veröffentlicht wurde — die Registry wird gefragt, und arm64 ist belegt | ✅ 2026-09-08 · `v0.1.82` · [plan](plans/etappe-95-was-veroeffentlicht-wurde.md) |
 | 96 | Ein Rückstand, den man an den Überschriften falsch liest | ✅ 2026-09-08 · `v0.1.83` |
 | 97 | Ein Status, der vorhanden ist, und einer, der stimmt — zwei falsche Zeilen aus Etappe 96 korrigiert | ✅ 2026-09-08 · `v0.1.84` |
+| 98 | Sechs Bearbeitungen in fünf Dateien — den Server in einem Zug umbenennen | ✅ 2026-09-08 · `v0.1.85` |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

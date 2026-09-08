@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.85] — 2026-09-08
+
+### Added
+
+- **Renaming the server is one operation.** Moving an installation to a different domain
+  touched six values across five section files by hand, and the one always forgotten is
+  `serverName` itself — well-known delegation is served there, so a rename that misses it
+  leaves federation pointing at a domain nobody answers on. Setup now previews every
+  change, applies the selected ones in a single commit, and says what was already right.
+  This is the step that was missing after restoring a backup onto a different server:
+  the archive brings the old domain with it, in every hostname it carried.
+- `GET /api/v1/config/rename/preview` and `POST /api/v1/config/rename`.
+
+### Notes
+
+- **A hostname the operator chose themselves is shown but not ticked.** The preview
+  compares each value against what the *old* server name would have produced, so
+  "derived" is established rather than guessed from a prefix — and a rename never
+  quietly undoes a decision it did not make.
+- The plan is recomputed server-side when the change is applied. What gets written comes
+  from the configuration as it is at that moment, not from what a browser saw minutes
+  earlier.
+
 ## [0.1.84] — 2026-09-08
 
 ### Fixed

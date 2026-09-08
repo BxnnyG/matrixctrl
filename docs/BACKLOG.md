@@ -1104,9 +1104,11 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 - **P3-2 · English UI (S17).**
   **Open (verified 2026-09-08).** The UI ships German only; the repo and docs are
   English. Phase 6, but it is the single biggest barrier to outside contributors.
-- **P3-3 · Bulk config edit across sections.**
-  **Open (verified 2026-09-08).** Changing the server name touches
-  several files by hand today.
+- ~~**P3-3 · Bulk config edit across sections.**~~ **Done 2026-09-08 (E98,
+  [DESIGN.md §4.98](DESIGN.md)).** Setup previews and applies a server rename across
+  every section in one commit. A hostname the operator chose themselves is shown but
+  not ticked — "derived" is established against what the old server name would have
+  produced, not guessed from a prefix.
 - **P3-4 · Validate config against the running Synapse,**
   **Open (verified 2026-09-08).** not only the JSON
   Schema — schema-valid values can still be rejected at runtime.
