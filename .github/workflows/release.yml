@@ -231,6 +231,21 @@ jobs:
             gh release create "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md
           fi
 
+      # Ask the registry what actually arrived.
+      #
+      # Everything above reports success for having *sent* something. On 2026-09-05 the
+      # job died at a guard before the push, nothing reached GHCR, and the failure was
+      # noticed days later by an operator installing the previous version (§4.75). The
+      # same shape applies one level in: the image is built for two architectures, and a
+      # silently missing one would surface as "no matching manifest" on somebody's ARM
+      # board, not here.
+      #
+      # The tag is the intention. This step is where the result is checked.
+      - name: Verify what the registry holds
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: ./scripts/check-published.sh "$VERSION"
+
       - name: Summary
         env:
           VERSION: ${{ steps.v.outputs.version }}

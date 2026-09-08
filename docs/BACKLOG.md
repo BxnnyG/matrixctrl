@@ -473,27 +473,19 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   correct and nothing looked wrong; only a plain `go build ./cmd/matrixctrl` would
   have embedded the old UI. A tracked artefact that can silently disagree with its
   source is worse than the noisy diffs this entry was originally about.
-- **P2-7 · Publish an arm64 image again (S8).** ⏳ **Cause removed 2026-09-03 (E66,
-  [DESIGN.md §4.65](DESIGN.md)); the cure is unproven.** The suspicion in this entry was
-  right and narrower than it looked: exactly one instruction in the build needed the
-  target architecture, `apk add` in the runtime stage. tzdata is now embedded in the
-  binary and the CA bundle copied from the builder, so that stage runs no command and
-  needs no emulator — which also made the per-architecture runners and manifest merge
-  planned below unnecessary. **Stays open until a tagged release actually publishes an
-  arm64 image**, because this build host has no QEMU and could not test one.
-  *Original entry:* Releases are `linux/amd64` only.
-  Two attempts at multi-arch failed in the image step: the first spent 25 minutes
-  emulating the frontend build (fixed in the Dockerfile — builder stages now run
-  natively and Go cross-compiles), the second failed in under four minutes, so
-  something else in the arm64 path breaks. The runtime stage's `apk add` runs under
-  QEMU and is the prime suspect; a local reproduction died in exactly that spot.
-  *Fix:* stop emulating altogether — build each architecture on its own runner
-  (`ubuntu-24.04-arm` is free for public repos) and merge the manifests. Job logs
-  need a token to read, which is why this was dropped rather than diagnosed further
-  under a tag.
-  *Why it matters:* k3s on ARM boards is a realistic home-server case, and the
-  README does not currently say the image is amd64-only.
-
+- ~~**P2-7 · Publish an arm64 image again (S8).**~~ **Done — verified 2026-09-08 (E95).**
+  The cause was removed in E66 (nothing is emulated any more) and the workflow has built
+  `linux/amd64,linux/arm64` since. What was missing was anyone checking the result:
+  `0.1.81`'s image is a manifest index with both platforms, and the arm64 entry's config
+  blob reports `architecture: arm64`, entrypoint `/usr/local/bin/matrixctrl`, three
+  layers, 23 MB — a real image, not an empty slot in an index.
+  *Deliberately not claimed:* that it has been **run**. That needs ARM hardware nobody
+  here has, and the README says exactly that instead of upgrading "published" to
+  "supported" — the distinction the original entry existed to protect.
+  *What changed beyond the answer:* `scripts/check-published.sh` runs as the last step
+  of every release and asks the registry whether it holds what was pushed, per
+  architecture. Nothing did that before, which is how 0.1.70 published nothing at all
+  and was noticed days later by an operator installing the previous version (§4.75).
 - **P2-33 · Both report queues page on an unstable sort (S13).** ✅ **Two of three halves
   done 2026-09-02 (E64, [DESIGN.md §4.63](DESIGN.md)).** Ordering is now deterministic
   and duplicates are gone. *Still open, and unfixable from this side:* a row the server

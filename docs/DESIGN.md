@@ -3439,3 +3439,41 @@ Zwei Details, die nur ein echter Lauf zeigt:
 Gegenprobe: `if (true) return null` in die geprüfte Komponente → ein Test fällt, die
 beiden anderen bleiben grün. Ein Test, der nicht fällt, wenn das Verhalten verschwindet,
 prüft nichts.
+
+### §4.95 — Der Tag ist die Absicht, die Registry ist das Ergebnis (2026-09-08, agent, etappe 95)
+
+Der Release-Workflow endete damit, ein Image und einen Chart zu **schieben**. Ob danach
+im Register stand, was er zu schieben glaubte, hat nichts geprüft. Am 5. September starb
+der Job an einem Guard vor dem Push, GHCR blieb auf der Vorversion, und aufgefallen ist
+es Tage später — dem Operator, der die alte Version installierte (§4.75).
+
+Dieselbe Form, eine Ebene weiter innen: das Image wird für zwei Architekturen gebaut.
+Fiele eine davon still weg, würde es niemand hier bemerken. Es würde als
+`no matching manifest` auf dem ARM-Board eines Fremden erscheinen.
+
+`scripts/check-published.sh` fragt jetzt als letzter Schritt jedes Releases: gibt es den
+Chart-Tag, ist das Image ein Manifest-Index, sind alle erwarteten Architekturen darin.
+Anonymes Pull-Token, keine Anmeldung nötig. Gegenprobe in beide Richtungen: `0.1.81`
+geht durch, `9.9.9` scheitert und sagt warum.
+
+**Nebenbefund, und der Grund für die Etappe.** P2-7 („wieder ein arm64-Image
+veröffentlichen") stand seit Monaten offen. Die Ursache war seit E66 weg und der
+Workflow baute längst beides — es hatte nur nie jemand **nachgesehen**. Der Eintrag war
+nicht offen, weil die Arbeit fehlte, sondern weil die Bestätigung fehlte:
+
+    linux/amd64  sha256:6f847bd0cb824
+    linux/arm64  sha256:b98c6de82cc8c
+    → architecture: arm64, entrypoint /usr/local/bin/matrixctrl, 3 layers, 23 MB
+
+Das README behauptete derweil weiter „untested" — ein Satz, der stimmte, als er
+geschrieben wurde, und seither zwanzig Releases lang falsch blieb. **Eine Warnung altert
+nicht von selbst mit.**
+
+Korrigiert, aber nicht auf „unterstützt": veröffentlicht und strukturell geprüft ist
+nicht dasselbe wie auf echter Hardware gelaufen, und genau diese Unterscheidung war der
+Grund, warum der alte Satz überhaupt dastand. Sie bleibt stehen — nur an der richtigen
+Stelle.
+
+Und das fünfte Mal dasselbe Muster nach §4.79, §4.84, §4.90 und §4.92: **gebaut,
+benannt, begründet — und nicht nachgesehen.** Hier war es nicht einmal Verdrahtung,
+sondern bloßes Hinschauen.

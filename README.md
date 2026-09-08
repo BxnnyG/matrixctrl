@@ -110,8 +110,14 @@ grows into full admin parity.
 - An existing ESS (`matrix-stack`) release, *or* let MatrixCtrl deploy one.
 - **Architecture:** every release up to and including `0.1.61` publishes `linux/amd64`
   only — on an ARM board the image will not pull, which the README did not previously
-  say. From `0.1.62` the release also builds `linux/arm64`; until a tagged release has
-  actually produced one, treat arm64 as untested rather than supported.
+  say. From `0.1.62` the release builds `linux/arm64` too, and every release since has
+  published both: `0.1.81`'s image is a manifest index carrying `linux/amd64` and
+  `linux/arm64`, and the arm64 entry is a real image (`architecture: arm64`, three
+  layers, 23 MB) rather than an empty slot. Each release now verifies that against the
+  registry before it is called done.
+  What is still not claimed is that anyone has **run** it: that needs ARM hardware, and
+  nobody here has any. Published and structurally verified — report anything that
+  surprises you on an ARM board.
 
 <details>
 <summary><b>Starting from a bare Debian/Ubuntu server?</b> — k3s + Helm in three commands</summary>

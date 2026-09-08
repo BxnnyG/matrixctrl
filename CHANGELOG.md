@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.82] — 2026-09-08
+
+### Added
+
+- **Every release now asks the registry what actually arrived.** Until this, the
+  workflow reported success for having *sent* an image and a chart. On 2026-09-05 it
+  died at a guard before the push, nothing reached GHCR, and the failure surfaced days
+  later when an operator installed the previous version. `scripts/check-published.sh`
+  runs as the last step and checks that the chart tag exists and that the image is a
+  manifest index carrying every architecture the build claims — a missing one would
+  otherwise appear as "no matching manifest" on somebody's ARM board, not here.
+
+### Changed
+
+- **arm64 is no longer described as untested.** The workflow has built both
+  architectures since 0.1.62, and `0.1.81`'s image index carries `linux/amd64` and
+  `linux/arm64`, with the arm64 entry a real image — `architecture: arm64`, three
+  layers, 23 MB. The README says that, and still says what is not claimed: nobody here
+  has ARM hardware to run it on. Published and structurally verified is not the same as
+  exercised, which is the distinction the old wording existed to protect.
+
 ## [0.1.81] — 2026-09-07
 
 ### Added
