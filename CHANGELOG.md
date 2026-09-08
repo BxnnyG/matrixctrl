@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.84] — 2026-09-08
+
+### Fixed
+
+- **Two backlog entries were given a status that was false** — in the release whose
+  subject was backlog entries reading as something they are not. P1-15 (the outside-in
+  reachability check) was marked open; it has been built for weeks, and it is what
+  produced P1-13's answer. P1-14 was marked "blocked on P1-13" when P1-13 is answered:
+  nothing inbound reaches the node because the router has allow rules and no DNAT
+  forward. Both corrected.
+
+### Changed
+
+- **A claim of "Open" now has to say when it was last held against the code**, and
+  `check-backlog.sh` names any that has not been re-checked in 90 days. The previous
+  gate only required a status to be *present*; it was satisfied by both false ones
+  above. A status without a date is an opinion with no expiry.
+- **The gate reads each entry to its own boundary.** It used to take a fixed window of
+  characters, which for a short entry reaches into the next one and finds *that* entry's
+  status — which is how it passed an undated claim whose neighbour carried a date, and
+  how it missed P2-5 entirely. Both were caught by testing the check against a
+  deliberately broken file rather than trusting it.
+
 ## [0.1.83] — 2026-09-08
 
 ### Changed

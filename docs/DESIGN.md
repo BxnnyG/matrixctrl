@@ -3517,3 +3517,36 @@ Nebenbefund für die Reihenfolge: **P1-15 ist der Hebel des ganzen Anruf-Themas.
 Prüfung von außen beantwortet P1-13 („erreicht überhaupt etwas den Node?"), und P1-13 ist
 die Vorbedingung von P1-14 (TURN-Relay). Drei Einträge, eine Abhängigkeitskette, und der
 oberste ist der billigste — er stand nur nie als solcher da.
+
+### §4.97 — Ein Status, der vorhanden ist, und einer, der stimmt (2026-09-08, agent, etappe 97)
+
+Etappe 96 hat verlangt, dass jeder Rückstands-Eintrag sich in seiner ersten Zeile
+erklärt. In derselben Etappe habe ich zwei dieser Zeilen **falsch** geschrieben:
+
+- **P1-15** („Prüfung von außen") bekam `**Open**`. Sie ist seit Wochen gebaut — Karte
+  auf `/rtc`, opt-in, `internal/reach/http.go`, `POST /api/v1/rtc/reachability` — und
+  sie ist das, was P1-13 überhaupt beantwortet hat.
+- **P1-14** bekam `blocked on P1-13`. P1-13 ist beantwortet, und zwar negativ: **nichts
+  Eingehendes erreicht den Node**, weil der Router Allow-Regeln hat und keine
+  DNAT-Weiterleitung. Die Vorbedingung ist nicht eine Messung, sondern eine
+  Router-Konfiguration.
+
+Ich habe beide Male die Prosa gelesen und daraus geschlossen, statt gegen den Code zu
+prüfen — genau der Fehler, den die Etappe abstellen sollte, begangen beim Abstellen.
+
+**Das Gate erzwang Anwesenheit, nicht Wahrheit.** Beide falschen Zeilen haben es
+klaglos passiert. Eine Maschine kann nicht wissen, ob „offen" stimmt; sie kann aber
+verlangen, dass die Behauptung ein **Datum** trägt, an dem sie zuletzt gegen den Code
+gehalten wurde, und Behauptungen benennen, die älter als 90 Tage sind. Ein Status ohne
+Datum ist eine Meinung ohne Verfallsdatum.
+
+**Und ein zweiter Fehler in derselben Prüfung**, gefunden nur durch die Gegenprobe: das
+Gate las je Eintrag ein festes Fenster von 300–400 Zeichen. Bei einem kurzen Eintrag
+reicht das in den nächsten hinein — es fand also das Datum des *Nachbarn* und ließ einen
+undatierten Eintrag durch. Dieselbe Fensterlogik hatte vorher auch P2-5 übersehen. Ein
+Eintrag endet dort, wo der nächste beginnt; alles andere ist geraten.
+
+Beides fiel nur auf, weil die Prüfung gegen eine absichtlich kaputte Datei laufen
+gelassen wurde statt ihr geglaubt. Das ist inzwischen das Muster der Woche in seiner
+kürzesten Form: **eine Prüfung, die nie fehlgeschlagen ist, ist keine Prüfung, sondern
+eine Behauptung.**

@@ -153,7 +153,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   IP** in `CLAUDE.md`. All 51 commits were rewritten with `git filter-repo` and
   force-pushed; the HEAD tree hash is unchanged, so no file content moved.
 - **P0-1b · GitHub still serves the pre-rewrite objects by SHA.**
-  **Open — operator's call.** The force-push
+  **Open — operator's call (verified 2026-09-08).** The force-push
   removed the old commits from the branch, but `…/commits/<old-sha>` and the
   contents API still return them, so the hostname and IP remain fetchable by anyone
   who knows a hash. This is normal GitHub behaviour — unreachable objects survive
@@ -524,7 +524,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Not a regression from E47* — true since the SPA fallback was introduced.
 
 - **P2-32 · E47's protected-media case is source-verified, not live-verified (S13).**
-  **Open — operator's call.**
+  **Open — operator's call (verified 2026-09-08).**
   E47 ships on a finding read from Synapse's source: `quarantine_media_by_id` filters
   `AND safe_from_quarantine = FALSE`, so quarantining protected media returns
   `200 {}` and changes nothing. That reasoning drives `QuarantineResult.Changed` and
@@ -605,7 +605,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   with its own audit line and wording that names what cannot be undone.
 
 - **P1-14 · MatrixCtrl should be able to install and manage a TURN relay (S14).**
-  **Open — blocked on P1-13.**
+  **Open (verified 2026-09-08) — blocked on a port forward, not on a measurement.** P1-13 is answered and
+  the answer is negative: nothing inbound reaches the node, because the router has
+  allow rules and no DNAT forward. A relay behind that is unreachable, so it would
+  be the fourth „it should work now". The precondition is the operator's router.
   Requested by the operator 2026-08-04, immediately after P1-12's finding landed:
   "kannste das adden ... als one click install ... verwaltbar für den user".
   The ESS chart has **no** option for a Synapse-side relay, so every ESS install has
@@ -667,7 +670,9 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   works after the forward is opened is the next question, not this one.*
 
 - **P1-15 · MatrixCtrl should offer the outside-in check, opt-in (S14).**
-  **Open — and it is what unblocks P1-13 and P1-14.**
+  **Done — it is what produced P1-13's answer.** The card „Von außen prüfen" on `/rtc`
+  is opt-in, names both services it contacts, and runs only on click
+  (`internal/reach/http.go`, `POST /api/v1/rtc/reachability`).
   E19 recorded "inbound reachability cannot be tested from inside the network it
   terminates in" as a permanent unknown, and it is true — but it quietly implied
   that therefore nothing can be done, and that was wrong. A public port checker is
@@ -1011,8 +1016,10 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Caught because it was nearly built again* — the entry read as an open feature and
   the feature exists. Same failure as the eight entries E38 found; the defence is the
   same, which is to verify an entry against the code before acting on it.
-- **P2-5 · Decide the System page (§4.13).** Open question: the enriched dashboard
-  now covers most of it. Keep, merge, or delete.
+- **P2-5 · Decide the System page (§4.13).**
+  **Open (verified 2026-09-08) — a question for the operator, not work.** The enriched
+  dashboard now covers most of it, and etappe 92 added „Was im Weg steht" here. Keep,
+  merge, or delete.
 - ~~**P2-16 · An upgrade that finished still reads `running-hooks` (S2).**~~
   **Done 2026-08-01.** The cause was not the SQL — the terminal status is written
   by the goroutine driving the upgrade, so if that process dies in between (a pod
@@ -1093,15 +1100,15 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 ## 4. P3 — someday / nice-to-have
 
 - **P3-1 · Read-only role.**
-  **Open.** Today there is exactly one role: full admin.
+  **Open (verified 2026-09-08).** Today there is exactly one role: full admin.
 - **P3-2 · English UI (S17).**
-  **Open.** The UI ships German only; the repo and docs are
+  **Open (verified 2026-09-08).** The UI ships German only; the repo and docs are
   English. Phase 6, but it is the single biggest barrier to outside contributors.
 - **P3-3 · Bulk config edit across sections.**
-  **Open.** Changing the server name touches
+  **Open (verified 2026-09-08).** Changing the server name touches
   several files by hand today.
 - **P3-4 · Validate config against the running Synapse,**
-  **Open.** not only the JSON
+  **Open (verified 2026-09-08).** not only the JSON
   Schema — schema-valid values can still be rejected at runtime.
 
 - **P2-34 · Persisting the Matrix refresh token, encrypted (S13).** Offered to the
