@@ -152,7 +152,8 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   author of 39 commits, 30 commits carried the hostname **and the node's private
   IP** in `CLAUDE.md`. All 51 commits were rewritten with `git filter-repo` and
   force-pushed; the HEAD tree hash is unchanged, so no file content moved.
-- **P0-1b · GitHub still serves the pre-rewrite objects by SHA.** The force-push
+- **P0-1b · GitHub still serves the pre-rewrite objects by SHA.**
+  **Open — operator's call.** The force-push
   removed the old commits from the branch, but `…/commits/<old-sha>` and the
   contents API still return them, so the hostname and IP remain fetchable by anyone
   who knows a hash. This is normal GitHub behaviour — unreachable objects survive
@@ -523,6 +524,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Not a regression from E47* — true since the SPA fallback was introduced.
 
 - **P2-32 · E47's protected-media case is source-verified, not live-verified (S13).**
+  **Open — operator's call.**
   E47 ships on a finding read from Synapse's source: `quarantine_media_by_id` filters
   `AND safe_from_quarantine = FALSE`, so quarantining protected media returns
   `200 {}` and changes nothing. That reasoning drives `QuarantineResult.Changed` and
@@ -565,6 +567,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   kind column, or a sibling table — and the same connect gate applies.
 
 - **P2-29 · Calls show no audit, no connections and no statistics (S14).**
+  **Partly done, partly open.**
   **Two of four done 2026-08-16 (E44, [DESIGN.md §4.42](DESIGN.md)):** live rooms and
   participants, and a recorded history of calls, talk time and SFU restarts that
   survives the pod. The inventory this entry demanded found the reason none of it
@@ -602,6 +605,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   with its own audit line and wording that names what cannot be undone.
 
 - **P1-14 · MatrixCtrl should be able to install and manage a TURN relay (S14).**
+  **Open — blocked on P1-13.**
   Requested by the operator 2026-08-04, immediately after P1-12's finding landed:
   "kannste das adden ... als one click install ... verwaltbar für den user".
   The ESS chart has **no** option for a Synapse-side relay, so every ESS install has
@@ -663,6 +667,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   works after the forward is opened is the next question, not this one.*
 
 - **P1-15 · MatrixCtrl should offer the outside-in check, opt-in (S14).**
+  **Open — and it is what unblocks P1-13 and P1-14.**
   E19 recorded "inbound reachability cannot be tested from inside the network it
   terminates in" as a permanent unknown, and it is true — but it quietly implied
   that therefore nothing can be done, and that was wrong. A public port checker is
@@ -713,7 +718,8 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   three were wrong. Each rested on a real, fixed defect; none of them was the last
   one. The lesson is not "measure more" — every step was measured — it is that a
   fixed cause is not evidence of the only cause.*
-- **P1-12 · Legacy 1:1 calls have no TURN server, and nothing says so (S14).** Found
+- **P1-12 · Legacy 1:1 calls have no TURN server, and nothing says so (S14).**
+  **Done (E24) — kept for the lesson; the relay itself is P1-14.** Found
   2026-08-02, after the entire MatrixRTC path was repaired and verified end to end
   from the internet — and calling *still* failed with "ringing → connecting → dead".
   `livekit_room_total` stayed at 0 **during** the call and the token endpoint logged
@@ -774,6 +780,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   *Fix as originally written (superseded):* render the release's manifests and diff
   them against live objects. See §4.23 for why ownership beat diffing.
 - **P1-10 · Element Call is unreachable: the RTC host has no path from outside (S14).**
+  **Done (E22, E24) — kept for the lesson.**
   Found 2026-08-02, after P1-9 was fixed and calling was *still* bad. The decisive
   measurement was LiveKit's own metrics: `livekit_room_total 0`,
   `livekit_participant_total 0` — **no client has ever joined this SFU.** The calls
@@ -933,7 +940,8 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   an audit trail is a policy decision (how long must "who did what" be answerable?),
   and a default invented by whoever wrote the INSERT is the wrong way to make it.
   Needs a decision first, then a scheduled delete plus a documented number.
-- **P2-20 · The verification chain passed pages that had not loaded (S9).** Found
+- **P2-20 · The verification chain passed pages that had not loaded (S9).**
+  **Done (E19) — kept for the lesson.** Found
   2026-08-01 while shipping E19: `verify-ui.mjs` waited only for React to mount,
   which a sidebar and a skeleton placeholder satisfy instantly. `/status` costs
   ~4.7 s on a cold release cache, and the dashboard screenshot from that window
@@ -1084,12 +1092,16 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 
 ## 4. P3 — someday / nice-to-have
 
-- **P3-1 · Read-only role.** Today there is exactly one role: full admin.
-- **P3-2 · English UI (S17).** The UI ships German only; the repo and docs are
+- **P3-1 · Read-only role.**
+  **Open.** Today there is exactly one role: full admin.
+- **P3-2 · English UI (S17).**
+  **Open.** The UI ships German only; the repo and docs are
   English. Phase 6, but it is the single biggest barrier to outside contributors.
-- **P3-3 · Bulk config edit across sections.** Changing the server name touches
+- **P3-3 · Bulk config edit across sections.**
+  **Open.** Changing the server name touches
   several files by hand today.
-- **P3-4 · Validate config against the running Synapse,** not only the JSON
+- **P3-4 · Validate config against the running Synapse,**
+  **Open.** not only the JSON
   Schema — schema-valid values can still be rejected at runtime.
 
 - **P2-34 · Persisting the Matrix refresh token, encrypted (S13).** Offered to the

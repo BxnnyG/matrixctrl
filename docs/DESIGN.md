@@ -3477,3 +3477,43 @@ Stelle.
 Und das fünfte Mal dasselbe Muster nach §4.79, §4.84, §4.90 und §4.92: **gebaut,
 benannt, begründet — und nicht nachgesehen.** Hier war es nicht einmal Verdrahtung,
 sondern bloßes Hinschauen.
+
+### §4.96 — Ein Rückstand, den man an den Überschriften falsch liest (2026-09-08, agent, etappe 96)
+
+Nach Etappe 95 stand „15 offene Punkte" in der Übersicht für den Operator. Beim
+Durchgehen blieben elf, dann neun, und am Ende waren es die drei P3-Punkte plus das, was
+ausdrücklich auf jemand anderen wartet.
+
+Die Einträge sind nicht unehrlich. Der Status **steht** darin — nur oft im vierten
+Absatz, unter einer Überschrift, die wie kaputte Arbeit klingt:
+
+    - **P1-10 · Element Call is unreachable: the RTC host has no path from outside.**
+      Found 2026-08-02 … [zwanzig Zeilen] …
+      **What this says about the product:** every check was green while the feature
+      was dead, because none of them asked "has anyone ever used it?"
+
+Wer Überschriften überfliegt — und so liest man einen Rückstand — bekommt eine andere
+Antwort als wer jedes Wort liest. Ich habe genau diesen Fehler gemacht und ihn dem
+Operator weitergereicht.
+
+**Es ist kein neuer Fehler.** E38 fand acht Einträge, die Arbeit beschrieben, die es
+schon gab. P2-4 wurde beinahe ein zweites Mal gebaut, und sein eigener Nachtrag nennt
+die Verteidigung: einen Eintrag gegen den Code prüfen, bevor man danach handelt. Das ist
+richtig und passiert nicht, weil es Aufwand ist. Also wird die Verteidigung billig
+gemacht statt angemahnt: `scripts/check-backlog.sh` verlangt, dass jeder nicht
+durchgestrichene Eintrag sich **in seiner ersten Zeile** erklärt — `**Open.**`,
+`**Done (E##) — kept for the lesson.**`, `**Open — blocked on P1-13.**`,
+`**Deliberately not now.**`
+
+Zwölf Einträge haben ihren Status bekommen, drei davon als „erledigt, bleibt als Lehre".
+Ein durchgestrichener Eintrag braucht nichts: der ist auf einen Blick eindeutig.
+
+Das ist dieselbe Familie wie §4.79, §4.84, §4.90, §4.92 und §4.95 — nur diesmal nicht am
+Code, sondern an der Dokumentation über den Code. **Etwas kann vollständig, korrekt und
+begründet dastehen und trotzdem das Falsche vermitteln, wenn es an der Stelle schweigt,
+an der gelesen wird.**
+
+Nebenbefund für die Reihenfolge: **P1-15 ist der Hebel des ganzen Anruf-Themas.** Eine
+Prüfung von außen beantwortet P1-13 („erreicht überhaupt etwas den Node?"), und P1-13 ist
+die Vorbedingung von P1-14 (TURN-Relay). Drei Einträge, eine Abhängigkeitskette, und der
+oberste ist der billigste — er stand nur nie als solcher da.

@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.83] — 2026-09-08
+
+### Changed
+
+- **Every backlog entry now says what it is in its first line.** The entries were
+  honest, but the status often sat four paragraphs down under a heading that reads as
+  broken work — enough that a review of the file reported "15 open items" when three of
+  them had been built months earlier and several others said, in their own text, that
+  they were deliberately waiting. `scripts/check-backlog.sh` runs in `make check` and
+  fails any entry that does not declare itself.
+
+### Notes
+
+- This is not a new failure: E38 found eight entries describing work that already
+  existed, and P2-4 was nearly rebuilt for the same reason — its own note says the
+  defence is to check an entry against the code before acting on it. This makes that
+  defence cheap enough to happen every time.
+- Verified against the code in the same pass: P1-10 and P1-12 (the RTC and TURN
+  reporting) were built in E22 and E24, P2-20 in E19, and P2-7's arm64 image has been
+  published for twenty releases. Their entries now say so where a reader will see it.
+
 ## [0.1.82] — 2026-09-08
 
 ### Added
