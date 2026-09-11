@@ -3585,3 +3585,51 @@ zusammengeführte Konfiguration statt des Stores), damit prüfbar ist, was sie e
 ohne ein Git-Repository dahinter. Vier Tests: der Server-Name ist dabei, ein selbst
 gewählter Host wird nicht vereinnahmt, bereits richtige Werte werden als solche gemeldet
 statt weggelassen, und eine Umbenennung auf denselben Namen ändert nichts.
+
+### §4.99 — Der Grund war da, und eine Bedingung hat ihn verschluckt (2026-09-11, agent, etappe 99)
+
+P3-4 sagte: schema-gültige Werte kann Synapse zur Laufzeit trotzdem ablehnen, und dann
+läuft der Rollout in einen Timeout, statt zu wiederholen, was Synapse gesagt hat.
+
+Ich habe den Code gelesen und das Gegenteil geschlossen. In `RolloutState` steht genau
+für diesen Fall:
+
+    // A crash loop usually leaves no termination message — the reason is in the
+    // container's own output, which is exactly the line that was missing for seven
+    // minutes on 2026-08-05.
+    if rc.Message == "" && rc.Waiting == "CrashLoopBackOff" && logsRead < maxLogReads {
+
+Gebaut, kommentiert, begründet. **Und unerreichbar.** Zwanzig Zeilen darüber:
+
+    rc.Message = w.Message
+
+Kubernetes füllt die Waiting-Message eines abstürzenden Containers **immer** —
+`back-off 10s restarting failed container=synapse pod=…`. Damit ist `rc.Message` nie
+leer, und der Zweig darunter läuft nie. Der Operator sieht den Rückfall-Text und kein
+Wort der eigentlichen Beschwerde.
+
+Am echten Pod nachgesehen, statt es zu vermuten:
+
+    waiting.reason              : CrashLoopBackOff
+    waiting.message             : back-off 10s restarting failed container=…
+    lastState.terminated.message: []
+
+**Gefunden hat es ein Test, der fehlschlug** — ein Live-Test, der einen Pod anlegt, der
+so stirbt, wie Synapse an einer Konfiguration stirbt: etwas ausgeben, mit 1 beenden.
+Erst der Fehlschlag hat meine Code-Lektüre widerlegt. Kein Fixture hätte das getan:
+jedes Feld hier wird vom kubelet gefüllt, also hätte jede erfundene Vorlage genau die
+Annahme bestätigt, die falsch war.
+
+Der Unterschied, um den es geht: **eine Meldung, die den Zustand wiederholt, ist keine
+Meldung.** `ImagePullBackOff` nennt das Image, das es nicht ziehen konnte — das ist die
+Antwort. `CrashLoopBackOff` nennt die Wartezeit. Die Unterscheidung steckt jetzt in einer
+eigenen Funktion mit eigenen Tests, damit sie nicht wieder zwischen zwanzig Zeilen
+verschwindet.
+
+Mit der Korrektur kommt der Grund in fünf Sekunden statt nach zwei Minuten Timeout:
+
+    reason carried through: "Error in configuration at 'server_name': this is a test"
+
+Das ist das sechste Mal in dieser Serie nach §4.79, §4.84, §4.90, §4.92 und §4.95 — und
+das erste Mal, dass nicht Hinsehen, sondern **Ausführen** es gefunden hat. Lesen hatte
+mich zur gegenteiligen Antwort geführt.

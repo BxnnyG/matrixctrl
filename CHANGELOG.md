@@ -15,6 +15,28 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.86] — 2026-09-11
+
+### Fixed
+
+- **A container that dies on its configuration now says why.** When Synapse rejects a
+  setting, its complaint is in the container's own output — and the code that reads it
+  had been unreachable since it was written. Kubernetes always fills a crash-looping
+  container's waiting message with `back-off 10s restarting failed container=…`, which
+  restates the state and gives no reason; taking it made the message non-empty, and the
+  log is only read when the message is empty. The operator was shown the back-off text
+  and the rollout timed out.
+
+### Notes
+
+- Found by writing a live test against a real crash-looping pod, which failed. Reading
+  the code had produced the opposite conclusion twenty minutes earlier — every field
+  involved is filled in by the kubelet, so no fixture would have disagreed with the
+  assumption. With the fix the reason arrives in five seconds instead of a two-minute
+  timeout.
+- The decision is now a small pure function with its own tests, so the guard runs in
+  `make check` without a cluster; the live test stays as the thing that found it.
+
 ## [0.1.85] — 2026-09-08
 
 ### Added

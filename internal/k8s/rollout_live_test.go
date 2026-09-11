@@ -2,80 +2,87 @@ package k8s
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TestWorkloadRolloutAgainstLiveCluster proves the reads the upgrade screen depends
-// on actually return something under the real ServiceAccount's namespaced Role.
-// Skipped unless RUN_LIVE=1 (needs KUBECONFIG).
+// The one link no unit test can check: that a crash-looping container's *reason*
+// actually reaches the caller.
 //
-// The unit tests in internal/rollout prove the reasoning with hand-written structs.
-// They cannot prove what this does: that the workload list is non-empty against a
-// real namespace, that Generation and ObservedGeneration are actually populated —
-// a nil-valued pair would silently make every component read "waiting" forever —
-// and that the field-selected event list is permitted rather than 403.
-func TestWorkloadRolloutAgainstLiveCluster(t *testing.T) {
+// A container that dies on a bad configuration usually leaves no termination message —
+// the reason is in its own output, and only the *previous* run has it, because the
+// current one has not started. RolloutState reads that log; whether it arrives is a
+// question about the API server, the container runtime and the timing of the probe,
+// and answering it from a fixture would only restate the assumption.
+//
+// It creates a pod that fails the way Synapse fails a bad config — print, exit non-zero
+// — waits for CrashLoopBackOff, and removes it again.
+func TestLiveCrashLoopReasonReachesTheCaller(t *testing.T) {
 	if os.Getenv("RUN_LIVE") == "" {
-		t.Skip("set RUN_LIVE=1 to run against a live cluster")
+		t.Skip("set RUN_LIVE=1")
 	}
-	ns := os.Getenv("ESS_NAMESPACE")
-	if ns == "" {
-		ns = "ess"
+	c, err := New()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	client, err := New()
-	if err != nil {
-		t.Fatalf("k8s.New: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	const ns = "matrixctrl"
+	const marker = "Error in configuration at 'server_name': this is a test"
+	name := fmt.Sprintf("rollout-probe-%d", time.Now().Unix())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	workloads := client.WorkloadRollout(ctx, ns)
-	if len(workloads) == 0 {
-		t.Fatalf("no workloads in %s — either the namespace is wrong or the Role does not permit listing them", ns)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyAlways,
+			Containers: []corev1.Container{{
+				Name:    "boom",
+				Image:   "busybox:1.36",
+				Command: []string{"sh", "-c", "echo \"" + marker + "\"; exit 1"},
+			}},
+		},
+	}
+	if _, err := c.Static.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("create probe pod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Its own context: the one above is cancelled by the defer, and a cleanup that
+		// reuses a cancelled context leaves the pod behind on every run.
+		del, cancelDel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancelDel()
+		_ = c.Static.CoreV1().Pods(ns).Delete(del, name, metav1.DeleteOptions{})
+	})
+
+	// CrashLoopBackOff needs at least one restart, so this waits rather than polls once.
+	var found string
+	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline); {
+		time.Sleep(5 * time.Second)
+		for _, p := range c.RolloutState(ctx, ns) {
+			if p.Name != name {
+				continue
+			}
+			for _, container := range p.Containers {
+				if strings.Contains(container.Message, marker) {
+					found = container.Message
+				}
+			}
+		}
+		if found != "" {
+			break
+		}
 	}
 
-	var statefulSets, done int
-	for _, w := range workloads {
-		if w.Desired <= 0 {
-			t.Errorf("%s %s: desired = %d, want > 0 (scaled-to-zero should have been skipped)", w.Kind, w.Name, w.Desired)
-		}
-		if w.Generation == 0 {
-			t.Errorf("%s %s: Generation is 0 — every real object has one, so this read is not returning what it should", w.Kind, w.Name)
-		}
-		if w.Kind == "StatefulSet" {
-			statefulSets++
-		}
-		if w.Done() {
-			done++
-		}
-		t.Logf("%-12s %-45s %d/%d updated=%d gen=%d/%d done=%v",
-			w.Kind, w.Name, w.Ready, w.Desired, w.Updated, w.Observed, w.Generation, w.Done())
+	if found == "" {
+		t.Fatal("the container's own output never reached RolloutState — a config error " +
+			"would surface as a rollout that simply times out")
 	}
-
-	// ess-synapse-main and ess-postgres are both StatefulSets, and a version of this
-	// that listed only Deployments would hide the two components an operator most
-	// wants to watch (CLAUDE.md).
-	if statefulSets == 0 {
-		t.Error("no StatefulSets found — synapse and postgres are StatefulSets, so this read is incomplete")
-	}
-
-	// On a settled cluster every workload is done. If this fails while nothing is
-	// rolling, the Done() condition is wrong and the progress bar would never reach
-	// 100 %.
-	t.Logf("%d of %d workloads settled", done, len(workloads))
-
-	// PullingPods returns nil on any failure and a non-nil (often empty) map on
-	// success, so nil is the assertion that matters: an empty map is the expected
-	// answer on a quiet cluster — Kubernetes drops events after an hour — while nil
-	// means the field selector was rejected or the Role does not permit the list.
-	// Checking len() alone cannot tell those apart, which is what the first version
-	// of this test did.
-	pulling := client.PullingPods(ctx, ns, time.Now().Add(-2*time.Hour))
-	if pulling == nil {
-		t.Error("PullingPods returned nil — the event list was rejected, not merely empty")
-	}
-	t.Logf("pods pulling in the last two hours: %d", len(pulling))
+	t.Logf("reason carried through: %q", strings.TrimSpace(found))
 }

@@ -89,9 +89,7 @@ func (c *Client) RolloutState(ctx context.Context, namespace string) []RolloutPo
 				rc := RolloutContainer{Name: cs.Name, Init: init}
 				if w := cs.State.Waiting; w != nil {
 					rc.Waiting = w.Reason
-					// The waiting message is free and often enough on its own —
-					// an image pull failure explains itself here.
-					rc.Message = w.Message
+					rc.Message = waitingMessage(w.Reason, w.Message)
 				}
 				if t := cs.LastTerminationState.Terminated; t != nil {
 					rc.Terminated = true
@@ -257,6 +255,27 @@ func (c *Client) PullingPods(ctx context.Context, namespace string, since time.T
 		pulling[e.InvolvedObject.Name] = true
 	}
 	return pulling
+}
+
+// waitingMessage decides whether a waiting container's message says anything.
+//
+// Usually it does, and for free: an image pull failure names the image it could not
+// pull. CrashLoopBackOff is the exception — Kubernetes always supplies "back-off 10s
+// restarting failed container=x pod=y", which restates the state and gives no reason.
+//
+// Taking it was not merely unhelpful. It made the message non-empty, and the log read
+// further up only runs when the message is empty — so the code added to surface a
+// crash-looping container's own output could never run at all. An operator whose
+// Synapse rejected its configuration saw the back-off text and not one word of the
+// complaint, and the rollout simply timed out (P3-4).
+//
+// Found by a live test against a real crash-looping pod, because every field involved
+// is filled in by the kubelet and no fixture would have disagreed with the assumption.
+func waitingMessage(reason, message string) string {
+	if reason == "CrashLoopBackOff" {
+		return ""
+	}
+	return message
 }
 
 // previousLogs reads the last run's output. `Previous: true` is the point: a

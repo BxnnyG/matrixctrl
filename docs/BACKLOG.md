@@ -1109,9 +1109,16 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   every section in one commit. A hostname the operator chose themselves is shown but
   not ticked — "derived" is established against what the old server name would have
   produced, not guessed from a prefix.
-- **P3-4 · Validate config against the running Synapse,**
-  **Open (verified 2026-09-08).** not only the JSON
-  Schema — schema-valid values can still be rejected at runtime.
+- **P3-4 · Validate config against the running Synapse, not only the JSON Schema.**
+  **Open (verified 2026-09-11) — but the half that bites is fixed (E99,
+  [DESIGN.md §4.99](DESIGN.md)).** When Synapse rejects a setting, the rollout now
+  repeats its complaint instead of timing out: the code that reads a crash-looping
+  container's own output had been unreachable since it was written, because the
+  back-off message made the "no message yet" condition permanently false.
+  *Still open:* catching such a value **before** it is applied. Synapse has no
+  "validate this" endpoint, so the honest options are a throwaway pod that starts with
+  the candidate config, or nothing. The first is real work and the second is what E99
+  made survivable.
 
 - **P2-34 · Persisting the Matrix refresh token, encrypted (S13).** Offered to the
   operator on 2026-08-17 while fixing the reconnect (E52) and **declined in favour of
