@@ -3633,3 +3633,41 @@ Mit der Korrektur kommt der Grund in fünf Sekunden statt nach zwei Minuten Time
 Das ist das sechste Mal in dieser Serie nach §4.79, §4.84, §4.90, §4.92 und §4.95 — und
 das erste Mal, dass nicht Hinsehen, sondern **Ausführen** es gefunden hat. Lesen hatte
 mich zur gegenteiligen Antwort geführt.
+
+### §4.100 — Eine Rolle, und jeder Moderator hatte sie (2026-09-13, agent, etappe 100)
+
+P3-1 stand als ein Satz da: *„Today there is exactly one role: full admin."* Das war
+vertretbar, solange Anmelden hieß, das lokale Admin-Passwort zu kennen. Seit Etappe 86
+stimmt das nicht mehr: MatrixCtrl legt MAS-Admin-Konten selbst an, und
+`oidc.requireAdmin` lässt **jeden** MAS-Admin hier hinein. Wer jemanden zum Moderieren
+von Räumen hinzufügt, übergibt ihm damit den Homeserver — Deploy, Upgrade,
+Konfiguration überschreiben, ein Archiv über die Datenbank spielen, Konten
+deaktivieren.
+
+Der Eintrag war also nicht mehr die Bequemlichkeit, als die er dastand. Eine Etappe
+hat ihn zu einem Sicherheitsloch gemacht, und niemand hat den Eintrag dabei noch einmal
+gelesen.
+
+Drei Entscheidungen:
+
+**Leer heißt alle.** Eine Installation, die diesen Wert nie gesehen hat, verhält sich
+exakt wie vorher. Ein Upgrade, das jeden vorhandenen Operator stillschweigend auf
+Lesezugriff setzt, wäre ein schlimmerer Fehler als der behobene.
+
+**Der lokale Admin ist nie ausgeschlossen.** Eine ULID ist sechsundzwanzig Zeichen ohne
+Muster, getippt in eine Values-Datei. Dass ein Tippfehler dort das Panel kostet, ist
+dieselbe Falle wie das Passwort in einer einzigen Logzeile (§4.74).
+
+**Erlaubnisliste statt Verbotsliste.** Ein vergessener Eintrag in der Liste harmloser
+Nicht-GET-Anfragen kostet einen Lesenden einen Knopf; ein vergessener Eintrag
+andersherum kostet den Server. Die Asymmetrie entscheidet die Form. Bewusst **nicht**
+darauf: `POST /api/v1/rtc/reachability` — es ändert hier nichts, gibt aber die
+öffentliche Adresse dieser Installation an zwei Dritte weiter, und das ist eine
+Handlung.
+
+**Und ein Test, der fragt, ob es eingehängt ist.** Sechsmal in dieser Serie war das
+Richtige gebaut, benannt und begründet und nie verdrahtet — der Linter, der Typ, der
+Zustand, der Rollback, der Rückstands-Eintrag, das Log hinter einer nie wahren
+Bedingung. Ein Wächter, der einen Homeserver schützt, ist ein schlechter Ort für das
+siebte Mal. Also prüft ein Router-Test die ganze Kette statt nur die Middleware:
+Verdrahtung entfernt → `answered 503, want 403 — the gate is not in the chain`.

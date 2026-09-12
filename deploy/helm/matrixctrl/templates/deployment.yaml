@@ -114,6 +114,10 @@ spec:
             - name: MATRIXCTRL_CONFIG_SEED
               value: {{ .Values.configSeedPath | quote }}
             {{- end }}
+            {{- if .Values.roles.admins }}
+            - name: MATRIXCTRL_ADMIN_USERS
+              value: {{ .Values.roles.admins | quote }}
+            {{- end }}
             {{- if not .Values.updateCheck.enabled }}
             # Off means the pod asks nobody whether a newer MatrixCtrl exists. The
             # version it is running is still reported — that answer is local and must

@@ -13,7 +13,7 @@ import (
 // question it exists for. The dashboard learned this the hard way when an optional
 // lookup took the whole page down (§4.78).
 func TestVersionIsReportedWithoutAnUpdateCheck(t *testing.T) {
-	h := NewVersionHandler("0.1.74", "abc1234", nil)
+	h := NewVersionHandler("0.1.74", "abc1234", nil, nil)
 	rec := httptest.NewRecorder()
 	h.Get(rec, httptest.NewRequest(http.MethodGet, "/api/v1/version", nil))
 
@@ -21,9 +21,10 @@ func TestVersionIsReportedWithoutAnUpdateCheck(t *testing.T) {
 		t.Fatalf("status %d, want 200", rec.Code)
 	}
 	var got struct {
-		Version string          `json:"version"`
-		Commit  string          `json:"commit"`
-		Update  json.RawMessage `json:"update"`
+		Version  string          `json:"version"`
+		Commit   string          `json:"commit"`
+		Update   json.RawMessage `json:"update"`
+		MayWrite bool            `json:"may_write"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v — body was %s", err, rec.Body.String())
@@ -33,6 +34,11 @@ func TestVersionIsReportedWithoutAnUpdateCheck(t *testing.T) {
 	}
 	// Absent, not false: "not checked" and "up to date" are different answers and the
 	// UI must be able to tell them apart.
+	// No roles configured is the state every installation was in before they existed,
+	// and it must not read as "you may only look".
+	if !got.MayWrite {
+		t.Error("may_write is false with no role restriction configured")
+	}
 	if got.Update != nil {
 		t.Errorf("update = %s; with the check disabled the field must be absent", got.Update)
 	}

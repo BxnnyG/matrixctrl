@@ -96,6 +96,22 @@ secrets:
   # Setting it here is also how you *reset* it: it is applied on every start.
   adminPassword: ""
 
+# Who may change things, as opposed to look at them.
+#
+# Empty means everybody who can sign in — which is what every installation did before
+# this existed, so an upgrade changes nothing. Name one or more MAS user IDs (the same
+# ULIDs oidc.allowedUsers takes) and everyone else gets a read-only session: they see
+# every screen and cannot deploy, upgrade, rewrite configuration, restore an archive or
+# deactivate an account.
+#
+# This matters because `oidc.requireAdmin` lets every Matrix admin sign in here. Adding
+# somebody to moderate rooms would otherwise hand them the homeserver.
+#
+# The local `admin` login is never excluded, whatever this says — a mistyped ULID must
+# not cost you the panel.
+roles:
+  admins: ""
+
 # Ask GHCR whether a newer MatrixCtrl has been published.
 #
 # On by default, because the cluster already pulls this image from that same registry —

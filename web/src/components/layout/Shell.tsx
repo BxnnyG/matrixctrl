@@ -144,6 +144,10 @@ function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }
 interface VersionResp {
   version: string;
   commit: string;
+  /** False when this session may look but not change anything. Carried here because
+   *  the rail already asks this endpoint on every page load, so the answer costs no
+   *  extra request (etappe 100). */
+  may_write?: boolean;
   update?: { current: string; latest?: string; available: boolean; checked_at?: string; error?: string };
 }
 
@@ -195,8 +199,18 @@ function VersionFooter() {
   return (
     <>
       <div style={{ padding: "8px 16px 10px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          MatrixCtrl {data?.version ?? "…"}
+        <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+          <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            MatrixCtrl {data?.version ?? "…"}
+          </span>
+          {/* Said before something is tried, not after it is refused. A button that
+              fails with 403 teaches the same thing, one frustration later. */}
+          {data && data.may_write === false && (
+            <span title="Dieses Konto darf lesen, aber nichts ändern"
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px", fontSize: 10, fontWeight: 600, fontFamily: "var(--mono)", color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 999 }}>
+              <Icon name="eye" size={10} /> nur lesen
+            </span>
+          )}
         </span>
         {available && (
           <button onClick={() => { setCopied(false); setOpen(true); }}

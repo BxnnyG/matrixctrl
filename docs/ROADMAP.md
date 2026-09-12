@@ -86,6 +86,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 97 | Ein Status, der vorhanden ist, und einer, der stimmt — zwei falsche Zeilen aus Etappe 96 korrigiert | ✅ 2026-09-08 · `v0.1.84` |
 | 98 | Sechs Bearbeitungen in fünf Dateien — den Server in einem Zug umbenennen | ✅ 2026-09-08 · `v0.1.85` |
 | 99 | Der Grund war da, und eine Bedingung hat ihn verschluckt | ✅ 2026-09-11 · `v0.1.86` |
+| 100 | Eine Rolle, und jeder Moderator hatte sie — Lesezugriff als eigene Rolle | ✅ 2026-09-13 · `v0.1.87` |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

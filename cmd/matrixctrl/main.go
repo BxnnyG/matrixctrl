@@ -279,6 +279,13 @@ func main() {
 	// already pulls its own image from that registry, so this adds no dependency on
 	// anyone new. Off is a single value in the chart for anyone who wants the pod to
 	// talk to nothing it does not have to.
+	// Who may change things. Empty means everybody, which is what every installation
+	// did before roles existed — an upgrade must not silently demote anyone.
+	roles := auth.ParseRoles(env("MATRIXCTRL_ADMIN_USERS", ""))
+	if roles.Restricted() {
+		log.Printf("write access is restricted to the users named in MATRIXCTRL_ADMIN_USERS (plus the local admin)")
+	}
+
 	var updates *updatecheck.Checker
 	if env("MATRIXCTRL_UPDATE_CHECK", "1") != "0" {
 		updates = updatecheck.New(version.Version)
@@ -300,7 +307,8 @@ func main() {
 		Users:   usersHandler,
 		Rooms:   roomsHandler,
 		Reports: reportsHandler,
-		Version: handlers.NewVersionHandler(version.Version, version.Commit, updates),
+		Version: handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
+		Roles:   roles,
 
 		AuditSink: auditStore,
 	})

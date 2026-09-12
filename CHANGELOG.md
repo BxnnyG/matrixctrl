@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.87] — 2026-09-13
+
+### Added
+
+- **A read-only role.** Until now there was exactly one: everybody who could sign in
+  could deploy, upgrade, rewrite the configuration, restore an archive over the database
+  and deactivate accounts. That was defensible while signing in meant knowing the local
+  admin password. It stopped being defensible when MatrixCtrl learned to create MAS
+  admin accounts, because `oidc.requireAdmin` lets every Matrix admin in — so adding
+  somebody to moderate rooms silently handed them the homeserver.
+- **`roles.admins`** (chart value): a comma-separated list of MAS user IDs, the same
+  ULIDs `oidc.allowedUsers` takes. Everyone else gets a session that sees every screen
+  and changes nothing. The navigation rail says "nur lesen" before anything is tried.
+
+### Notes
+
+- **Empty means everybody, so an upgrade changes nothing.** A deployment that never
+  hears of this setting behaves exactly as it did; the restriction begins when an
+  operator names the first admin.
+- **The local `admin` login is never excluded**, whatever the list says. A ULID is
+  twenty-six characters of no pattern, typed into a values file, and a mistake there
+  must not cost the panel.
+- The gate is an allowlist of harmless non-GET requests, not a denylist of writes:
+  forgetting an entry costs a read-only user one button, while forgetting one the other
+  way round would hand them the server. `POST /api/v1/rtc/reachability` is deliberately
+  *not* on it — it changes nothing here but discloses this installation's public address
+  to two third parties, and that is an action.
+- It sits after the audit middleware, so a refused attempt is still recorded.
+
 ## [0.1.86] — 2026-09-11
 
 ### Fixed

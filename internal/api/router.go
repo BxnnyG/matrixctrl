@@ -9,6 +9,7 @@ import (
 
 	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/auth"
 )
 
 type Deps struct {
@@ -26,6 +27,9 @@ type Deps struct {
 	Rooms   *handlers.RoomsHandler
 	Reports *handlers.ReportsHandler
 	Version *handlers.VersionHandler
+	// Roles decides who may change things. Nil means everybody may, which is what
+	// every installation did before this existed.
+	Roles *auth.Roles
 
 	// AuditSink records every mutating request. Nil disables auditing, which is
 	// what the tests use — production always wires it.
@@ -66,6 +70,14 @@ func NewRouter(deps Deps) http.Handler {
 		// wrapping the whole group rather than each route: a new handler must
 		// not be able to be forgotten (docs/plans/etappe-17-audit-trail.md).
 		r.Use(authmw.Audit(deps.AuditSink))
+
+		// After the audit, so a refused attempt is still recorded: "somebody tried to
+		// restore an archive and was not allowed to" is exactly the line worth having.
+		// Wrapping the group for the same reason the audit does — a handler added later
+		// must not be able to escape it (etappe 100).
+		if deps.Roles != nil {
+			r.Use(authmw.RequireWrite(deps.Roles.MayWrite))
+		}
 
 		r.Post("/api/v1/auth/logout", deps.Auth.Logout)
 		r.Get("/api/v1/auth/me", deps.Auth.Me)

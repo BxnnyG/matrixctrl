@@ -1099,8 +1099,14 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
 
 ## 4. P3 — someday / nice-to-have
 
-- **P3-1 · Read-only role.**
-  **Open (verified 2026-09-08).** Today there is exactly one role: full admin.
+- ~~**P3-1 · Read-only role.**~~ **Done 2026-09-13 (E100, [DESIGN.md §4.100](DESIGN.md)).**
+  `roles.admins` names who may change things; everyone else sees every screen and
+  changes nothing. Empty means everybody, so an upgrade changes nothing, and the local
+  admin is never excluded.
+  *What made it urgent:* it was a convenience entry until etappe 86 taught MatrixCtrl to
+  create MAS admins. `requireAdmin` lets every Matrix admin sign in here, so adding a
+  moderator handed them the homeserver — and nobody re-read the entry while that
+  changed underneath it.
 - **P3-2 · English UI (S17).**
   **Open (verified 2026-09-08).** The UI ships German only; the repo and docs are
   English. Phase 6, but it is the single biggest barrier to outside contributors.
