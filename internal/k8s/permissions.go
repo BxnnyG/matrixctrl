@@ -91,6 +91,11 @@ func buildRequired() []Permission {
 		{Group: "", Resource: "pods", Verb: "watch", Namespaced: true, Why: "Helm --wait readiness"},
 		{Group: "", Resource: "pods", Verb: "delete", Namespaced: true, Why: "restart a pod; clean up Evicted pods"},
 		{Group: "", Resource: "pods", Subresource: "log", Verb: "get", Namespaced: true, Why: "pod logs and rollout failure causes"},
+		// Moved here from ForbiddenAlways in etappe 104, on the operator's explicit
+		// decision ("Darf MatrixCtrl in Pods hineingreifen: JA!", 2026-09-20). It is a
+		// real power — exec in the Synapse pod reads the media, the config and the
+		// signing key — and it is the only way to a volume no other pod mounts.
+		{Group: "", Resource: "pods", Subresource: "exec", Verb: "create", Namespaced: true, Why: "read the media volume, which only the Synapse pod mounts"},
 		{Group: "", Resource: "events", Verb: "list", Namespaced: true, Why: "why a pod is unhealthy, not just that it is"},
 
 		// Cluster-scoped, genuinely.
@@ -158,7 +163,12 @@ var ForbiddenAlways = []Permission{
 	{Group: "rbac.authorization.k8s.io", Resource: "roles", Verb: "escalate", Namespaced: true, Why: "escalation"},
 	{Group: "apiextensions.k8s.io", Resource: "customresourcedefinitions", Verb: "list", Why: "no CRD is part of managing ESS"},
 	{Group: "", Resource: "serviceaccounts", Subresource: "token", Verb: "create", Namespaced: true, Why: "would mint tokens for more privileged accounts"},
-	{Group: "", Resource: "pods", Subresource: "exec", Verb: "create", Namespaced: true, Why: "shell into any managed pod"},
+	// `pods/exec` stood here until etappe 104 and is now in RequiredPermissions,
+	// namespaced to the managed namespace. The move is deliberate and was the
+	// operator's call, not a drift: etappe 102 built the media export on the exec
+	// subresource while this line still declared it a security violation, so the
+	// feature shipped dead and the checkbox sat greyed out (§4.104). Removing an
+	// assertion from this file is supposed to be loud; this comment is the noise.
 	{Group: "", Resource: "namespaces", Verb: "delete", Why: "nothing in the product asks for it"},
 	{Group: "", Resource: "users", Verb: "impersonate", Why: "impersonation"},
 }

@@ -33,6 +33,27 @@ rules:
     resources: ["pods/log"]
     verbs: ["get"]
 
+  # Reading a volume no other pod mounts.
+  #
+  # Synapse's uploaded files live on a PVC that only the Synapse pod mounts, so every
+  # archive MatrixCtrl produced listed the media as *not included* — nothing outside
+  # that pod can see them. The exec subresource is the way in, and the operator was
+  # asked before it was built: "Darf MatrixCtrl in Pods hineingreifen: JA!" (2026-09-20).
+  #
+  # What that buys, stated plainly: exec in the Synapse pod is arbitrary command
+  # execution in another workload. Whoever holds it can read the media, the homeserver
+  # config and the signing key. It is granted here rather than in the ClusterRole so it
+  # exists in the managed namespace and nowhere else (§4.38), and without resourceNames
+  # because the pod is found by label and its name is generated — a name list would be
+  # exactly the kind of silent breakage etappe 104 is about.
+  #
+  # It was in ForbiddenAlways until etappe 104. Etappe 102 shipped the code that needs
+  # it and not this rule, so the feature was dead on arrival and the checkbox sat greyed
+  # out (§4.104).
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+
   # Events carry the *reason* a pod is unhealthy; without them the drill-down can
   # only say that it is.
   - apiGroups: [""]

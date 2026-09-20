@@ -86,7 +86,7 @@ function BackupPage() {
   // What the media option costs, asked once when the page opens rather than guessed at.
   const { data: sizes } = useQuery({
     queryKey: ["backup", "sizes"],
-    queryFn: () => api.get<{ media_bytes: number; media_available: boolean; media_note?: string }>("/api/v1/status/backup/sizes"),
+    queryFn: () => api.get<{ media_bytes: number; media_available: boolean; media_note?: string; media_reason?: string }>("/api/v1/status/backup/sizes"),
     staleTime: 5 * 60_000,
   });
 
@@ -167,8 +167,14 @@ function BackupPage() {
               <strong style={{ color: "var(--text)" }}>Hochgeladene Dateien einschließen</strong>
               {sizes?.media_available
                 ? <> — <span style={{ fontFamily: "var(--mono)" }}>{mb(sizes.media_bytes)} MB</span></>
-                : <> — {sizes?.media_note ? "zurzeit nicht lesbar" : "Größe wird ermittelt…"}</>}
+                : <> — {sizes?.media_note ? "zurzeit nicht verfügbar" : "Größe wird ermittelt…"}</>}
               . Sie werden aus dem Synapse-Pod gestreamt.
+              {sizes?.media_reason === "rbac" && (
+                <> <strong style={{ color: "var(--text)" }}>MatrixCtrl fehlt die Berechtigung dafür</strong>{" "}
+                  (<span style={{ fontFamily: "var(--mono)" }}>pods/exec</span> im ESS-Namespace).
+                  Sie kommt mit dem nächsten Update mit — das Kästchen bleibt bis dahin gesperrt,
+                  der Rest des Archivs ist davon nicht betroffen.</>
+              )}
             </span>
           </label>
         </div>

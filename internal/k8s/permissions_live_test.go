@@ -33,7 +33,9 @@ func TestRequiredPermissionsLive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	checks, err := c.Check(ctx, ns, RequiredPermissions)
+	sa := asServiceAccount(ctx, t, c)
+
+	checks, err := sa.Check(ctx, ns, RequiredPermissions)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -45,7 +47,7 @@ func TestRequiredPermissionsLive(t *testing.T) {
 
 	// Optional ones are reported, never failed: a denial costs the named feature
 	// and nothing else, and the code already treats absence as "no data".
-	opt, err := c.Check(ctx, ns, OptionalPermissions)
+	opt, err := sa.Check(ctx, ns, OptionalPermissions)
 	if err != nil {
 		t.Logf("optional check: %v", err)
 		return
@@ -78,7 +80,9 @@ func TestForbiddenPowersLive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	checks, err := c.Check(ctx, essNamespace(), ForbiddenAlways)
+	sa := asServiceAccount(ctx, t, c)
+
+	checks, err := sa.Check(ctx, essNamespace(), ForbiddenAlways)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -118,7 +122,9 @@ func TestNamespaceConfinementLive(t *testing.T) {
 	defer cancel()
 
 	// Denied outside the managed namespace…
-	outside, err := c.Check(ctx, unrelated, ConfinedToNamespace)
+	sa := asServiceAccount(ctx, t, c)
+
+	outside, err := sa.Check(ctx, unrelated, ConfinedToNamespace)
 	if err != nil {
 		t.Fatalf("check outside: %v", err)
 	}
@@ -131,7 +137,7 @@ func TestNamespaceConfinementLive(t *testing.T) {
 	// …and still granted inside it. Without this half the test would pass just as
 	// well against a role that grants nothing at all, which would be a panel that
 	// cannot do its job rather than a secure one.
-	inside, err := c.Check(ctx, essNamespace(), ConfinedToNamespace)
+	inside, err := sa.Check(ctx, essNamespace(), ConfinedToNamespace)
 	if err != nil {
 		t.Fatalf("check inside: %v", err)
 	}
@@ -145,6 +151,58 @@ func TestNamespaceConfinementLive(t *testing.T) {
 	if len(KnownOverGrants) != 0 {
 		t.Errorf("KnownOverGrants should be empty after E40, has %d", len(KnownOverGrants))
 	}
+}
+
+// asServiceAccount returns a client that speaks as the identity the deployed process
+// runs as, whoever happens to be running the test.
+//
+// The comment on TestForbiddenPowersLive already said these checks "pass trivially
+// against a cluster-admin binding". Nothing acted on it. So etappe 102 verified the
+// media export by streaming a tar out of the Synapse pod from a maintainer's shell,
+// reported it as proof, and shipped a feature the service account was forbidden to
+// perform — `pods/exec` was in ForbiddenAlways at the time (§4.104).
+//
+// A permission check is a question about a subject. Asked about the wrong subject it
+// is not a weaker check, it is a different question with a misleading answer. The
+// subject is therefore established first, and impersonated when it is wrong.
+func asServiceAccount(ctx context.Context, t *testing.T, c *Client) *Client {
+	t.Helper()
+	want := ServiceAccountUser(ownNamespace())
+
+	who, err := c.WhoAmI(ctx)
+	if err != nil {
+		t.Fatalf("cannot establish which identity this test speaks as: %v\n"+
+			"A permission check that does not know its own subject proves nothing.", err)
+	}
+	if who == want {
+		t.Logf("speaking as %s", who)
+		return c
+	}
+
+	t.Logf("running as %q, which is not %q — impersonating the service account", who, want)
+	imp, err := c.As(want)
+	if err != nil {
+		t.Fatalf("running as %q and cannot build an impersonating client for %q: %v", who, want, err)
+	}
+	// Prove the impersonation is accepted before trusting a single answer from it.
+	// A rejected impersonation would otherwise surface as a pile of denials that look
+	// like a missing role.
+	if _, err := imp.Check(ctx, essNamespace(), []Permission{
+		{Group: "", Resource: "pods", Verb: "list", Namespaced: true, Why: "impersonation smoke test"},
+	}); err != nil {
+		t.Fatalf("impersonating %q was rejected: %v\n"+
+			"Run this inside the pod, or with a kubeconfig allowed to impersonate.", want, err)
+	}
+	return imp
+}
+
+// ownNamespace is where MatrixCtrl itself runs — the namespace of the service
+// account, not of the managed release.
+func ownNamespace() string {
+	if ns := os.Getenv("MATRIXCTRL_NAMESPACE"); ns != "" {
+		return ns
+	}
+	return "matrixctrl"
 }
 
 func essNamespace() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -210,6 +211,14 @@ func (h *StatusHandler) BackupSizes(w http.ResponseWriter, r *http.Request) {
 				out["media_available"] = true
 			} else {
 				out["media_note"] = serr.Error()
+				// A greyed-out checkbox with no reason is the question this produced:
+				// "warum ist hochgeladene dateien einschliessen nicht auswählbar". The
+				// likeliest reason by far is the one that shipped in 0.1.90 — the code
+				// was built and the RBAC rule was not (§4.104) — and the operator cannot
+				// guess that from "not readable".
+				if apierrors.IsForbidden(serr) {
+					out["media_reason"] = "rbac"
+				}
 			}
 		} else {
 			out["media_note"] = err.Error()

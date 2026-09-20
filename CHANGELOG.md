@@ -15,6 +15,35 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.92] — 2026-09-20
+
+### Fixed
+
+- **"Include uploaded files" was greyed out, and the reason was a permission that was
+  never granted.** 0.1.90 shipped the code that reads the media out of the Synapse pod
+  and not the RBAC rule that permits it: `pods/exec` was — and still was after that
+  release — on MatrixCtrl's own list of powers it must **never** hold. The feature was
+  dead on arrival. The rule now exists, in the **managed namespace only**, on the
+  operator's explicit decision, and the entry moved from `ForbiddenAlways` to
+  `RequiredPermissions` where it can be checked instead of assumed.
+- **The permission check asked about the wrong identity.** It runs as whoever runs it —
+  from a maintainer's shell that is cluster-admin, not the service account — so it
+  reported everything granted while the deployed process was denied. 0.1.90's evidence
+  ("290 files, 37.2 MB streamed out of the running pod") was true and proved nothing
+  about the application. The check now resolves its own subject and impersonates the
+  service account when it is not already it; run against this cluster it immediately
+  found the one denial. *A check that runs as the wrong identity is not a weaker check,
+  it is a different question* ([DESIGN §4.104](docs/DESIGN.md)).
+
+### Added
+
+- **`install.sh doctor` asks what MatrixCtrl may do, as MatrixCtrl** — five permissions
+  via `kubectl auth can-i --as=<service account>`, with what each one costs when denied.
+  This is the cheapest way to ask the right subject without being inside the pod.
+- **The backup page says why the box is disabled** — that the permission is missing,
+  which one, that an update brings it, and that nothing else in the archive is affected.
+  A disabled control with no reason is what produced the question.
+
 ## [0.1.91] — 2026-09-20
 
 ### Fixed

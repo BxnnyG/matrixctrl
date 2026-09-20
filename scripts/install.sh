@@ -728,6 +728,42 @@ cmd_doctor() {
     info "MatrixCtrl is not installed here — nothing to dry-run against"
   fi
 
+  # Asked as the service account, not as you.
+  #
+  # Etappe 102 verified the media export by streaming a tar out of the Synapse pod
+  # from a root shell and called it proven. It was — for root. The application runs as
+  # system:serviceaccount:matrixctrl:matrixctrl, which was not allowed to exec into a
+  # pod at all, so the feature shipped dead and the checkbox sat greyed out with no
+  # reason given (§4.104). `--as` is the cheapest way to ask the right subject.
+  head_ "Can MatrixCtrl do what it needs?"
+  if release_exists; then
+    local sa="system:serviceaccount:${NAMESPACE}:matrixctrl" denied=0
+    local rule
+    for rule in \
+      "get pods|read pod state" \
+      "get pods/log|show pod logs" \
+      "create pods/exec|read the media volume for backups" \
+      "get secrets|read the homeserver keys for backups" \
+      "patch deployments|apply the SFU patches after an upgrade"
+    do
+      local verb_res="${rule%%|*}" why="${rule##*|}"
+      # shellcheck disable=SC2086  # deliberate split: "verb resource"
+      if [ "$(kubectl auth can-i $verb_res -n "$ESS_NAMESPACE" --as="$sa" 2>/dev/null)" = "yes" ]; then
+        ok "$verb_res"
+      else
+        warn "$verb_res — denied ($why)"
+        denied=$((denied + 1))
+      fi
+    done
+    if [ "$denied" -gt 0 ]; then
+      say "      ${DIM}A denial here means the feature is off, not broken. The role ships with"
+      say "      the chart: $(self_cmd) update${RESET}"
+      problems=$((problems + 1))
+    fi
+  else
+    info "not installed — no service account to ask about"
+  fi
+
   head_ "Namespaces"
   for ns in "$NAMESPACE" "$ESS_NAMESPACE"; do
     local phase

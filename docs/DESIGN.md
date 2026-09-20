@@ -3853,3 +3853,76 @@ der Mechanismus, der am 5. September den nächsten Pin hineingeschrieben hat. Ei
 Behelf, der in dauerhaften Zustand schreibt, ist kein Behelf, sondern die nächste
 Ursache. *Gone* war er erst zu nennen, nachdem `helm get values` es bestätigt hätte —
 und dort stand er noch.
+
+### §4.104 — Die Prüfung lief als der Falsche (2026-09-20, operator, etappe 104)
+
+> „dann warum ist hochgeladene dateien einschliessen nicht auswählbar"
+
+Weil MatrixCtrl es nicht darf. Gegen den echten Dienstaccount gefragt, nicht gegen
+die Kubeconfig des Wartenden:
+
+```
+$ kubectl auth can-i --as=system:serviceaccount:matrixctrl:matrixctrl -n ess ...
+get    pods        yes
+get    pods/log    yes
+create pods/exec   no        ← hier bricht es
+```
+
+`DirSizeInPod` bekommt 403, `media_available` wird false, das Kästchen ist grau. Die
+Oberfläche hat die Wahrheit gesagt; nur nicht, welche.
+
+**Nicht bloß fehlend — verboten.** `pods/exec` stand in `ForbiddenAlways`, neben
+`impersonate` und `clusterroles create`, mit dem Kommentar *„these must stay denied —
+if any becomes allowed, the wildcard has grown back."* Etappe 102 hat also eine
+Funktion gebaut, deren Berechtigung dieselbe Codebasis an anderer Stelle als
+Sicherheitsverletzung führt. Hätte ich damals nur das Chart erweitert, hätte der
+eigene Test Alarm geschlagen — zu Recht.
+
+**Der eigentliche Fehler ist die Verifikation.** In §4.102 steht als Beleg:
+*„Verified live: 290 files, 37.2 MB streamed out of the running pod."* Das war wahr.
+Und wertlos: der Lauf kam aus einer Root-Shell mit cluster-admin, die Anwendung läuft
+als Dienstaccount. Gemessen wurde, ob **ich** in den Pod komme; geschlossen wurde,
+dass **sie** es kann.
+
+Das ist die achte Wiederholung (§4.79, §4.84, §4.90, §4.92, §4.95, §4.99, §4.103) und
+eine eigene Stufe. Die sieben davor waren „gebaut, benannt, nicht verdrahtet". Diese
+hier hatte eine Prüfung, die lief, grün war und die falsche Frage beantwortete.
+
+**Merksatz:** *Eine Prüfung, die als die falsche Identität läuft, ist keine
+schwächere Prüfung — sie ist eine andere Frage mit einer irreführenden Antwort.*
+
+Bemerkenswert: über `TestForbiddenPowersLive` stand längst, beide Tests *„pass
+trivially against a cluster-admin binding"*. Es war gewusst und aufgeschrieben, und
+niemand hat danach gehandelt — dieselbe Form wie §4.103, wo die Begründung gegen
+`--reuse-values` über genau dem Code stand, der denselben Fehler machte.
+
+**Was jetzt gilt.** Der Live-Test stellt zuerst fest, als wer er spricht, und
+imitiert den Dienstaccount, wenn er ein anderer ist. Sofort angewandt auf diesen
+Cluster:
+
+```
+running as "system:admin", which is not "system:serviceaccount:matrixctrl:matrixctrl"
+  — impersonating the service account
+checked 91 required permissions in namespace "ess"
+1 required permission(s) denied:
+  read the media volume, which only the Synapse pod mounts:
+    - create pods/exec (namespaced)
+```
+
+Derselbe Test war vorher grün. Dazu fragt `doctor` dieselbe Frage von außen über
+`--as`, weil ein Operator dort nachsieht und nicht im Pod steht.
+
+**Und eine dritte Ebene.** `clusterrole.yaml` behauptet über fehlende Rechte, *„the
+permission matrix in internal/k8s/permissions.go reports"* sie. `RequiredPermissions`
+wird von keinem Produktionspfad gelesen — nur von einem Test, der ohne `RUN_LIVE=1`
+übersprungen wird. Die Zusicherung existierte als Kommentar. Gemeldet wird jetzt
+wenigstens der eine Fall, der jemanden blockiert hat: die Oberfläche nennt die
+fehlende Berechtigung beim Namen, statt „zurzeit nicht lesbar" zu sagen.
+
+**Das Recht selbst, klar benannt.** Exec im Synapse-Pod ist Codeausführung in einer
+fremden Arbeitslast: wer es hat, liest Medien, Konfiguration und Signierschlüssel.
+Der Operator wurde vorher gefragt und hat zugestimmt („Darf MatrixCtrl in Pods
+hineingreifen: JA!"). Es steht in der Role des verwalteten Namespace, nicht in der
+ClusterRole, und ohne `resourceNames`, weil der Pod über ein Label gesucht wird und
+sein Name generiert ist — eine Namensliste wäre genau die stille Sorte Bruch, um die
+es hier geht.
