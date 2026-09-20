@@ -3707,3 +3707,58 @@ Balken, aus demselben Grund, aus dem es dort keinen gibt.
 von dem, was davor steht; Cloudflares kostenloser Tarif hört bei 100 MB auf. Eine
 Fehlermeldung, die den Absender verschweigt, schickt den Operator in die falsche
 Anwendung.
+
+### §4.102 — Ein „vollständiges" Archiv ohne die Konten (2026-09-20, operator, etappe 102)
+
+> „es soll aber über die webui funktionieren like apple user like unifi user like daus"
+
+Der Operator hat sein Migrationsarchiv in das Wiederherstellen-Feld gezogen und
+`kein Manifest im Archiv` bekommen. Dahinter steckt mehr als eine Fehlermeldung: was
+MatrixCtrl als „vollständiges Backup" anbot, war es nicht.
+
+Nachgemessen, warum sein Web-Archiv 46 MB hatte und ein von Hand gebautes 85:
+
+| Teil | Größe | im „vollständigen" Archiv |
+|---|---|---|
+| Synapses Datenbank | 46 MB | ja — **das war das ganze Archiv** |
+| Medien | 38 MB | nein |
+| **Konten** (MAS-Datenbank) | 848 kB | nein |
+| Schlüssel | 8 kB | nein |
+
+Die Konten fehlten, weil sie unter MSC3861 nicht in Synapses Datenbank liegen, sondern
+in der des Authentication Service — und `exportHomeserverUnder` wurde nur einmal
+aufgerufen. Die Exportfunktion war die ganze Zeit generisch genug; es fehlte die zweite
+Verbindung. **Ein Archiv, das die Räume zurückbringt und niemanden, der sich darin
+anmelden kann**, ist die Lücke hinter jedem gescheiterten Umzug in diesem Repository.
+
+Drei Entscheidungen, alle vom Operator:
+
+**Schlüssel: ja, standardmäßig an, verschlüsselt.** Und die eigentliche Frage ist nicht
+*ob*, sondern *wo der Schlüssel liegt*:
+
+| Aufbewahrung | Folge |
+|---|---|
+| im Archiv | keine Verschlüsselung, Verzierung |
+| auf dem Server | wer den Server hat, hat das Archiv — und auf dem **neuen** Server fehlt er, also scheitert genau der Umzug, für den das Archiv existiert |
+| **beim Operator** | sicher unterwegs, und der Umzug funktioniert |
+
+Also einer pro Archiv, einmal beim Herunterladen angezeigt, nirgends gespeichert. Und
+**nur der `secrets/`-Teil ist versiegelt**: wer ihn verliert, bekommt Konten, Räume,
+Nachrichten und Dateien trotzdem zurück und verliert die Sitzungen. Ein Archiv, das ohne
+den Schlüssel ganz wertlos wäre, wäre die schlechtere Konstruktion.
+
+**Medien: aktivierbar, mit der gemessenen Größe daneben.** Hier 39 MB, anderswo hunderte
+Gigabyte. Eine Wahl mit einer Zahl daneben ist eine andere Wahl als ein nacktes Häkchen.
+
+**Pod-Exec: freigegeben.** Das Medien-Volume bindet nur Synapse ein, deshalb stand in
+jedem je erzeugten Archiv „nicht enthalten". Die Exec-Subresource ist der Weg hinein und
+ist die API, kein `exec("kubectl")` (Regel 4) — derselbe Kanal, über den die Pod-Logs
+gelesen werden. Live geprüft: **290 Dateien, 37,2 MB** aus dem laufenden Pod gestreamt,
+und das tar wird beim Lesen bis zum Ende durchgezählt, weil ein früh abgebrochener
+Stream für alles, was nur `err` prüft, wie Erfolg aussieht.
+
+**Was dieser Schritt nicht ist.** Das Archiv ist vollständig; das Zurückspielen nicht.
+Der Restore schreibt weiterhin nur MatrixCtrls eigenen Teil. Das zu ändern ist Etappe
+103, und bis dahin sagt das Manifest ehrlich, welche Teile es trägt — ein Archiv, das
+mehr verspricht als sein Restore einlöst, wäre genau der Fehler, den diese Etappe
+behebt.

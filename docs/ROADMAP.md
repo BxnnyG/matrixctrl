@@ -88,7 +88,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 99 | Der Grund war da, und eine Bedingung hat ihn verschluckt | ✅ 2026-09-11 · `v0.1.86` |
 | 100 | Eine Rolle, und jeder Moderator hatte sie — Lesezugriff als eigene Rolle | ✅ 2026-09-13 · `v0.1.87` |
 | 101 | Zwischen Auswählen und Antwort passierte nichts — Ablegebereich und echter Upload-Fortschritt | ✅ 2026-09-20 · `v0.1.88` |
-| 102–105 | **Ein Umzug, für den man keine Shell braucht** — vollständiges Archiv (Konten, Medien, Schlüssel), Zurückspielen, Server-zu-Server | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
+| 102 | Ein „vollständiges" Archiv ohne die Konten — jetzt mit Konten, Medien und versiegelten Schlüsseln | ✅ 2026-09-20 · `v0.1.90` · [plan](plans/etappe-102-umzug-ohne-shell.md) |
+| 103–105 | Zurückspielen aller Teile · groß genug für echte Installationen · Server-zu-Server | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

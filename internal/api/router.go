@@ -149,6 +149,8 @@ func NewRouter(deps Deps) http.Handler {
 			// One archive with everything reachable — the button an operator actually
 			// wants (etappe 72). The two single-purpose downloads stay below it.
 			r.Get("/backup/full", deps.Status.BackupFull)
+			// What the options cost, so the choice is made against a number (etappe 102).
+			r.Get("/backup/sizes", deps.Status.BackupSizes)
 			r.Get("/backup", deps.Status.Backup)
 			// Synapse's own database — the accounts, rooms and messages that make a
 			// rebuilt server the same server (etappe 70).

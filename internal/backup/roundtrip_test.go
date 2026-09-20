@@ -66,7 +66,8 @@ func TestFullArchiveRoundTrip(t *testing.T) {
 
 	var archive bytes.Buffer
 	ess := Release{Name: "ess", Namespace: "ess", Chart: "matrix-stack-25.7.1", Revision: 42}
-	if err := CreateFull(ctx, source, nil, repo, "roundtrip", ess, &archive); err != nil {
+	opts := FullOptions{DB: source, ConfigRepo: repo, AppVersion: "roundtrip", ESS: ess}
+	if err := CreateFull(ctx, opts, &archive); err != nil {
 		t.Fatalf("CreateFull: %v", err)
 	}
 	t.Logf("archive: %d bytes", archive.Len())

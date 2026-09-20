@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, Icon, Button } from "@/components/mc";
 import { api } from "@/lib/api";
 import { essVersion, type ArchiveManifest } from "@/lib/archive";
@@ -58,6 +59,12 @@ function BackupPage() {
       } else {
         blob = await res.blob();
       }
+      // The key arrives in a header, ahead of the body, because the body is a stream
+      // and the operator has to see it before they close the tab. It is generated per
+      // archive and stored nowhere — see internal/backup/seal.go.
+      const key = res.headers.get("X-MatrixCtrl-Recovery-Key");
+      if (key) setRecoveryKey(key);
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -70,6 +77,18 @@ function BackupPage() {
       setBusy(null);
     }
   };
+
+  const [withMedia, setWithMedia] = useState(false);
+  const [withSecrets, setWithSecrets] = useState(true);
+  const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  // What the media option costs, asked once when the page opens rather than guessed at.
+  const { data: sizes } = useQuery({
+    queryKey: ["backup", "sizes"],
+    queryFn: () => api.get<{ media_bytes: number; media_available: boolean; media_note?: string }>("/api/v1/status/backup/sizes"),
+    staleTime: 5 * 60_000,
+  });
 
   const [preview, setPreview] = useState<ArchiveManifest | null>(null);
   const [archive, setArchive] = useState<File | null>(null);
@@ -120,10 +139,62 @@ function BackupPage() {
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Vollständiges Backup</h2>
           </div>
           <Button variant="primary" icon="download" disabled={!!busy}
-            onClick={() => void grab("/api/v1/status/backup/full", "matrixctrl-full.tar.gz", "full")}>
+            onClick={() => void grab(
+              `/api/v1/status/backup/full?media=${withMedia ? 1 : 0}&secrets=${withSecrets ? 1 : 0}`,
+              "matrixctrl-full.tar.gz", "full")}>
             {busy === "full" ? (got ? `${mb(got)} MB…` : "Wird erstellt…") : "Herunterladen"}
           </Button>
         </div>
+
+        {/* Two choices, both with their consequence written out. The keys are on by
+            default because without them a restore keeps no sessions and cannot decrypt
+            the accounts; the media are off because they are 39 MB here and hundreds of
+            gigabytes elsewhere (etappe 102). */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "12px 14px", background: "var(--surface-2)", borderRadius: "var(--radius-sm)" }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
+            <input type="checkbox" checked={withSecrets} onChange={(e) => setWithSecrets(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>
+              <strong style={{ color: "var(--text)" }}>Schlüssel des Homeservers einschließen</strong> — verschlüsselt.
+              Ohne sie ist nach dem Zurückspielen jede Sitzung ungültig und die Konten-Datenbank
+              nicht entschlüsselbar. Du bekommst beim Herunterladen einen Wiederherstellungsschlüssel,
+              der <em>nirgends gespeichert</em> wird.
+            </span>
+          </label>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
+            <input type="checkbox" checked={withMedia} disabled={sizes?.media_available === false}
+              onChange={(e) => setWithMedia(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>
+              <strong style={{ color: "var(--text)" }}>Hochgeladene Dateien einschließen</strong>
+              {sizes?.media_available
+                ? <> — <span style={{ fontFamily: "var(--mono)" }}>{mb(sizes.media_bytes)} MB</span></>
+                : <> — {sizes?.media_note ? "zurzeit nicht lesbar" : "Größe wird ermittelt…"}</>}
+              . Sie werden aus dem Synapse-Pod gestreamt.
+            </span>
+          </label>
+        </div>
+
+        {recoveryKey && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "14px 16px", border: "1px solid var(--status-warn)", borderRadius: "var(--radius-sm)", background: "color-mix(in oklch, var(--status-warn) 8%, transparent)" }}>
+            <strong style={{ fontSize: 13.5, color: "var(--text)" }}>Wiederherstellungsschlüssel — jetzt sichern</strong>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-dim)", maxWidth: "62ch" }}>
+              Er wird <strong>einmal</strong> angezeigt und nirgends gespeichert — weder im Archiv
+              noch auf diesem Server. Ohne ihn kommen Konten, Räume, Nachrichten und Dateien
+              trotzdem zurück; nur die Sitzungen brechen, weil die Schlüssel verschlüsselt bleiben.
+            </p>
+            <code style={{ fontFamily: "var(--mono)", fontSize: 14, letterSpacing: "0.04em", color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "10px 12px", userSelect: "all", wordBreak: "break-all" }}>
+              {recoveryKey}
+            </code>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-dim)", cursor: "pointer" }}>
+              <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+              Ich habe ihn gesichert
+            </label>
+            {acknowledged && (
+              <Button size="sm" variant="ghost" onClick={() => { setRecoveryKey(null); setAcknowledged(false); }}>
+                Ausblenden
+              </Button>
+            )}
+          </div>
+        )}
 
         <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.7 }}>
           Ein Archiv mit allem, was von hier aus erreichbar ist: die <strong style={{ color: "var(--text)" }}>vollständige

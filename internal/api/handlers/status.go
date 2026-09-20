@@ -113,13 +113,132 @@ func (h *StatusHandler) BackupFull(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The accounts. Under MSC3861 they live in the authentication service's database,
+	// not Synapse's — which is why a "full" archive used to bring the rooms back and
+	// nobody who could log in to them (etappe 102).
+	var mas *pgx.Conn
+	if h.k8s != nil {
+		if dsn, err := h.masDSN(r.Context()); err == nil {
+			if conn, cerr := pgx.Connect(r.Context(), dsn); cerr == nil {
+				mas = conn
+				defer conn.Close(context.Background())
+			} else {
+				log.Printf("full backup: MAS database unreachable, continuing without the accounts: %v", cerr)
+			}
+		}
+	}
+
+	opts := backup.FullOptions{
+		DB:         h.backupDB,
+		Homeserver: hs,
+		MAS:        mas,
+		ConfigRepo: h.backupRepo,
+		AppVersion: h.appVersion,
+		ESS:        h.essRelease_(r),
+	}
+
+	// The keys, sealed. On by default: without them a restore keeps no sessions and
+	// cannot decrypt the accounts. The key is generated per archive, returned in a
+	// header, and stored nowhere — see internal/backup/seal.go for why that is the
+	// only placement that works.
+	var shownKey string
+	if r.URL.Query().Get("secrets") != "0" && h.k8s != nil {
+		if blob, err := h.k8s.SecretYAML(r.Context(), h.essNS, "ess-generated"); err == nil {
+			key, shown, kerr := backup.NewRecoveryKey()
+			if kerr == nil {
+				if sealed, serr := backup.Seal(key, blob); serr == nil {
+					opts.Sealed = sealed
+					shownKey = shown
+				} else {
+					log.Printf("full backup: sealing the keys failed, continuing without them: %v", serr)
+				}
+			}
+		} else {
+			log.Printf("full backup: could not read ess-generated, continuing without the keys: %v", err)
+		}
+	}
+
+	// The uploaded files, off the volume only Synapse mounts. Opt-in, because they can
+	// be hundreds of gigabytes.
+	var mediaPipe *io.PipeReader
+	if r.URL.Query().Get("media") == "1" && h.k8s != nil {
+		if pod, perr := h.synapsePod(r.Context()); perr == nil {
+			pr, pw := io.Pipe()
+			mediaPipe = pr
+			go func() {
+				err := h.k8s.TarFromPod(context.Background(), h.essNS, pod, "synapse", "/media", pw)
+				_ = pw.CloseWithError(err)
+			}()
+			opts.Media = pr
+		} else {
+			log.Printf("full backup: no synapse pod for the media, continuing without them: %v", perr)
+		}
+	}
+	defer func() {
+		if mediaPipe != nil {
+			_ = mediaPipe.Close()
+		}
+	}()
+
 	name := "matrixctrl-full-" + time.Now().UTC().Format("2006-01-02-1504") + ".tar.gz"
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	if shownKey != "" {
+		// A header, because the body is a stream that starts immediately and the key
+		// has to reach the operator before they close the tab. It is shown once and
+		// kept nowhere; losing it costs the sessions, not the data.
+		w.Header().Set("X-MatrixCtrl-Recovery-Key", shownKey)
+		w.Header().Set("Access-Control-Expose-Headers", "X-MatrixCtrl-Recovery-Key")
+	}
 
-	if err := backup.CreateFull(r.Context(), h.backupDB, hs, h.backupRepo, h.appVersion, h.essRelease_(r), w); err != nil {
+	if err := backup.CreateFull(r.Context(), opts, w); err != nil {
 		log.Printf("full backup: failed partway through: %v", err)
 	}
+}
+
+// GET /api/v1/status/backup/sizes — what the choices cost, before they are made.
+//
+// The media toggle is a decision about hundreds of megabytes or hundreds of gigabytes,
+// and it was going to be offered as a bare checkbox. A choice with a number next to it
+// is a different choice.
+func (h *StatusHandler) BackupSizes(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{"media_bytes": 0, "media_available": false}
+	if h.k8s != nil {
+		if pod, err := h.synapsePod(r.Context()); err == nil {
+			if n, serr := h.k8s.DirSizeInPod(r.Context(), h.essNS, pod, "synapse", "/media"); serr == nil {
+				out["media_bytes"] = n
+				out["media_available"] = true
+			} else {
+				out["media_note"] = serr.Error()
+			}
+		} else {
+			out["media_note"] = err.Error()
+		}
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// masDSN builds the connection string for the authentication service's database.
+func (h *StatusHandler) masDSN(ctx context.Context) (string, error) {
+	pw, err := h.k8s.SecretValue(ctx, h.essNS, "ess-generated", "POSTGRES_MATRIX_AUTHENTICATION_SERVICE_PASSWORD")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("postgres://matrixauthenticationservice_user:%s@ess-postgres.%s.svc.cluster.local:5432/matrixauthenticationservice?sslmode=disable",
+		url.QueryEscape(pw), h.essNS), nil
+}
+
+// synapsePod finds the pod that mounts the media volume, by label rather than by the
+// name a StatefulSet happens to give it.
+func (h *StatusHandler) synapsePod(ctx context.Context) (string, error) {
+	pods, err := h.k8s.PodsByLabel(ctx, h.essNS, "app.kubernetes.io/name=synapse-main")
+	if err != nil {
+		return "", err
+	}
+	for _, p := range pods {
+		return p, nil
+	}
+	return "", fmt.Errorf("no synapse pod in namespace %s", h.essNS)
 }
 
 // essRelease_ reads the managed release for a manifest, best effort.

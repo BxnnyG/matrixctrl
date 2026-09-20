@@ -21,6 +21,10 @@ type Client struct {
 	// same trade E20 made for release reads. May be nil: a missing metadata client
 	// costs one feature, not the process.
 	Meta metadata.Interface
+	// rest is kept because the exec subresource needs it: SPDY negotiates its own
+	// connection rather than going through the typed clientset. It is the only way to
+	// reach a volume that no other pod mounts (etappe 102).
+	rest *rest.Config
 }
 
 // client-go defaults to QPS 5 / Burst 10, which is sized for a one-shot CLI. As a
@@ -53,7 +57,7 @@ func New() (*Client, error) {
 		return nil, fmt.Errorf("dynamic client: %w", err)
 	}
 
-	c := &Client{Static: static, Dynamic: dyn}
+	c := &Client{Static: static, Dynamic: dyn, rest: cfg}
 
 	// Nil-tolerant on purpose, mirroring internal/helm: the ownership report is
 	// worth having and not worth refusing to start over.

@@ -102,7 +102,34 @@ Auf dem neuen Server: Archiv hochladen → es steht drin, welcher Server das war
 ESS-Version, wie viele Konten → deployen und alles einspielen, in einem Ablauf. Das ist
 Etappe 82, nur mit dem vollständigen Archiv dahinter.
 
-## Offene Entscheidungen
+## Entschieden (Operator, 2026-09-20)
+
+1. **Schlüssel ins Archiv: ja, standardmäßig an** — und der empfindliche Teil
+   verschlüsselt, mit einem automatisch erzeugten Schlüssel.
+2. **Medien: aktivierbar**, nicht erzwungen.
+3. **Pod-Exec: ja.**
+
+### Wo der Wiederherstellungsschlüssel liegt, entscheidet alles
+
+Ein erzeugter Schlüssel nützt nur, wenn er **nicht** mitreist und **nicht** auf dem
+Server bleibt:
+
+| Aufbewahrung | Folge |
+|---|---|
+| im Archiv | keine Verschlüsselung, nur Verschleierung |
+| im Cluster | wer den Server hat, hat das Archiv — und auf einem **neuen** Server fehlt er, also scheitert genau der Umzug, für den das Archiv da ist |
+| **beim Operator** | das Archiv ist unterwegs und im Cloud-Speicher sicher, und der Umzug funktioniert |
+
+Also: pro Archiv ein Schlüssel, **einmal** beim Herunterladen angezeigt, nirgends
+gespeichert. Wie ein Wiederherstellungsschlüssel bei Element oder Apple — was auch der
+Erwartung entspricht, die „like apple user" ausdrückt.
+
+**Und der Verlust darf nicht alles kosten.** Nur der `secrets/`-Teil wird verschlüsselt.
+Wer den Schlüssel verliert, bekommt Konten, Räume, Nachrichten und Medien trotzdem
+zurück — nur die Sitzungen brechen, weil das Macaroon fehlt. Ein Archiv, das ohne
+Schlüssel **ganz** wertlos wäre, wäre die schlechtere Konstruktion.
+
+## Weiterhin offen
 
 1. **Schlüssel ins Archiv?** Ohne sie ist kein 1:1-Umzug möglich. Mit ihnen ist die
    Datei ein Generalschlüssel. Vorschlag: Häkchen, standardmäßig aus, Warnung im

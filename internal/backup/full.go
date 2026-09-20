@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -45,8 +46,35 @@ type FullManifest struct {
 // The homeserver connection is optional: without cluster access there is no way to reach
 // Synapse's database, and half an archive with a manifest that says so beats refusing to
 // produce one at all.
-func CreateFull(ctx context.Context, db *pgxpool.Pool, hs *pgx.Conn,
-	configRepo, appVersion string, ess Release, w io.Writer) error {
+// FullOptions is what goes into a complete archive.
+//
+// A struct rather than eight positional parameters: the archive grew from two parts to
+// five (etappe 102), and a call site that passes three nils in a row is a call site
+// nobody can read.
+type FullOptions struct {
+	// DB is MatrixCtrl's own database. Required.
+	DB *pgxpool.Pool
+	// Homeserver is Synapse's database — rooms, messages, devices. Nil leaves it out
+	// and the manifest says so.
+	Homeserver *pgx.Conn
+	// MAS is the authentication service's database, which is where the **accounts**
+	// live under MSC3861. Leaving it out of a "full" archive was the gap that made a
+	// migration impossible: rooms came back and nobody could log in to them.
+	MAS *pgx.Conn
+	// Media streams the uploaded files. Nil leaves them out — they can be hundreds of
+	// gigabytes, so this is the operator's choice, made against a measured number.
+	Media io.Reader
+	// Sealed is the encrypted secrets part: signing key, macaroon, MAS encryption
+	// secret. Nil leaves it out. Encrypted because whoever holds it holds the
+	// homeserver; included by default because without it a restore keeps no sessions.
+	Sealed     []byte
+	ConfigRepo string
+	AppVersion string
+	ESS        Release
+}
+
+func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
+	db, hs, configRepo, appVersion, ess := opts.DB, opts.Homeserver, opts.ConfigRepo, opts.AppVersion, opts.ESS
 
 	gz := gzip.NewWriter(w)
 	defer gz.Close()
@@ -80,15 +108,33 @@ func CreateFull(ctx context.Context, db *pgxpool.Pool, hs *pgx.Conn,
 		ESS:           ess,
 		Parts:         []string{"matrixctrl/"},
 		Config:        cfgMan,
-		NotIncluded: []string{
-			"Die hochgeladenen Dateien (Media-Volume) — die liegen auf einem Volume, das nur der Synapse-Pod einbindet.",
-		},
+		NotIncluded:   []string{},
 	}
 	if hs != nil {
 		full.Parts = append(full.Parts, "homeserver/")
 	} else {
 		full.NotIncluded = append(full.NotIncluded,
 			"Synapses Datenbank — dieser Lauf hatte keinen Zugriff darauf.")
+	}
+	if opts.MAS != nil {
+		full.Parts = append(full.Parts, "mas/")
+	} else {
+		full.NotIncluded = append(full.NotIncluded,
+			"Die Konten — sie liegen in der Datenbank des Matrix Authentication Service, "+
+				"und dieser Lauf hatte keinen Zugriff darauf.")
+	}
+	if opts.Media != nil {
+		full.Parts = append(full.Parts, "media/")
+	} else {
+		full.NotIncluded = append(full.NotIncluded,
+			"Die hochgeladenen Dateien — beim Erstellen nicht ausgewählt.")
+	}
+	if len(opts.Sealed) > 0 {
+		full.Parts = append(full.Parts, "secrets/")
+	} else {
+		full.NotIncluded = append(full.NotIncluded,
+			"Die Schlüssel des Homeservers — ohne sie ist nach dem Zurückspielen jede "+
+				"bestehende Sitzung ungültig und die Konten-Datenbank nicht entschlüsselbar.")
 	}
 
 	// The combined manifest first, so anything reading the stream knows what is coming.
@@ -113,7 +159,63 @@ func CreateFull(ctx context.Context, db *pgxpool.Pool, hs *pgx.Conn,
 			return fmt.Errorf("homeserver: %w", err)
 		}
 	}
+
+	// Part three: the accounts. Same exporter, different database — it was only ever
+	// called with Synapse's, which is why a "full" archive had no users in it.
+	if opts.MAS != nil {
+		if err := exportHomeserverUnder(ctx, tw, "mas/", opts.MAS, "matrixauthenticationservice", full.CreatedAt); err != nil {
+			return fmt.Errorf("mas: %w", err)
+		}
+	}
+
+	// Part four: the uploaded files, streamed straight through. They are already a tar
+	// coming out of the Synapse pod, so they are stored as one member rather than
+	// unpacked and repacked — on a large install that is the difference between a
+	// stream and a disk.
+	if opts.Media != nil {
+		if err := writeStream(tw, "media/media.tar", opts.Media, full.CreatedAt); err != nil {
+			return fmt.Errorf("media: %w", err)
+		}
+	}
+
+	// Part five: the sealed secrets.
+	if len(opts.Sealed) > 0 {
+		if err := writeFile(tw, "secrets/sealed.bin", opts.Sealed, 0o600, full.CreatedAt); err != nil {
+			return fmt.Errorf("secrets: %w", err)
+		}
+	}
 	return nil
+}
+
+// writeStream copies a reader into the archive without holding it in memory.
+//
+// tar needs the size in the header before the body, and a stream does not know it — so
+// it is buffered to a temporary file first, which is still not the whole archive in RAM
+// and is the only honest way to tar something of unknown length.
+func writeStream(tw *tar.Writer, name string, r io.Reader, at time.Time) error {
+	tmp, err := os.CreateTemp("", "mxctrl-part-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}()
+
+	n, err := io.Copy(tmp, r)
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if err := tw.WriteHeader(&tar.Header{
+		Name: name, Mode: 0o644, Size: n, ModTime: at, Typeflag: tar.TypeReg,
+	}); err != nil {
+		return err
+	}
+	_, err = io.Copy(tw, tmp)
+	return err
 }
 
 // configRestores and schemaNote are shared with Create so the two archives describe the

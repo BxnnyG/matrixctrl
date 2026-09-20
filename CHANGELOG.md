@@ -15,6 +15,36 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.90] — 2026-09-20
+
+### Added
+
+- **The full archive is finally full.** It carried Synapse's database and MatrixCtrl's
+  own; it now also carries **the accounts** (the authentication service's database,
+  where they actually live under MSC3861), **the uploaded files**, and **the homeserver's
+  keys**. A "full" backup that brought the rooms back and nobody who could log in to
+  them was the gap behind every failed migration in this repository.
+- **The keys are encrypted with a recovery key generated per archive**, shown once at
+  download and stored nowhere — not in the archive, not on the server. That placement is
+  the whole design: in the archive it would be decoration, on the server it would be
+  missing on the new machine, which is the one place the archive exists to serve. Losing
+  it costs the sessions, not the data: only the `secrets/` part is sealed.
+- **Media are opt-in, with their measured size next to the checkbox** — 39 MB on this
+  install, hundreds of gigabytes elsewhere. A choice with a number beside it is a
+  different choice. `GET /api/v1/status/backup/sizes`.
+- **MatrixCtrl can read a volume no other pod mounts.** The uploaded files were listed as
+  *not included* in every archive ever produced because nothing outside the Synapse pod
+  can see them; the exec subresource is the way in, and the operator was asked before it
+  was built. Verified live: 290 files, 37.2 MB streamed out of the running pod.
+
+### Notes
+
+- **Restoring all of this is the next step, not this one.** The archive is complete; the
+  restore still writes only MatrixCtrl's own part. Putting the accounts, rooms, messages,
+  media and keys back through the UI is etappe 103 — until it lands, the other parts go
+  back with `pg_restore`, and the archive's README-equivalent (its manifest) says which
+  parts it holds.
+
 ## [0.1.89] — 2026-09-20
 
 ### Fixed
