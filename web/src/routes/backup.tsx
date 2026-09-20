@@ -182,7 +182,6 @@ function BackupPage() {
           </div>
         )}
 
-        {restoreErr && <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>{restoreErr}</div>}
         {restoreMsg && <div style={{ fontSize: 12.5, color: "var(--status-ok)" }}>{restoreMsg}</div>}
 
         {preview && (

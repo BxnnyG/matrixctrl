@@ -15,6 +15,18 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.89] — 2026-09-20
+
+### Fixed
+
+- **The restore error appeared twice.** The picker added in 0.1.88 renders the message
+  itself, and the line beneath it was never removed — two identical red sentences, which
+  is how it reached a screenshot.
+- **A refused archive now says what an accepted one looks like.** "kein Manifest im
+  Archiv" told an operator what was missing, not what to do; it now names the button the
+  file should come from and says plainly that a hand-made `pg_dump` cannot be restored
+  here.
+
 ## [0.1.88] — 2026-09-20
 
 ### Fixed

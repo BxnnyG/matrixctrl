@@ -114,7 +114,12 @@ func Read(r io.Reader) (*Archive, error) {
 		}
 	}
 	if !seenManifest {
-		return nil, fmt.Errorf("kein Manifest im Archiv — das ist kein MatrixCtrl-Backup")
+		// Naming what was expected, not only what was missing. An operator who drops a
+		// hand-made database dump here is not confused about tar — they are being told
+		// "no" by a sentence that does not say what a yes would look like.
+		return nil, fmt.Errorf("kein Manifest im Archiv — erwartet wird eine Datei aus " +
+			"„Vollständiges Archiv\" auf dieser Seite. Ein von Hand erstelltes tar.gz " +
+			"(etwa ein pg_dump) kann hier nicht eingespielt werden")
 	}
 	// An unknown layout is refused rather than guessed at: a newer archive may mean
 	// something different by the same file names.
