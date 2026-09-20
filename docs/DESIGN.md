@@ -3762,3 +3762,94 @@ Der Restore schreibt weiterhin nur MatrixCtrls eigenen Teil. Das zu ändern ist 
 103, und bis dahin sagt das Manifest ehrlich, welche Teile es trägt — ein Archiv, das
 mehr verspricht als sein Restore einlöst, wäre genau der Fehler, den diese Etappe
 behebt.
+
+### §4.103 — Der Haken unter dem Widerspruch (2026-09-20, operator, etappe 103)
+
+> „ich kann hier aber immernoch nicht upgraden kannste das fixen!"
+
+Der Operator hat `install.sh update` ausgeführt. Ohne Fehler. Im Protokoll standen
+drei Zeilen fast untereinander:
+
+```
+Upgrading to 0.1.90
+...
+Now running
+ghcr.io/bxnnyg/matrixctrl:0.1.70
+✓ done
+```
+
+**Die erste Ursache.** `helm get values` liefert die vom Operator gelieferten Werte,
+und `update` reicht sie mit `-f` wieder ein. Am 5. September wurde dort einmal ein
+`image.tag` gesetzt. Damit war er kein Einmal-Wert mehr, sondern Teil der
+Release-Werte — und jedes folgende Upgrade hat ihn pflichtschuldig wieder
+eingereicht. Chart 0.1.70 → 0.1.78 → 0.1.88 → 0.1.90, vier Upgrades, fünf Wochen,
+dasselbe Image. Ein gelieferter Wert schlägt die Chart-Voreinstellung, und nichts
+lässt ihn verfallen.
+
+Bitter ist der Kommentar, der über genau dieser Stelle stand:
+
+> carried over explicitly rather than with `--reuse-values`, which also freezes the
+> *chart's* defaults at their old version — the way an upgrade silently keeps
+> shipping last release's settings.
+
+Die Begründung war richtig, die Gefahr war benannt, und sie ist trotzdem eingetreten
+— auf demselben Weg, nur durch die andere Tür. Der Tag gehört nicht dem Operator,
+sondern dem Chart (§4.17: eine Nummer für Chart, appVersion und Image). Er wird beim
+Weiterreichen jetzt entfernt.
+
+**Die zweite Ursache, die schlimmere.** Das Skript hat das laufende Image ausgelesen,
+gedruckt — und nicht verglichen. Die Zahl, die den Widerspruch beweist, stand bereits
+auf dem Bildschirm, zwei Zeilen unter dem Ziel, und darunter kam ein grüner Haken.
+Ohne diesen zweiten Fehler wäre der erste eine Meldung gewesen statt fünf Wochen.
+
+Das ist der siebte Fall derselben Sorte in diesem Repository (§4.79, §4.84, §4.90,
+§4.92, §4.95, §4.99): das Richtige gebaut, benannt, durchdacht — und nicht
+verdrahtet. Diesmal in der Endstufe, wo es am billigsten zu verhindern gewesen wäre.
+
+**Merksatz:** *Eine Messung, die nur gedruckt wird, ist keine Prüfung.* Wer den
+Sollwert kennt und den Istwert holt, hat die Bedingung schon — es fehlt nur das `if`.
+
+**Nachgewiesen statt behauptet.** Der Live-Upgrade auf die Produktion war nicht
+erlaubt, also wurde stattdessen das veröffentlichte Chart 0.1.90 zweimal gerendert,
+einmal mit den echten Werten des Servers, einmal mit den bereinigten:
+
+```
+alt:  image: "ghcr.io/bxnnyg/matrixctrl:0.1.70"
+neu:  image: "ghcr.io/bxnnyg/matrixctrl:0.1.90"
+```
+
+Der Diff der beiden vollständigen Manifeste zeigt sonst nur die Zufallswerte, die
+`helm template` ohne Cluster jedes Mal neu würfelt, weil `lookup` dort nichts findet.
+Genau eine Zeile ändert sich absichtlich.
+
+**Und vier Kopien.** Der Block stand viermal im Skript (`install`, `update`,
+`doctor`, `recover-login`) — der Probelauf in `doctor` hat deshalb ebenfalls das
+falsche Image gerendert und hätte den Fehler nie gemeldet. Ein Fix an einer von vier
+Stellen ist keiner; es gibt jetzt `carry_values()`.
+
+**Ein Randfall, der schlimmer gewesen wäre als der Fehler.** Entfernt man den
+einzigen Schlüssel unter `image:`, bleibt ein nacktes `image:` stehen. Das ist nicht
+„keine Meinung", das ist YAML-null: Helm legt es über die Chart-Werte und jedes
+Template, das `.Values.image.repository` liest, stirbt am nil-Zeiger. Der Block wird
+deshalb gepuffert und ganz weggelassen, wenn nichts übrig bleibt.
+
+**Der Installer hatte keine Tests.** Das Stück, das ein Operator als erstes und als
+einziges ohne Oberfläche ausführt, und zwei seiner Defekte waren in der Produktion
+(§4.86, dieser hier). `scripts/test-install.sh` hängt jetzt in `make check`; die
+18 Prüfungen wurden gegen den ausgelieferten Fehler gehalten, sechs schlagen dort an.
+Ein Test, von dem man nicht weiß, ob er fehlschlagen kann, ist die gleiche Sorte
+Behauptung wie ein gedruckter Messwert.
+
+**Dieselbe Falle, zum dritten Mal.** Im August stand in BACKLOG P1-3 schon einmal:
+
+> the instance values file pinned `image.tag: 0.1.12` while 0.1.14 ran, surviving
+> only because every deploy passed `--set image.tag`. Released charts pin their own
+> image, so that pin is gone.
+
+Der Schluss stimmte für das Chart und nicht für das Release. Der Pin wurde aus der
+Wertedatei entfernt — aber die *gespeicherten* Release-Werte hat das nie berührt, und
+der Workaround von damals, „jeder Deploy übergibt eben `--set image.tag`", ist genau
+der Mechanismus, der am 5. September den nächsten Pin hineingeschrieben hat. Ein
+Behelf, der in dauerhaften Zustand schreibt, ist kein Behelf, sondern die nächste
+Ursache. *Gone* war er erst zu nennen, nachdem `helm get values` es bestätigt hätte —
+und dort stand er noch.

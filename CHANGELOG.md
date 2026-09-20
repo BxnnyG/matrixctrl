@@ -15,6 +15,40 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.91] — 2026-09-20
+
+### Fixed
+
+- **`install.sh update` upgraded the chart and left the image behind.** The operator ran
+  it, Helm reported success, and the output read `Upgrading to 0.1.90` with
+  `ghcr.io/bxnnyg/matrixctrl:0.1.70` three lines below it — followed by a green tick.
+  An `image.tag` set once on 5 September had become part of the release values, and
+  every upgrade since had faithfully submitted it again: the chart moved
+  0.1.70 → 0.1.78 → 0.1.88 → 0.1.90 across four upgrades while the image stood still for
+  five weeks. A user-supplied value beats a chart default, and nothing expires it. The
+  tag is not instance configuration — chart version, appVersion and image tag are one
+  number by design ([DESIGN §4.17](docs/DESIGN.md)) — so it is now dropped when values
+  are carried forward, and the chart's own default governs again.
+- **The installer now checks the result instead of printing it.** The image was read and
+  displayed right under the target version and never compared against it. The number
+  that proved the contradiction was already on screen. A mismatch is now an error with
+  a non-zero exit, naming the cause and the override; a measurement that is only printed
+  is not a check ([DESIGN §4.103](docs/DESIGN.md)).
+- **Four copies became one function.** `install`, `update`, `doctor` and `recover-login`
+  each had their own copy of the carry-forward block, so the stale pin also skewed
+  `doctor`'s dry run — it rendered the wrong image. `carry_values()` is now the single
+  place all four pass through.
+
+### Added
+
+- **`install.sh status` shows the chart version and the image tag separately**, and says
+  so when they disagree. They are supposed to be identical; for five weeks they were
+  not, and no screen anywhere showed both — which is why nobody could see it.
+- **Tests for the installer** (`scripts/test-install.sh`, in `make check`). It is the one
+  thing an operator runs with no UI in front of it and it had none, after two of its
+  defects reached production. 18 checks, verified to fail against the shipped bug: 6 of
+  them do.
+
 ## [0.1.90] — 2026-09-20
 
 ### Added

@@ -247,6 +247,54 @@ detect_cert_manager() {
 
 release_exists() { helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; }
 
+# The values an existing release already carries, written to <file> for `-f`.
+# Returns non-zero when there are none, so callers can guard the flag on it.
+#
+# Four commands need this and all four had their own copy of it. That is why the pin
+# below survived five chart upgrades: a fix at one of four call sites is not a fix.
+#
+# `--reuse-values` is deliberately not used — it freezes the *chart's* defaults at
+# their old version, which is how an upgrade keeps quietly shipping last release's
+# settings. Handing the values back explicitly avoids that for everything the operator
+# owns. It does not avoid it for what the *chart* owns, and `image.tag` is exactly that
+# (DESIGN §4.17: chart version == appVersion == image tag — one artefact, one number).
+#
+# Set once on 2026-09-05, that tag became part of the release values, and every upgrade
+# afterwards dutifully submitted it again. The chart went 0.1.70 → 0.1.78 → 0.1.88 →
+# 0.1.90; the image stood still for five weeks, because a user-supplied value beats a
+# chart default and nothing expires it (§4.103). So it is dropped here, at the one place
+# all four commands pass through, and the chart's own default governs again.
+carry_values() { # carry_values <file>
+  local raw
+  raw=$(mktemp)
+  helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$raw" 2>/dev/null || : > "$raw"
+  case "$(tr -d '[:space:]' < "$raw")" in null|"") : > "$raw" ;; esac
+  # Drop `tag:` inside the top-level `image:` block. `repository` and `pullPolicy` stay:
+  # a private mirror is genuine instance configuration, the version is not.
+  #
+  # The block is buffered rather than filtered line by line, because removing the only
+  # key under `image:` would leave a bare `image:` behind — and that is not "no opinion",
+  # it is YAML null. Helm would merge null over the chart's image map and every template
+  # reading .Values.image.repository would fail on a nil pointer. A fix for a pin that
+  # breaks the chart outright is not a fix.
+  awk '
+    /^[^[:space:]]/ {
+      if (pending) { if (kept) printf "%s", buf; pending = 0 }
+      if ($0 ~ /^image:[[:space:]]*$/) { pending = 1; kept = 0; buf = $0 "\n"; next }
+    }
+    pending {
+      if ($0 ~ /^[[:space:]]+tag:/) next
+      buf = buf $0 "\n"
+      if ($0 ~ /^[[:space:]]+[^[:space:]]/) kept = 1
+      next
+    }
+    { print }
+    END { if (pending && kept) printf "%s", buf }
+  ' "$raw" > "$1"
+  rm -f "$raw"
+  [ -s "$1" ]
+}
+
 # The second failure in the transcript. `helm uninstall` keeps the PVCs and the
 # Secret on purpose (resource-policy: keep — losing a database to a typo is
 # worse), and deleting the namespace does not necessarily remove a retained PV.
@@ -482,11 +530,7 @@ cmd_install() {
     prev_values=$(mktemp)
     # Contains whatever the operator set, OIDC client secret included.
     trap "rm -f '$prev_values'" EXIT INT TERM
-    if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev_values" 2>/dev/null; then
-      case "$(tr -d '[:space:]' < "$prev_values")" in null|"") : > "$prev_values" ;; esac
-    else
-      : > "$prev_values"
-    fi
+    carry_values "$prev_values" || :
   fi
 
   head_ "Installing"
@@ -577,6 +621,25 @@ cmd_status() {
   check_cluster
   head_ "Release"
   helm status "$RELEASE" -n "$NAMESPACE" 2>/dev/null | sed -n '1,8p' || warn "not installed"
+
+  # Two numbers, not one. They are supposed to be identical (DESIGN §4.17), and for
+  # five weeks they were not: the chart advanced four times while the image stood
+  # still, and no screen anywhere showed both — so nothing contradicted itself where
+  # someone could see it (§4.103).
+  local chart_v img_v
+  chart_v=$(helm list -n "$NAMESPACE" -f "^${RELEASE}\$" -o json 2>/dev/null \
+    | sed -n 's/.*"app_version":"\([^"]*\)".*/\1/p' | head -1)
+  img_v=$(kubectl -n "$NAMESPACE" get deploy matrixctrl \
+    -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+  if [ -n "$chart_v" ] || [ -n "$img_v" ]; then
+    head_ "Version"
+    say "  chart  ${chart_v:-unknown}"
+    say "  image  ${img_v##*:}"
+    if [ -n "$chart_v" ] && [ -n "$img_v" ] && [ "${img_v##*:}" != "$chart_v" ]; then
+      warn "these disagree — the chart was upgraded, the image was not"
+      say  "      $(self_cmd) update    (removes a stale image.tag pin and re-applies)"
+    fi
+  fi
   head_ "Pods"
   kubectl -n "$NAMESPACE" get pods -o wide 2>/dev/null || true
   head_ "Ingress"
@@ -647,11 +710,7 @@ cmd_doctor() {
   if release_exists; then
     local probe_values probe_out
     probe_values=$(mktemp)
-    if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$probe_values" 2>/dev/null; then
-      case "$(tr -d '[:space:]' < "$probe_values")" in null|"") : > "$probe_values" ;; esac
-    else
-      : > "$probe_values"
-    fi
+    carry_values "$probe_values" || :
     local -a probe=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --dry-run=server)
     [ ! -s "$probe_values" ] || probe+=(-f "$probe_values")
     if probe_out=$(helm "${probe[@]}" 2>&1 >/dev/null); then
@@ -847,11 +906,7 @@ cmd_update() {
   local prev_values
   prev_values=$(mktemp)
   trap "rm -f '$prev_values'" EXIT INT TERM
-  if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev_values" 2>/dev/null; then
-    case "$(tr -d '[:space:]' < "$prev_values")" in null|"") : > "$prev_values" ;; esac
-  else
-    : > "$prev_values"
-  fi
+  carry_values "$prev_values" || :
 
   local -a args=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --version "$latest" --wait --timeout 5m)
   [ "$DRY_RUN" = 0 ] || args+=(--dry-run=server)
@@ -873,10 +928,43 @@ cmd_update() {
   fi
 
   head_ "Now running"
-  kubectl -n "$NAMESPACE" get deploy matrixctrl -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' 2>/dev/null || true
+  local want="$latest" spec_image pod_image
+  spec_image=$(kubectl -n "$NAMESPACE" get deploy matrixctrl \
+    -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+  pod_image=$(kubectl -n "$NAMESPACE" get pods -l app=matrixctrl \
+    -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || true)
+  say "  ${spec_image:-unknown}"
   kubectl -n "$NAMESPACE" get pods -l app=matrixctrl --no-headers 2>/dev/null || true
   say ""
-  ok "done"
+
+  # Why this comparison exists: the image was read and printed right here, directly
+  # under the line announcing the target version — and never compared against it. The
+  # operator's transcript showed "Upgrading to 0.1.90" and "0.1.70" one above the other,
+  # with a green tick underneath (§4.103). The number that proved the contradiction was
+  # already on screen. A measurement that is only printed is not a check.
+  if [ -z "$spec_image" ]; then
+    warn "could not read the running image"
+    say  "      check it yourself:  kubectl -n $NAMESPACE get deploy matrixctrl -o wide"
+    return
+  fi
+  case "$spec_image" in
+    *:"$want")
+      if [ -n "$pod_image" ] && [ "$pod_image" != "$spec_image" ]; then
+        warn "the deployment is at ${spec_image##*:}, but a pod still runs ${pod_image##*:}"
+        say  "      the rollout has not finished:  kubectl -n $NAMESPACE rollout status deploy/matrixctrl"
+        return
+      fi
+      ok "done — running $want"
+      ;;
+    *)
+      die "Helm moved the chart to $want, but the image running is ${spec_image##*:}." \
+        "Something in the release values pins image.tag, and that beats the chart's own default." \
+        "See it:     helm get values $RELEASE -n $NAMESPACE" \
+        "Override:   helm upgrade $RELEASE $CHART -n $NAMESPACE --version $want --reuse-values --set image.tag=$want" \
+        "This installer removes such a pin when it carries values forward, so if you are" \
+        "reading this, it was re-introduced some other way — that is worth reporting."
+      ;;
+  esac
 }
 
 
@@ -957,11 +1045,7 @@ cmd_recover_login() {
     say "  helm upgrade --set oidc.enabled=false"
     local prev
     prev=$(mktemp); trap "rm -f '$prev'" EXIT INT TERM
-    if helm get values "$RELEASE" -n "$NAMESPACE" -o yaml > "$prev" 2>/dev/null; then
-      case "$(tr -d '[:space:]' < "$prev")" in null|"") : > "$prev" ;; esac
-    else
-      : > "$prev"
-    fi
+    carry_values "$prev" || :
     local -a args=(upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --set oidc.enabled=false --wait --timeout 5m)
     [ ! -s "$prev" ] || args+=(-f "$prev")
     helm "${args[@]}" >/dev/null 2>&1 || warn "the upgrade reported a problem — check: helm status $RELEASE -n $NAMESPACE"
@@ -1027,6 +1111,11 @@ ADMIN_PASSWORD=""
 CHART_VERSION=""
 ESS_NAMESPACE="ess"
 ESS_RELEASE="ess"
+
+# A testing seam. With this set, the script defines its functions and stops, which is
+# how scripts/test-install.sh exercises the real code instead of a copy of it. Copies
+# are the reason the pin in carry_values survived at four call sites (§4.103).
+if [ -n "${MATRIXCTRL_SOURCE_ONLY:-}" ]; then return 0 2>/dev/null || exit 0; fi
 
 COMMAND="install"
 case "${1:-}" in

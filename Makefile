@@ -61,6 +61,10 @@ check:
 	# Frontend tests, including components. Until etappe 94 vitest could only run pure
 	# logic — no DOM — so every component shipped typechecked and otherwise unexercised.
 	cd web && npm run test -- --run
+	# The installer is the one thing an operator runs with no UI in front of it, and it
+	# had no tests until 2026-09-20 — after two of its defects had reached production
+	# (§4.86, §4.103). Both were a second's worth of test.
+	./scripts/test-install.sh
 	./scripts/check-sensitive.sh
 	./scripts/check-changelog.sh
 	./scripts/check-commands.sh
