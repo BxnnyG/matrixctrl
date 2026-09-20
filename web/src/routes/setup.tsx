@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, type ReactNode, type RefObject } from "react";
 import { api } from "@/lib/api";
 import { essVersion, type ArchiveManifest } from "@/lib/archive";
+import { ArchivePicker } from "@/components/ArchivePicker";
 import { useUpgradeStream } from "@/lib/ws";
 import { Card, Icon, Button, Spinner, StatusDot, type IconName } from "@/components/mc";
 
@@ -352,6 +353,7 @@ function MigrateWizard({ release, namespace, onDone, onBack }: { release: string
   const logRef = useRef<HTMLDivElement>(null);
 
   const [restoring, setRestoring] = useState(false);
+  const [sent, setSent] = useState(0);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const [restoreErr, setRestoreErr] = useState<string | null>(null);
 
@@ -366,13 +368,13 @@ function MigrateWizard({ release, namespace, onDone, onBack }: { release: string
   const pick = async (f: File | null) => {
     setArchive(f); setManifest(null); setReadErr(null);
     if (!f) return;
-    setReading(true);
+    setReading(true); setSent(0);
     try {
       // The file as the body, not multipart: readArchive() gunzips the request body
       // directly. A FormData envelope reaches it as "kein gültiges gzip-Archiv" —
       // which is what the first version of this did, and it would have failed on the
       // one path built to rescue an operator.
-      setManifest(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f));
+      setManifest(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f, setSent));
     } catch (e) {
       setReadErr(e instanceof Error ? e.message : "Archiv unlesbar");
     } finally {
@@ -390,9 +392,9 @@ function MigrateWizard({ release, namespace, onDone, onBack }: { release: string
   // the tab is closed between the two, the button is still there afterwards.
   const runRestore = async () => {
     if (!archive) return;
-    setRestoring(true); setRestoreErr(null); setRestoreMsg(null);
+    setRestoring(true); setRestoreErr(null); setRestoreMsg(null); setSent(0);
     try {
-      const r = await api.upload<{ config_files: number; tables?: string[] }>("/api/v1/status/restore", archive);
+      const r = await api.upload<{ config_files: number; tables?: string[] }>("/api/v1/status/restore", archive, setSent);
       setRestoreMsg(`${r.config_files} Konfigurationsdateien und ${r.tables?.length ?? 0} Tabellen eingespielt.`);
       onDone();
     } catch (e) {
@@ -419,11 +421,8 @@ function MigrateWizard({ release, namespace, onDone, onBack }: { release: string
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <label style={labelStyle}>Archiv</label>
-            <input type="file" accept=".tar.gz,.tgz,application/gzip"
-              onChange={(e) => void pick(e.target.files?.[0] ?? null)}
-              style={{ ...inputStyle, padding: 8, fontSize: 12.5 }} />
-            {reading && <span style={{ fontSize: 12, color: "var(--text-faint)" }}><Spinner size={12} /> Archiv wird gelesen…</span>}
-            {readErr && <span style={{ fontSize: 12.5, color: "var(--status-err)" }}>{readErr}</span>}
+            <ArchivePicker file={archive} busy={reading} sent={sent} error={readErr}
+              onPick={(f) => void pick(f)} />
           </div>
 
           {manifest && (

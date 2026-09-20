@@ -3671,3 +3671,39 @@ Zustand, der Rollback, der Rückstands-Eintrag, das Log hinter einer nie wahren
 Bedingung. Ein Wächter, der einen Homeserver schützt, ist ein schlechter Ort für das
 siebte Mal. Also prüft ein Router-Test die ganze Kette statt nur die Middleware:
 Verdrahtung entfernt → `answered 503, want 403 — the gate is not in the chain`.
+
+### §4.101 — Zwischen Auswählen und Antwort passierte nichts (2026-09-20, operator, etappe 101)
+
+> „ich ziehe es darein drag and drop geht nicht dann wähle ich das aus dann ist es da
+> aber dann nichts mehr kein lade balken skeleten loading oder sonstiges"
+
+Zwei Befunde, beide im selben Element.
+
+**Das Ablegen ging nicht,** weil dort ein nacktes `<input type="file">` stand. Ein
+solches Feld nimmt einen Drop nur entgegen, wenn er genau darauf landet — auf die
+Seite gezogen passiert nichts, ohne Fehler, ohne Hinweis.
+
+**Und nach dem Auswählen passierte sichtbar nichts,** weil `pick()` keinen Ladezustand
+kannte:
+
+    setPreview(await api.upload(…));
+
+Dazwischen liegt ein Upload von zig Megabyte über eine Heim-Leitung. Die Seite war
+minutenlang still und sah kaputt aus.
+
+Bemerkenswert daran: **im Umzugs-Assistenten gibt es genau dafür einen Spinner** — ich
+habe ihn dort in Etappe 82 eingebaut. Die Backup-Seite, auf der die Wiederherstellungen
+tatsächlich stattfinden, hat nie einen bekommen. Zwei Stellen, dieselbe Aufgabe, eine
+davon gepflegt. Jetzt teilen sie sich eine Komponente.
+
+**Fortschritt statt Spinner, und warum das hier anders ist als beim Herunterladen.**
+`api.upload` benutzt jetzt `XMLHttpRequest` statt `fetch`: fetch kann nicht sagen, wie
+viel eines Request-Body hinausgegangen ist. Beim Download zählt §4.73 bewusst nur Bytes
+ohne Balken, weil dort kein Gesamtwert bekannt ist und ein erfundener Nenner schlimmer
+wäre als keiner. Beim Upload **ist** er bekannt — es ist die Dateigröße. Also ein echter
+Balken, aus demselben Grund, aus dem es dort keinen gibt.
+
+**Und ein 413 sagt jetzt, wer abgelehnt hat.** Er kommt nicht von MatrixCtrl, sondern
+von dem, was davor steht; Cloudflares kostenloser Tarif hört bei 100 MB auf. Eine
+Fehlermeldung, die den Absender verschweigt, schickt den Operator in die falsche
+Anwendung.

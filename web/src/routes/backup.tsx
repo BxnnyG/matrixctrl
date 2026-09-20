@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Card, Icon, Button } from "@/components/mc";
 import { api } from "@/lib/api";
 import { essVersion, type ArchiveManifest } from "@/lib/archive";
+import { ArchivePicker } from "@/components/ArchivePicker";
 
 export const Route = createFileRoute("/backup")({ component: BackupPage });
 
@@ -76,13 +77,19 @@ function BackupPage() {
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const [restoreErr, setRestoreErr] = useState<string | null>(null);
 
+  const [reading, setReading] = useState(false);
+  const [sent, setSent] = useState(0);
+
   const pick = async (f: File | null) => {
-    setArchive(f); setPreview(null); setRestoreErr(null); setRestoreMsg(null);
+    setArchive(f); setPreview(null); setRestoreErr(null); setRestoreMsg(null); setSent(0);
     if (!f) return;
+    setReading(true);
     try {
-      setPreview(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f));
+      setPreview(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f, setSent));
     } catch (e) {
       setRestoreErr(e instanceof Error ? e.message : "Archiv unlesbar");
+    } finally {
+      setReading(false);
     }
   };
 
@@ -163,9 +170,8 @@ function BackupPage() {
           die liegen in Synapses eigener Datenbank.
         </div>
 
-        <input type="file" accept=".gz,.tgz,application/gzip"
-          onChange={(e) => void pick(e.target.files?.[0] ?? null)}
-          style={{ fontSize: 12.5, color: "var(--text-dim)" }} />
+        <ArchivePicker file={archive} busy={reading} sent={sent} error={restoreErr}
+          onPick={(f) => void pick(f)} />
 
         {preview && (
           <div style={{ fontSize: 12.5, color: "var(--text-dim)", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "10px 12px", lineHeight: 1.7 }}>

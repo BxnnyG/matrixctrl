@@ -15,6 +15,31 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.88] — 2026-09-20
+
+### Fixed
+
+- **Choosing an archive showed no sign that anything was happening.** Between picking
+  the file and the preview arriving, the page rendered nothing at all — no spinner, no
+  bar, no message — for as long as the upload took, which on a home upstream with a
+  large archive is minutes. Reported as "dann ist es da aber dann nichts mehr". The
+  migrate wizard had a spinner; the backup page, where restores actually happen, never
+  got one.
+- **Dropping a file on the page did nothing.** It was a bare `<input type="file">`,
+  which accepts a drop only onto the input itself. There is a real drop zone now.
+
+### Added
+
+- **Uploads report their progress.** `api.upload` uses XMLHttpRequest instead of fetch,
+  because fetch cannot say how much of a request body has gone out. The total is known
+  here, so it is a real bar — unlike the download counter, which shows bytes without one
+  precisely because there the total is not known.
+- **A 413 names who refused.** It does not come from MatrixCtrl but from whatever sits
+  in front of it, and the message says so — Cloudflare's free tier stops at 100 MB, and
+  an hour spent looking in the application is an hour wasted.
+- `ArchivePicker`, shared by the backup page and the migrate wizard, with component
+  tests for the drop and the progress readout.
+
 ## [0.1.87] — 2026-09-13
 
 ### Added

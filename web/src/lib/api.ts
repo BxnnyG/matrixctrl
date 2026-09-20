@@ -55,20 +55,51 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  *  hand breaks it. This existed as a private helper on the backup page; the setup page
  *  needs the same thing now, and two copies of a fetch wrapper is how one of them ends
  *  up with a different error message than the other. */
-async function upload<T>(path: string, body: BodyInit): Promise<T> {
+async function upload<T>(path: string, body: Blob, onProgress?: (sent: number) => void): Promise<T> {
   const token = getToken();
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body,
+
+  // XMLHttpRequest, not fetch.
+  //
+  // fetch cannot report how much of a request body has gone out, and an archive is
+  // tens of megabytes over a home upstream. Without a number the page is silent for
+  // minutes and looks broken — which is exactly how it was reported: "dann ist es da
+  // aber dann nichts mehr". The download path already counts bytes for the same
+  // reason (§4.73); the upload was the half nobody had watched.
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}${path}`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    }
+    xhr.onerror = () => reject(new ApiError("Die Verbindung ist beim Hochladen abgebrochen.", 0));
+    xhr.onabort = () => reject(new ApiError("Hochladen abgebrochen.", 0));
+    xhr.onload = () => {
+      const text = xhr.responseText;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve((text ? JSON.parse(text) : undefined) as T);
+        } catch {
+          reject(new ApiError("Die Antwort des Servers war nicht lesbar.", xhr.status));
+        }
+        return;
+      }
+      // 413 does not come from this application — it is whatever sits in front of it
+      // refusing the size, and saying so saves an hour of looking in the wrong place.
+      if (xhr.status === 413) {
+        reject(new ApiError(
+          "Das Archiv wurde unterwegs abgewiesen, weil es zu groß ist — nicht von MatrixCtrl, " +
+          "sondern von einem Proxy davor (Cloudflare lässt im kostenlosen Tarif 100 MB durch). " +
+          "Direkt auf den Server hochladen oder den Proxy für diesen Namen umgehen.", 413));
+        return;
+      }
+      let message = `HTTP ${xhr.status}`;
+      try { message = (JSON.parse(text || "{}") as { error?: string }).error ?? message; } catch { /* not JSON */ }
+      reject(new ApiError(message, xhr.status));
+    };
+    xhr.send(body);
   });
-  const text = await res.text();
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try { message = (JSON.parse(text || "{}") as { error?: string }).error ?? message; } catch { /* not JSON */ }
-    throw new ApiError(message, res.status);
-  }
-  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
