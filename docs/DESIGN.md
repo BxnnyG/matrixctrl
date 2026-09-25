@@ -4136,3 +4136,30 @@ Cache-Invalidierungen notiert.
 
 **Merksatz aus der Probe:** *Der Unterschied zwischen einem wiederhergestellten Server
 und einem funktionierenden liegt in den Tabellen, die keine Daten sind.*
+
+### §4.107 — Die Abfrage, die nur Synapse kannte (2026-09-25, agent, etappe 106 Nachtrag)
+
+Der Umzug lief live durch — Synapse vollständig, 1 068 761 Zeilen, 21 Zähler — und
+scheiterte dann bei den **Konten**, nachdem sie bereits geladen und geprüft waren:
+`relation "schema_version" does not exist`. Die Rücknahme griff wie gebaut, MAS stand
+wieder leer, nichts blieb halb.
+
+Der Fehler war meiner. Nach der Prüfung liest der Restore die Schema-Version des Ziels,
+um zu entscheiden, ob die Hintergrundaufgaben eines frisch gebauten Servers behalten
+werden (§4.106). Diese Abfrage nannte die Tabelle `schema_version` — die es **nur bei
+Synapse** gibt, nicht bei MAS. Postgres löst jeden Tabellennamen schon beim Parsen auf,
+mein `WHERE EXISTS`-Schutz kam nie zum Zug.
+
+Das ist wieder dasselbe Muster (§4.104, §4.105): eine Prüfung, die nur gegen die eine
+Datenbank lief, die die Tabelle hat, sagt nichts über die, die sie nicht hat. Die
+Generalprobe hatte `SchemaVersion` ausschließlich gegen Synapse ausgeführt — der
+MAS-Durchlauf der Probe lag *vor* dem Einbau dieser Abfrage. Gemessen wurde der eine
+Fall, geschlossen wurde auf beide.
+
+**Merksatz:** *Eine Abfrage, die einen Tabellennamen nennt, ist gegen jede Datenbank zu
+prüfen, die diese Tabelle nicht hat — nicht nur gegen die, die sie hat.*
+
+Behoben mit `to_regclass('public.schema_version')`, das NULL liefert statt zu scheitern;
+ohne die Tabelle meldet die Abfrage Schema 0. Ein Live-Test legt jetzt eine Datenbank
+ohne die Tabelle an (die Form von MAS) und besteht nur, wenn die Abfrage 0 zurückgibt
+statt zu werfen.

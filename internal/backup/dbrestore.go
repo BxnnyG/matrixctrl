@@ -3,7 +3,6 @@ package backup
 import (
 	"context"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -365,15 +364,26 @@ func (l *Loader) TruncateAll(ctx context.Context) (int, error) {
 // one. The caller uses it to decide whether the target's schema is newer than the
 // archive's, and "no answer" has to mean "cannot tell" rather than "version zero".
 func (l *Loader) SchemaVersion(ctx context.Context) (int, error) {
-	var v int
-	err := l.conn.QueryRow(ctx, `
-		SELECT COALESCE((SELECT max(version) FROM schema_version), 0)
-		WHERE EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-		              WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = 'schema_version')`).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
+	// to_regclass, not a subquery against schema_version guarded by EXISTS: Postgres
+	// resolves every relation named in a statement at parse time, so a query that
+	// mentions `schema_version` fails with "relation does not exist" on a database that
+	// has no such table — the WHERE EXISTS never gets the chance to guard it. The
+	// authentication service is exactly such a database, and the live migration failed
+	// here after the rehearsal had only ever run this against Synapse (§4.105, §4.106):
+	// a query tested against the one database that has the table proves nothing about
+	// the one that does not. to_regclass returns NULL instead of raising.
+	var reg *string
+	if err := l.conn.QueryRow(ctx, `SELECT to_regclass('public.schema_version')::text`).Scan(&reg); err != nil {
+		return 0, err
+	}
+	if reg == nil {
 		return 0, nil
 	}
-	return v, err
+	var v int
+	if err := l.conn.QueryRow(ctx, `SELECT COALESCE(max(version), 0) FROM schema_version`).Scan(&v); err != nil {
+		return 0, err
+	}
+	return v, nil
 }
 
 // SchemaVersionFromCSV reads the same number out of the archive's copy of that table.

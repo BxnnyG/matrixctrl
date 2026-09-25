@@ -228,3 +228,47 @@ func currentUser(ctx context.Context, t *testing.T, conn *pgx.Conn) string {
 	}
 	return who
 }
+
+// SchemaVersion against a database that has no schema_version table — the MAS shape.
+//
+// The live migration (§4.106) loaded the accounts, verified them, and then failed on
+// this one call: `SchemaVersion` mentioned the `schema_version` table, which only
+// Synapse has, so it raised "relation does not exist" against MAS and rolled a good
+// restore back. The rehearsal never caught it because it ran SchemaVersion only against
+// Synapse. This is that database.
+func TestSchemaVersionOnADatabaseWithoutTheTable(t *testing.T) {
+	dsn := os.Getenv("MATRIXCTRL_BACKUP_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set MATRIXCTRL_BACKUP_TEST_DSN to run against a real database")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	admin, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { admin.Close(context.Background()) })
+
+	// A database with tables but no schema_version — exactly MAS's shape.
+	bare := scratchDB(ctx, t, admin, dsn, "mxctrl_noschema")
+	if _, err := bare.Exec(ctx, `CREATE TABLE users (id int); CREATE TABLE _sqlx_migrations (v int)`); err != nil {
+		t.Fatal(err)
+	}
+	v, err := NewLoader(bare).SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("a database without schema_version must not error, it must answer 0: %v", err)
+	}
+	if v != 0 {
+		t.Errorf("no schema_version table means 0, got %d", v)
+	}
+
+	// And the positive case still reads the number, so the fix did not just silence it.
+	withit := scratchDB(ctx, t, admin, dsn, "mxctrl_withschema")
+	if _, err := withit.Exec(ctx, `CREATE TABLE schema_version (version int); INSERT INTO schema_version VALUES (88),(94)`); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := NewLoader(withit).SchemaVersion(ctx); err != nil || v != 94 {
+		t.Errorf("with the table it must read the max version: got %d, err %v", v, err)
+	}
+}

@@ -15,6 +15,21 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.97] — 2026-09-25
+
+### Fixed
+
+- **A restore of the authentication service no longer fails at the last step.** After
+  loading and verifying the accounts, the restore reads the target's schema version to
+  decide whether to keep the freshly-built server's queued background work. That query
+  named the `schema_version` table — which only Synapse has. Postgres resolves every
+  relation at parse time, so against the authentication service (which has no such table)
+  it raised "relation does not exist" and rolled a perfectly good account restore back.
+  The live migration hit this exactly once the rooms were already in. It now asks with
+  `to_regclass`, which answers NULL instead of raising, and a database without the table
+  reports schema 0. The rehearsal missed it because it only ever ran this query against
+  Synapse — the one database that has the table (§4.107).
+
 ## [0.1.96] — 2026-09-25
 
 ### Fixed
