@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -155,7 +154,8 @@ func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
 
 	// Part two: the homeserver itself.
 	if hs != nil {
-		if err := exportHomeserverUnder(ctx, tw, "homeserver/", hs, "synapse", full.CreatedAt); err != nil {
+		if err := exportDatabaseUnder(ctx, tw, "homeserver/", hs, "synapse", full.CreatedAt,
+			[]string{"Die hochgeladenen Dateien (Media-Volume) — sie sind ein eigener Teil dieses Archivs."}); err != nil {
 			return fmt.Errorf("homeserver: %w", err)
 		}
 	}
@@ -163,7 +163,8 @@ func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
 	// Part three: the accounts. Same exporter, different database — it was only ever
 	// called with Synapse's, which is why a "full" archive had no users in it.
 	if opts.MAS != nil {
-		if err := exportHomeserverUnder(ctx, tw, "mas/", opts.MAS, "matrixauthenticationservice", full.CreatedAt); err != nil {
+		if err := exportDatabaseUnder(ctx, tw, "mas/", opts.MAS, "matrixauthenticationservice", full.CreatedAt,
+			[]string{"Nichts — diese Datenbank ist hier vollständig."}); err != nil {
 			return fmt.Errorf("mas: %w", err)
 		}
 	}
@@ -251,75 +252,6 @@ func assembleUnder(tw *tar.Writer, prefix string, man Manifest,
 	}
 	if withConfig {
 		return addTree(tw, configRepo, prefix+"config-repo")
-	}
-	return nil
-}
-
-// exportHomeserverUnder is ExportHomeserver writing into an existing archive.
-//
-// Still one REPEATABLE READ transaction: a homeserver read table by table while running
-// yields tables from different moments, and being inside a larger archive changes
-// nothing about that (§4.69).
-func exportHomeserverUnder(ctx context.Context, tw *tar.Writer, prefix string,
-	conn *pgx.Conn, dbName string, at time.Time) error {
-
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return fmt.Errorf("snapshot: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	rows, err := tx.Query(ctx, `
-		SELECT c.relname, COALESCE(s.n_live_tup, 0)
-		FROM pg_class c
-		JOIN pg_namespace n ON n.oid = c.relnamespace
-		LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-		WHERE n.nspname = 'public' AND c.relkind = 'r'
-		ORDER BY c.relname`)
-	if err != nil {
-		return err
-	}
-	var tables []Table
-	for rows.Next() {
-		var t Table
-		if err := rows.Scan(&t.Name, &t.Rows); err != nil {
-			rows.Close()
-			return err
-		}
-		t.File = "db/" + t.Name + ".csv"
-		tables = append(tables, t)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	man := HomeserverManifest{
-		FormatVersion: FormatVersion,
-		CreatedAt:     at,
-		Database:      dbName,
-		Snapshot:      "Alle Tabellen stammen aus einer einzigen REPEATABLE-READ-Transaktion, also aus demselben Moment.",
-		Tables:        tables,
-		NotIncluded:   []string{"Die hochgeladenen Dateien (Media-Volume)."},
-		RestoreNote:   homeserverRestoreNote,
-	}
-	blob, err := json.MarshalIndent(man, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := writeFile(tw, prefix+"manifest.json", blob, 0o644, at); err != nil {
-		return err
-	}
-
-	for _, t := range tables {
-		var buf strings.Builder
-		sql := fmt.Sprintf(`COPY (SELECT * FROM %q) TO STDOUT WITH (FORMAT csv, HEADER true)`, t.Name)
-		if _, err := tx.Conn().PgConn().CopyTo(ctx, &writerTo{&buf}, sql); err != nil {
-			return fmt.Errorf("dump %s: %w", t.Name, err)
-		}
-		if err := writeFile(tw, prefix+t.File, []byte(buf.String()), 0o644, at); err != nil {
-			return err
-		}
 	}
 	return nil
 }

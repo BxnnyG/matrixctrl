@@ -80,6 +80,23 @@ func TestReadRefusesAnUnknownFormat(t *testing.T) {
 	}
 }
 
+// The archive an operator is holding was written by the version they were running.
+//
+// Format 2 added the sequences (etappe 106). Refusing format 1 would mean the upgrade
+// that improves backups is the event that invalidates the one they already have — so it
+// is read, and what it cannot do is said elsewhere rather than by a refusal here.
+func TestReadAcceptsAnOlderFormat(t *testing.T) {
+	a, err := Read(bytes.NewReader(pack(t, map[string]string{
+		"manifest.json": manifestJSON(t, Manifest{FormatVersion: MinReadableFormat}),
+	})))
+	if err != nil {
+		t.Fatalf("a format %d archive must still be readable: %v", MinReadableFormat, err)
+	}
+	if a.Manifest.FormatVersion != MinReadableFormat {
+		t.Errorf("the archive's own format must survive being read: %d", a.Manifest.FormatVersion)
+	}
+}
+
 func TestReadRefusesSomethingThatIsNotABackup(t *testing.T) {
 	if _, err := Read(bytes.NewReader(pack(t, map[string]string{"random.txt": "hi"}))); err == nil {
 		t.Error("an archive with no manifest must be refused")

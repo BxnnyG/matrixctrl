@@ -121,11 +121,13 @@ func Read(r io.Reader) (*Archive, error) {
 			"„Vollständiges Archiv\" auf dieser Seite. Ein von Hand erstelltes tar.gz " +
 			"(etwa ein pg_dump) kann hier nicht eingespielt werden")
 	}
-	// An unknown layout is refused rather than guessed at: a newer archive may mean
-	// something different by the same file names.
-	if a.Manifest.FormatVersion != FormatVersion {
-		return nil, fmt.Errorf("Archivformat %d, dieses MatrixCtrl versteht %d",
-			a.Manifest.FormatVersion, FormatVersion)
+	// A newer layout is refused rather than guessed at: it may mean something different
+	// by the same file names. An older one is read — the archives operators hold were
+	// written by the version they were running, and refusing them would make the
+	// upgrade the thing that cost them their backup.
+	if a.Manifest.FormatVersion > FormatVersion || a.Manifest.FormatVersion < MinReadableFormat {
+		return nil, fmt.Errorf("Archivformat %d, dieses MatrixCtrl versteht %d bis %d",
+			a.Manifest.FormatVersion, MinReadableFormat, FormatVersion)
 	}
 	return a, nil
 }

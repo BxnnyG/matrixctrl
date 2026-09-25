@@ -28,9 +28,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// FormatVersion is the archive layout. A restore refuses anything it does not know,
-// rather than guessing at a future shape.
-const FormatVersion = 1
+// FormatVersion is the archive layout a new archive is written in. A restore refuses
+// anything *newer* than this, rather than guessing at a future shape — and accepts
+// everything older, because the archives people are holding were made by the version
+// they had.
+//
+//	1 — configuration, MatrixCtrl's database, Synapse's database (etappe 72)
+//	2 — the accounts and the media and the sealed keys (102), and the sequences (106)
+//
+// The jump to 2 is about the counters: a format-1 archive has no `sequences` in its
+// manifest, which is not a formatting detail but the difference between a homeserver
+// that comes back and one that hands out ids it has already used. Such an archive is
+// still accepted and still restores rooms, messages and accounts — and the preview says
+// plainly what it cannot do, because a silent success is the expensive failure here.
+const FormatVersion = 2
+
+// MinReadableFormat is the oldest layout a restore still understands.
+const MinReadableFormat = 1
 
 // regenerable marks tables whose loss costs history, not function. They dominate the
 // row count (sampling writes ~1440 rows a day) and a restore may reasonably skip them,
