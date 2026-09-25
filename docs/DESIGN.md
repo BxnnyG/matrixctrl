@@ -78,12 +78,12 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
-| S9 Verification & CI | ✅ (E13, E14, E18, E20, E49, E53) | CI on push/PR; **33 frontend tests, 350 Go test functions across 20 packages** (counted 2026-09-03, the previous "26 and 13" was long stale); headless-browser route check that now *fails* on a skipped route rather than passing (E49); gofmt gate in `make check` as well as CI (E53) |
+| S9 Verification & CI | ✅ (E13, E14, E18, E20, E49, E53) | CI on push/PR; **411 Go test functions across 23 packages, 40 frontend tests** (counted 2026-09-25); headless-browser route check that now *fails* on a skipped route rather than passing (E49); gofmt gate in `make check` as well as CI (E53). **E105:** `make check` also rejects `auth can-i <verb> <type>/<subresource>`, and the two live checks that matter most carry a counter-check that must come back denied — a check that cannot fail proves nothing (§4.105) |
 | S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
-| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ½ (E19, E44, E45, E51) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **TLS is only an editable config slice**, and **backup/restore does not exist at all** — checked 2026-09-03, the only matches were a one-off config-migration backup directory |
+| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore still writes only MatrixCtrl’s own part** — the manifest says so rather than implying more; restoring the rest is etappe 106. **TLS is still only an editable config slice.** (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
 | S15 Federation & bridges | ⏳ not started | Phase 4 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
@@ -3926,3 +3926,77 @@ hineingreifen: JA!"). Es steht in der Role des verwalteten Namespace, nicht in d
 ClusterRole, und ohne `resourceNames`, weil der Pod über ein Label gesucht wird und
 sein Name generiert ist — eine Namensliste wäre genau die stille Sorte Bruch, um die
 es hier geht.
+
+**Nachtrag (2026-09-25, etappe 105).** Die oben abgedruckte Messung war kein Beweis.
+`kubectl auth can-i create pods/exec` liest `pods/exec` als **Typ/Name** und fragt, ob
+das Konto *einen Pod namens `exec` anlegen* darf — die Antwort lautet `no`, ob das
+Recht erteilt ist oder nicht. Die Diagnose stimmte trotzdem; sie kam aus dem Go-Test
+(„1 required permission(s) denied"), nicht aus dieser Zeile. Stehen bleibt sie als
+das, was sie war. Siehe §4.105.
+
+### §4.105 — Eine Frage, die nur „nein" sagen kann (2026-09-25, agent, etappe 105)
+
+Etappe 104 hat `pods/exec` erteilt. Sechs Tage später meldete `doctor` es weiter als
+verweigert — und riet, `update` auszuführen, was das Chart bereits ausgeliefert hatte.
+Der Operator hätte das beliebig oft tun können.
+
+Dieselbe Frage, dreimal, gegen denselben Cluster, gegen denselben Dienstaccount:
+
+```
+kubectl auth can-i --as=$SA -n ess create pods/exec               → no
+kubectl auth can-i --as=$SA -n ess create pods --subresource=exec → yes
+SubjectAccessReview {resource: pods, subresource: exec, verb: create}
+  → allowed: true, "RBAC: allowed by RoleBinding matrixctrl/ess"
+```
+
+Der Schrägstrich in `can-i` trennt **Typ und Namen**, nicht Ressource und
+Unterressource. Gefragt wurde also: *darf dieses Konto einen Pod namens `exec`
+anlegen?* Nein — `create` auf `pods` steht bewusst nicht in der Role. Die Antwort war
+korrekt und gehörte zu einer anderen Frage. Dass `get pods/log` daneben ein ✓ bekam,
+ist der Gegenbeweis, nicht die Entlastung: `get pods` ist ohne `resourceNames`
+erteilt, also darf man auch „den Pod namens `log`" lesen. Zwei Zeilen derselben
+Fehlform, eine zufällig grün, eine zufällig rot, keine über Unterressourcen.
+
+**Die Stufe über §4.104.** Dort lief die Prüfung über das falsche *Subjekt* („kann
+**ich** das?"), hier über das falsche *Objekt* („einen Pod namens exec anlegen?").
+Beide Male wurde ein Ergebnis geglaubt, ohne zu prüfen, wie das Gegenteil aussähe.
+Neunte Wiederholung des Musters (§4.79, §4.84, §4.90, §4.92, §4.95, §4.99, §4.103,
+§4.104).
+
+**Merksatz:** *Eine Prüfung, die bei der Gegenthese dasselbe ausgibt, hat nichts
+gemessen. Bevor man eine Antwort glaubt, muss klar sein, wie das Gegenteil aussähe.*
+
+**Es stand seit Etappe 37 im Repository.** Wörtlich, im Plan von damals: die
+`SubjectAccessReview` sei *„die maßgebliche Form, da `kubectl auth can-i pods/log`
+Unterressourcen anders liest und auf eine `serviceaccounts/token`-Frage `yes`
+antwortete, die der API-Server mit `false` beantwortet."* Entdeckt, gemessen,
+aufgeschrieben — und 67 Etappen später wurde ein Operator-Werkzeug gebaut, das genau
+diese Form benutzt. Dritte Etappe in Folge, in der die richtige Überlegung bereits
+dastand, als der Fehler gemacht wurde (§4.103, §4.104).
+
+Daraus die eigentliche Konsequenz: **aufgeschriebenes Wissen hindert niemanden, eine
+fehlschlagende Prüfung schon.** Der Satz aus Etappe 37 ist jetzt ein Gate in
+`check-commands.sh` — dieselbe Datei, die schon durchsetzt, dass ein Befehl in den
+Dokumenten ausführbar ist. Ein Befehl, der *läuft* und eine andere Frage beantwortet,
+ist derselbe Verrat am Leser, nur schwerer zu bemerken. Geprüft werden Skripte und
+Blöcke mit Sprachangabe; ein Block ohne Sprachangabe bleibt frei, weil er ein
+Protokoll ist und kein Auftrag — deshalb darf §4.104 den falschen Befehl weiter
+zitieren.
+
+**Gegenproben statt Zuversicht.** Zwei Stellen bekommen eine Frage, deren Antwort
+`nein` sein *muss*:
+
+| Ort | Gegenprobe | fängt |
+|---|---|---|
+| `doctor` | `create serviceaccounts --subresource=token` muss verweigert sein | die Fehlform (als Typ/Name gefragt ist `create serviceaccounts` erteilt), ein wirkungsloses `--as` (§4.104), eine zu weit gewachsene Role |
+| `TestLiveTarFromPod` | derselbe Exec als `matrixctrl:default` muss 403 bekommen | Impersonation, die den SPDY-Pfad nicht erreicht — dann käme der Erfolg wieder von cluster-admin |
+
+Beide bleiben stumm, wenn sie richtig ausgehen: eine Prüfung, die für jede gute
+Nachricht eine Zeile druckt, wird irgendwann nicht mehr gelesen (§4.96). Am echten
+Cluster gemessen — mit absichtlich eingebauten Fehlern feuert die Gegenprobe, ohne sie
+ist sie unsichtbar, und `doctor` zeigt jetzt `✓ create pods/exec`, **ohne dass ein
+Recht geändert wurde**. Der Unterschied lag allein in der Frage.
+
+Und eine unbeantwortbare Frage wird nicht mehr als Verweigerung gedruckt: ein
+`kubectl` ohne `--subresource` oder eine Kubeconfig ohne `impersonate` meldet, dass
+die Frage hier nicht gestellt werden konnte — nicht, dass die Role falsch ist.

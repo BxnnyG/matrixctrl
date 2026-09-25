@@ -15,6 +15,38 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.93] — 2026-09-25
+
+### Fixed
+
+- **`doctor` reported `create pods/exec` as denied while it was granted, and told the
+  operator to run an upgrade that could not change it.** `kubectl auth can-i create
+  pods/exec` reads `pods/exec` as **type/name**: it asks whether the account may create
+  *a pod called `exec`*, which is refused whether or not the real permission is held.
+  Subresources belong in `--subresource=`. On the live cluster the same five questions
+  now come back with five ticks **without any RBAC object being touched** — only the
+  question changed. The neighbouring `get pods/log` had the same malformed form and
+  happened to answer `yes`, which is why it went unnoticed.
+- **An unanswerable question is no longer printed as a denial.** A `kubectl` too old
+  for `--subresource`, or a kubeconfig that may not impersonate, now says the question
+  could not be put — instead of sending the operator to repair a role that is correct.
+
+### Added
+
+- **A counter-check in `doctor` that stays silent when all is well.** One permission
+  that *must* come back denied (`create serviceaccounts --subresource=token`) is asked
+  alongside the rest. It comes back `yes` if the questions are malformed, if `--as` is
+  not taking effect, or if the role has genuinely grown too wide — and in that case the
+  report says plainly that every tick above it means nothing.
+- **The live media-export test now speaks as the service account**, and refuses to pass
+  unless the same exec is *refused* for an account without a role. The numbers quoted as
+  proof in 0.1.90 came from a root shell; impersonation has to reach the SPDY exec path,
+  not just SubjectAccessReviews, and a green run cannot otherwise tell the difference.
+- **`make check` rejects `auth can-i <verb> <type>/<subresource>`** in scripts and in
+  runnable doc blocks. The distinction was found, measured and written down in etappe 37
+  — 67 etappen before it was made in a tool an operator relies on. A sentence in a plan
+  stops nobody; a failing check does.
+
 ## [0.1.92] — 2026-09-20
 
 ### Fixed

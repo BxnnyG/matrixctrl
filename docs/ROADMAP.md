@@ -89,7 +89,10 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 100 | Eine Rolle, und jeder Moderator hatte sie — Lesezugriff als eigene Rolle | ✅ 2026-09-13 · `v0.1.87` |
 | 101 | Zwischen Auswählen und Antwort passierte nichts — Ablegebereich und echter Upload-Fortschritt | ✅ 2026-09-20 · `v0.1.88` |
 | 102 | Ein „vollständiges" Archiv ohne die Konten — jetzt mit Konten, Medien und versiegelten Schlüsseln | ✅ 2026-09-20 · `v0.1.90` · [plan](plans/etappe-102-umzug-ohne-shell.md) |
-| 103–105 | Zurückspielen aller Teile · groß genug für echte Installationen · Server-zu-Server | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
+| 103 | Der Haken unter dem Widerspruch — ein gepinnter `image.tag`, fünf Wochen lang wieder eingereicht | ✅ 2026-09-20 · `v0.1.91` · [plan](plans/etappe-103-was-mitgeschleppt-wurde.md) |
+| 104 | Die Prüfung lief als der Falsche — `pods/exec` erteilt, und die Verifikation repariert | ✅ 2026-09-20 · `v0.1.92` · [plan](plans/etappe-104-erlaubnis-die-nie-erteilt-wurde.md) |
+| 105 | Eine Frage, die nur „nein“ sagen kann — `can-i` fragte nach einem Pod namens `exec` | ✅ 2026-09-25 · `v0.1.93` · [plan](plans/etappe-105-eine-frage-die-nur-nein-sagen-kann.md) |
+| 106–108 | Zurückspielen aller Teile · der Umzug als ein Vorgang · Server-zu-Server (war 103–105, verschoben durch drei Fehlerfunde) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |

@@ -247,6 +247,45 @@ detect_cert_manager() {
 
 release_exists() { helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; }
 
+# can_i <subject> <verb> <resource> [subresource] → prints "yes" or "no".
+#
+# Exists because `kubectl auth can-i create pods/exec` is not the question it looks
+# like. The slash in `can-i` separates TYPE and NAME, so that asks whether the subject
+# may create *a pod called exec* — a question with its own, unrelated answer, which
+# happened to be "no" while the real right was held. Subresources go in
+# `--subresource=`, and `kubectl auth can-i --help` prints exactly that example.
+#
+# Both spellings run, neither errors, and they disagree. That is why this is one
+# function rather than a rule written down somewhere: a rule about how to spell a
+# command is followed until someone copies the line above it (§4.105).
+#
+# Returns non-zero — with the reason on stdout — when the question could not be put at
+# all: an old kubectl without `--subresource`, or a kubeconfig that may not
+# impersonate. Neither is a denial, and reporting them as one sends the operator to
+# fix a role that is already correct.
+can_i() { # can_i <user> <verb> <resource> [subresource]
+  local user="$1" verb="$2" res="$3" sub="${4:-}"
+  local out
+  # `can-i` exits 1 for a plain "no", so the exit code says nothing here and is not
+  # read; what distinguishes "no" from "could not ask" is the output.
+  if [ -n "$sub" ]; then
+    out=$(kubectl auth can-i "$verb" "$res" --subresource="$sub" \
+            -n "$ESS_NAMESPACE" --as="$user" 2>&1) || true
+  else
+    out=$(kubectl auth can-i "$verb" "$res" \
+            -n "$ESS_NAMESPACE" --as="$user" 2>&1) || true
+  fi
+  case "$out" in
+    yes|no) printf '%s' "$out"; return 0 ;;
+  esac
+  case "$out" in
+    *"unknown flag"*|*"--subresource"*)
+      printf 'this kubectl cannot ask about subresources (needs v1.23+)' ;;
+    *) printf '%s' "$(printf '%s' "$out" | head -n1)" ;;
+  esac
+  return 1
+}
+
 # The values an existing release already carries, written to <file> for `-f`.
 # Returns non-zero when there are none, so callers can guard the flag on it.
 #
@@ -728,33 +767,67 @@ cmd_doctor() {
     info "MatrixCtrl is not installed here — nothing to dry-run against"
   fi
 
-  # Asked as the service account, not as you.
+  # Asked as the service account, not as you — and about the resource the code
+  # actually touches, not one that happens to share a spelling.
   #
-  # Etappe 102 verified the media export by streaming a tar out of the Synapse pod
-  # from a root shell and called it proven. It was — for root. The application runs as
-  # system:serviceaccount:matrixctrl:matrixctrl, which was not allowed to exec into a
-  # pod at all, so the feature shipped dead and the checkbox sat greyed out with no
-  # reason given (§4.104). `--as` is the cheapest way to ask the right subject.
+  # Etappe 102 verified the media export from a root shell and called it proven; it
+  # was, for root (§4.104). Etappe 104 fixed the subject and asked
+  # `can-i create pods/exec`, which reads TYPE/NAME, not resource/subresource: it
+  # asks whether the account may create *a pod named exec*. That is `no` whether the
+  # right is held or not, so the line printed a denial for six days after the right
+  # was granted, under advice to run `update` — which changes nothing (§4.105).
+  # Subresources need `--subresource=`; `kubectl auth can-i --help` says so itself.
   head_ "Can MatrixCtrl do what it needs?"
   if release_exists; then
-    local sa="system:serviceaccount:${NAMESPACE}:matrixctrl" denied=0
+    local sa="system:serviceaccount:${NAMESPACE}:matrixctrl" denied=0 asked=0 unasked=0
     local rule
     for rule in \
-      "get pods|read pod state" \
-      "get pods/log|show pod logs" \
-      "create pods/exec|read the media volume for backups" \
-      "get secrets|read the homeserver keys for backups" \
-      "patch deployments|apply the SFU patches after an upgrade"
+      "get|pods||read pod state" \
+      "get|pods|log|show pod logs" \
+      "create|pods|exec|read the media volume for backups" \
+      "get|secrets||read the homeserver keys for backups" \
+      "patch|deployments||apply the SFU patches after an upgrade"
     do
-      local verb_res="${rule%%|*}" why="${rule##*|}"
-      # shellcheck disable=SC2086  # deliberate split: "verb resource"
-      if [ "$(kubectl auth can-i $verb_res -n "$ESS_NAMESPACE" --as="$sa" 2>/dev/null)" = "yes" ]; then
-        ok "$verb_res"
+      IFS='|' read -r verb res sub why <<EOF
+$rule
+EOF
+      local label="$verb $res${sub:+/$sub}" answer
+      if ! answer=$(can_i "$sa" "$verb" "$res" "$sub" 2>&1); then
+        warn "$label — could not be asked: $answer"
+        unasked=$((unasked + 1))
+        continue
+      fi
+      asked=$((asked + 1))
+      if [ "$answer" = "yes" ]; then
+        ok "$label"
       else
-        warn "$verb_res — denied ($why)"
+        warn "$label — denied ($why)"
         denied=$((denied + 1))
       fi
     done
+    if [ "$unasked" -gt 0 ]; then
+      say "      ${DIM}An unanswerable question is not a denial: nothing above says the role is"
+      say "      wrong, only that this shell could not put the question.${RESET}"
+      problems=$((problems + 1))
+    fi
+
+    # The counter-check. `create serviceaccounts/token` would mint tokens for other
+    # accounts, so it is on the forbidden list and must come back `no`. Three separate
+    # faults turn it into `yes`, and each one makes every tick above meaningless:
+    #   - asked as TYPE/NAME, it degrades to "create a serviceaccount named token",
+    #     which the role *does* allow — the exact bug of etappe 105;
+    #   - `--as` not taking effect, so the answers are about this shell — etappe 104;
+    #   - the role genuinely grown too wide.
+    # Silent when it is correctly refused: a check that prints a line for good news
+    # every time is a check someone eventually stops reading (§4.96).
+    if [ "$asked" -gt 0 ] && [ "$(can_i "$sa" create serviceaccounts token 2>/dev/null)" = "yes" ]; then
+      warn "counter-check failed: the service account appears allowed to mint tokens for other accounts"
+      say  "      ${DIM}Every tick above is meaningless — this must come back denied. Either the"
+      say  "      question is not reaching the service account, or the role has grown too wide:"
+      say  "      kubectl get role matrixctrl -n $ESS_NAMESPACE -o yaml${RESET}"
+      problems=$((problems + 1))
+    fi
+
     if [ "$denied" -gt 0 ]; then
       say "      ${DIM}A denial here means the feature is off, not broken. The role ships with"
       say "      the chart: $(self_cmd) update${RESET}"

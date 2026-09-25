@@ -116,6 +116,57 @@ check "plain http turns tls off" \
   "--set ingress.entrypoint=web --set ingress.tls=false --set ingress.certIssuer=" \
   "$(tls_values cloudflare-flexible '')"
 
+# ---------------------------------------------------------------- can_i
+
+# `kubectl auth can-i create pods/exec` reads TYPE/NAME — it asks whether the subject
+# may create a pod *called* exec, which is refused whether or not the permission is
+# held. doctor printed that denial for six days after etappe 104 granted the right
+# (§4.105). The form is the whole bug, so the form is what is asserted here: a comment
+# saying "use --subresource" is what the repository already had, in etappe 37.
+ESS_NAMESPACE=ess
+KUBECTL_OUT="yes"
+# can_i reads kubectl through a command substitution, so the stub cannot hand its
+# arguments back in a variable — that assignment happens in a subshell. It writes
+# them to a file instead.
+KUBECTL_ARGS_FILE=$(mktemp)
+kubectl() {
+  printf '%s' "$*" > "$KUBECTL_ARGS_FILE"
+  printf '%s\n' "$KUBECTL_OUT"
+  [ "$KUBECTL_OUT" = "yes" ]
+}
+asked() { # asked <verb> <resource> [subresource] -> the kubectl line it produced
+  can_i "system:serviceaccount:matrixctrl:matrixctrl" "$@" >/dev/null 2>&1
+  cat "$KUBECTL_ARGS_FILE"
+}
+
+check "a subresource is asked as --subresource, never as type/name" \
+  "auth can-i create pods --subresource=exec -n ess --as=system:serviceaccount:matrixctrl:matrixctrl" \
+  "$(asked create pods exec)"
+check "without a subresource no such flag is passed" \
+  "auth can-i get secrets -n ess --as=system:serviceaccount:matrixctrl:matrixctrl" \
+  "$(asked get secrets)"
+check "an empty subresource is not an empty flag" \
+  "auth can-i get secrets -n ess --as=system:serviceaccount:matrixctrl:matrixctrl" \
+  "$(asked get secrets "")"
+
+KUBECTL_OUT="yes"; check "yes is passed through" "yes" \
+  "$(can_i sa get pods 2>/dev/null)"
+KUBECTL_OUT="no";  check "no is passed through" "no" \
+  "$(can_i sa get pods 2>/dev/null)"
+
+# A question that could not be put is not a denial. Reporting it as one sends the
+# operator to repair a role that is already correct.
+KUBECTL_OUT="Error: unknown flag: --subresource"
+check "an old kubectl is reported as unanswerable, not as denied" "1" \
+  "$(can_i sa create pods exec >/dev/null 2>&1; echo $?)"
+check "and it says why" "this kubectl cannot ask about subresources (needs v1.23+)" \
+  "$(can_i sa create pods exec 2>/dev/null)"
+KUBECTL_OUT='Error from server (Forbidden): users "x" is forbidden: User cannot impersonate'
+check "a rejected impersonation is unanswerable too" "1" \
+  "$(can_i sa get pods >/dev/null 2>&1; echo $?)"
+unset -f kubectl
+rm -f "$KUBECTL_ARGS_FILE"
+
 # ----------------------------------------------------------------
 
 if [ "$fails" -gt 0 ]; then
