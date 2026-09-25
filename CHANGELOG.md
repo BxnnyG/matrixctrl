@@ -15,6 +15,20 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.96] — 2026-09-25
+
+### Fixed
+
+- **`make check` now runs `go vet ./...`.** It did not, so 0.1.95 passed every local
+  check and turned the pipeline red — the same hole gofmt had until 2026-08-17 and for
+  the same reason: a local check that omits a remote gate answers a narrower question
+  than the one being asked of it. Vetting one package at a time, which is what had been
+  happening, is not vetting the tree.
+- **The restore's progress no longer copies the lock that guards it.** The job struct
+  held both the state and its mutex, and handing a snapshot to the encoder copied both.
+  Harmless in this instance and wrong in general, which is exactly what vet is for. The
+  state a reader is given is now its own type.
+
 ## [0.1.95] — 2026-09-25
 
 Three findings from rehearsing 0.1.94's restore against a live homeserver. Without

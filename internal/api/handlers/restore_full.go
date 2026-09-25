@@ -39,11 +39,22 @@ import (
 type restoreJob struct {
 	mu      sync.Mutex
 	running bool
+	state   restoreState
+}
+
+// restoreState is what a reader is given: the job's contents without its lock.
+//
+// Separate from restoreJob because a snapshot is copied out, and copying a struct that
+// contains a mutex copies the mutex — harmless here by luck and wrong in general, which
+// is why `go vet` refuses it. Splitting the state from the thing that guards it says
+// which half may leave the lock.
+type restoreState struct {
 	Started time.Time      `json:"started"`
 	Steps   []restoreStep  `json:"steps"`
 	Done    bool           `json:"done"`
 	Failed  string         `json:"failed,omitempty"`
 	Summary *restoreReport `json:"summary,omitempty"`
+	Running bool           `json:"running"`
 }
 
 type restoreStep struct {
@@ -65,26 +76,26 @@ type restoreReport struct {
 func (j *restoreJob) say(step, detail string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.Steps = append(j.Steps, restoreStep{At: time.Now().UTC(), Step: step, Detail: detail})
+	j.state.Steps = append(j.state.Steps, restoreStep{At: time.Now().UTC(), Step: step, Detail: detail})
 	log.Printf("restore: %s — %s", step, detail)
 }
 
 func (j *restoreJob) finish(summary *restoreReport, err error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.Done, j.running, j.Summary = true, false, summary
+	j.state.Done, j.running, j.state.Running, j.state.Summary = true, false, false, summary
 	if err != nil {
-		j.Failed = err.Error()
+		j.state.Failed = err.Error()
 	}
 }
 
 // snapshot copies the job under the lock so the handler never encodes a struct that is
 // being written to.
-func (j *restoreJob) snapshot() restoreJob {
+func (j *restoreJob) snapshot() restoreState {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	out := restoreJob{Started: j.Started, Done: j.Done, Failed: j.Failed, Summary: j.Summary}
-	out.Steps = append([]restoreStep(nil), j.Steps...)
+	out := j.state
+	out.Steps = append([]restoreStep(nil), j.state.Steps...)
 	return out
 }
 
@@ -100,7 +111,7 @@ func (h *StatusHandler) RestoreFull(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusConflict, "Es läuft bereits eine Wiederherstellung.")
 		return
 	}
-	job := &restoreJob{running: true, Started: time.Now().UTC()}
+	job := &restoreJob{running: true, state: restoreState{Started: time.Now().UTC(), Running: true}}
 	h.restore = job
 	h.restoreMu.Unlock()
 
@@ -154,8 +165,7 @@ func (h *StatusHandler) RestoreProgress(w http.ResponseWriter, r *http.Request) 
 		JSON(w, http.StatusOK, map[string]any{"running": false})
 		return
 	}
-	snap := job.snapshot()
-	JSON(w, http.StatusOK, snap)
+	JSON(w, http.StatusOK, job.snapshot())
 }
 
 type restoreOptions struct {

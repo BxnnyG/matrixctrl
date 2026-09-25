@@ -54,6 +54,13 @@ test:
 # etappes came to be recorded as built while their image did not exist (§4.40).
 check:
 	$(GO) test ./...
+	# `go vet ./...` is a CI gate, and `make check` did not run it until 2026-09-25 —
+	# the same hole gofmt had until 2026-08-17 and for the same reason: a local check
+	# that omits a remote gate answers a narrower question than the one being asked of
+	# it (§4.52). E106 shipped a `sync.Mutex` copied out of a struct on a green local
+	# check and a red pipeline. Vetting one package at a time, as I had been, is not
+	# vetting the tree.
+	$(GO) vet ./...
 	cd web && ./node_modules/.bin/tsc -b --noEmit
 	# The rules-of-hooks gate. tsc cannot see a hook after an early return —
 	# it is valid TypeScript and a guaranteed React crash (§4.79).
