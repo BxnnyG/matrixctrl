@@ -83,7 +83,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
-| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore still writes only MatrixCtrl’s own part** — the manifest says so rather than implying more; restoring the rest is etappe 106. **TLS is still only an editable config slice.** (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
+| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS is still only an editable config slice.** (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
 | S15 Federation & bridges | ⏳ not started | Phase 4 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
@@ -4000,3 +4000,95 @@ Recht geändert wurde**. Der Unterschied lag allein in der Frage.
 Und eine unbeantwortbare Frage wird nicht mehr als Verweigerung gedruckt: ein
 `kubectl` ohne `--subresource` oder eine Kubeconfig ohne `impersonate` meldet, dass
 die Frage hier nicht gestellt werden konnte — nicht, dass die Role falsch ist.
+
+### §4.106 — Zurückspielen, was drin ist (2026-09-25, operator, etappe 106)
+
+> „backup und wiederherstellen mit allen daten chats verläufe calls accounts, und dann
+> 1 zu 1 mich wieder einloggen per elemnt also mas" · „es soll aber über die webui
+> funktionieren like apple user like unifi user like daus"
+
+Seit §4.102 ist das Archiv vollständig, und der Restore schrieb weiterhin nur
+MatrixCtrls eigenen Teil zurück. Das Manifest sagte es ehrlich. Ehrlich sein über eine
+Lücke ist nicht dasselbe wie sie schließen.
+
+**Die Messung, die den Plan umgeschrieben hat.** Vor der ersten Zeile Code, am
+laufenden Cluster:
+
+```
+synapse                       173 Tabellen, 25 Sequenzen
+matrixauthenticationservice    34 Tabellen,  0 Sequenzen
+device_lists_sequence = 47485 · cache_invalidation_stream_seq = 33066
+```
+
+Der Export listet `pg_class.relkind = 'r'` — gewöhnliche Tabellen. Sequenzen sind
+`relkind = 'S'` und fielen durch. **Im Archiv standen null Zähler.**
+
+Eine Sequenz ist kein Datensatz, sondern der Zähler, aus dem Synapse die
+`stream_ordering` jedes Events und die `state_group`-IDs zieht. Ohne sie beginnt jeder
+Zähler wieder bei 1, während die wiederhergestellten Zeilen bis 47 485 belegt sind:
+
+| Folge | wie es sich zeigt |
+|---|---|
+| Kollision auf dem Primärschlüssel | Synapse schreibt nicht mehr — sichtbar |
+| neue Events sortieren **vor** die Historie | Sync liefert nichts, Räume wirken eingefroren |
+| `state_group_id` doppelt | zwei Räume teilen einen Zustand — stille Beschädigung |
+
+Das Dritte ist das teure: es sieht nach einem geglückten Umzug aus. **Merksatz:** *Ein
+Restore, der die Zähler vergisst, sammelt das Vertrauen ein, bevor der Schaden sichtbar
+wird.* Archivformat steht deshalb jetzt auf 2. Format 1 wird weiter gelesen — die
+Archive, die Leute in der Hand halten, wurden von der Version geschrieben, die sie
+hatten — und die Vorschau sagt vorher, was so ein Archiv nicht kann.
+
+**Die Entscheidung, die umgedreht wurde.** Seit §4.70 lag jedem Homeserver-Export ein
+Satz bei: *„Zurückspielen ist bewusst kein Knopf: dafür muss Synapse gestoppt sein, und
+es im laufenden Betrieb zu tun beschädigt, was da ist."* Der Satz war richtig — als
+Begründung, es **nicht** zu bauen. Als Anforderungsliste gelesen sind beide Gründe
+adressierbar: Anhalten ist ein Schritt, den MatrixCtrl gehen darf, und „beschädigt, was
+da ist" gilt nur, wenn man in die laufende Datenbank schreibt.
+
+**Also wird nicht hineingeschrieben.** Der gefährlichste Knopf des Produkts bekommt die
+Eigenschaft, die ihn drückbar macht:
+
+```
+1. Dienst anhalten           — Postgres verweigert das Umbenennen einer benutzten
+                               Datenbank, und diese Verweigerung ist die Absicherung
+2. synapse → synapse_vor_<ts> — die alten Daten stehen unangetastet unter einem Namen
+3. leere Datenbank anlegen
+4. Dienst starten            — er baut sein Schema selbst, in der Version, die *jetzt*
+                               läuft; deshalb liegt kein Schema im Archiv (§4.66)
+5. wieder anhalten
+6. Zeilen, Zähler, Prüfung
+7. Dienst starten
+```
+
+Ein Fehlschlag zwischen 2 und 6 benennt zurück. Ist auch das blockiert, trägt die
+Meldung den einen Befehl, der es richtigstellt — nicht den Verweis auf ein Dokument.
+Die ersetzte Datenbank wird **nicht** gelöscht: was man nach einem geglückten Umzug
+selbst wegräumt, ist besser als was man nach einem misslungenen nicht mehr hat.
+
+Geprüft wird das gegen Fakes, nicht am Cluster: der Fehlschlag muss an einer gewählten
+Stelle passieren, und jede Probe am echten System kostet einen Homeserver. Gegen ein
+echtes Postgres steht daneben der ganze Tausch — 150 Zeilen gelöscht, 300
+wiederhergestellt, die nächste Nummer ist 301 und nicht 1, und die ersetzte Datenbank
+hält ihre 150 Zeilen weiter.
+
+**Die Falle bei den Schlüsseln.** `ess-generated` enthält die Identität des Homeservers
+(Signierschlüssel, Macaroon, MAS-Verschlüsselung) **und** die Postgres-Passwörter dieser
+Installation. Die Rollen entstehen beim Installieren des Charts; ihre Passwörter stehen
+im laufenden Server, nicht im Archiv. Ein vollständiges Zurückschreiben hinterlässt
+Synapse mit einem Passwort, das seine eigene Datenbank nie gehört hat — jeder Schritt
+meldet Erfolg und nichts startet. Also wird zusammengeführt: Identität aus dem Archiv,
+Zugangsdaten von hier. Was behalten wurde, steht im Bericht.
+
+**Warum der Knopf nicht wartet.** Ein Restore hält Synapse an, wartet auf den
+Schema-Aufbau und lädt eine Datenbank — Minuten, während der Proxy nach etwa hundert
+Sekunden aufgibt. Also nimmt die Anfrage das Archiv, legt es auf Platte und antwortet
+sofort; der Fortschritt wird gepollt. Der Upgrade-Strom löst dasselbe Problem mit einem
+WebSocket, was für tausend Logzeilen pro Minute richtig ist und für fünfzig Schritte
+nicht. Ein geschlossener Tab bricht nichts ab.
+
+**Was noch nicht geprobt ist.** Der Durchlauf am echten ESS — Synapse anhalten, Schema
+neu bauen lassen, Daten laden, ohne neue Anmeldung wieder einloggen. Die Bausteine sind
+einzeln am Cluster geprüft (Anhalten und Warten als Dienstaccount, Dateien in den Pod
+und zurückgelesen, der Tausch gegen ein echtes Postgres); der Durchlauf am Stück ist es
+nicht, und das gehört hierhin statt in eine Zusammenfassung, die es verschweigt.

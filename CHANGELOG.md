@@ -15,6 +15,37 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.94] — 2026-09-25
+
+### Added
+
+- **The restore puts back every part of an archive, from the web interface.** Rooms,
+  messages, accounts, uploaded files and the homeserver's keys — not only MatrixCtrl's
+  own configuration. The archive has been complete since 0.1.90; until now the manifest
+  said honestly what the restore could not do, which is not the same as being able to do
+  it. The upload starts a job and returns; progress is polled and shown as a live log,
+  because the work takes minutes and the proxy in front of the panel does not.
+- **Nothing is overwritten.** The existing database is renamed aside, an empty one takes
+  its name, the service builds its schema in it, and the rows go in. A failure at any
+  point renames the old one back and starts the service again — and if even that is
+  blocked, the message carries the one statement that puts it right. The replaced
+  database is kept, under a name the report names.
+- **Archive format 2 carries the sequences.** Synapse's database has 173 tables and 25
+  counters, and the export listed only tables. Restoring the rows without the counters
+  gives a server that hands out stream orderings its own restored rows already occupy:
+  either a primary-key collision, or — worse, because it is invisible — new events
+  sorting before the entire history while the rooms look frozen. Format 1 archives are
+  still accepted, and the preview says in advance what they cannot do.
+
+### Fixed
+
+- **`ess-generated` is merged rather than replaced when the keys are restored.** That
+  secret holds the homeserver's identity *and* this installation's database passwords.
+  Writing the source's passwords into it would leave Synapse holding a password its own
+  database has never heard of — every step reporting success and nothing starting.
+- **Reading an archive no longer pulls parts it is going to ignore into memory**, which
+  on an archive with media meant up to 256 MB per entry, allocated and discarded.
+
 ## [0.1.93] — 2026-09-25
 
 ### Fixed
