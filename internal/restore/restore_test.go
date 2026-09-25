@@ -19,9 +19,10 @@ import (
 // happened — which is where a restore goes wrong, not in the SQL.
 
 type fakePG struct {
-	dbs    map[string]bool
-	steps  []string
-	failOn map[string]error
+	schemaVersion int
+	dbs           map[string]bool
+	steps         []string
+	failOn        map[string]error
 }
 
 func newPG(existing ...string) *fakePG {
@@ -84,6 +85,29 @@ type fakeSink struct {
 }
 
 func (s *fakeSink) DeferConstraints(context.Context) error { return nil }
+
+func (s *fakeSink) KeepTargetOnly(context.Context) error {
+	s.pg.note("keep")
+	return s.pg.failOn["keep"]
+}
+
+func (s *fakeSink) MergeKept(context.Context) (int, error) {
+	s.pg.note("merge")
+	return 2, s.pg.failOn["merge"]
+}
+
+// schemaVersion is what the target reports; the archive's comes from the feed.
+func (s *fakeSink) SchemaVersion(context.Context) (int, error) {
+	return s.pg.schemaVersion, s.pg.failOn["schema"]
+}
+
+func (s *fakeSink) TruncateAll(context.Context) (int, error) {
+	if err := s.pg.failOn["truncate"]; err != nil {
+		return 0, err
+	}
+	s.pg.note("truncate")
+	return 7, nil
+}
 
 func (s *fakeSink) LoadCSV(_ context.Context, table string, r io.Reader) (int64, error) {
 	if err := s.pg.failOn["load:"+table]; err != nil {
@@ -174,6 +198,8 @@ func TestDatabaseRestoreSwapsRatherThanOverwrites(t *testing.T) {
 		"scale ess-synapse-main 1", // the service builds its schema
 		"scale ess-synapse-main 0",
 		"open synapse",
+		"keep",
+		"truncate",
 		"load events (3)",
 		"load rooms (1)",
 		"sequences 1",
@@ -205,6 +231,7 @@ func TestAFailedRestorePutsTheOldDatabaseBack(t *testing.T) {
 		{"a table that will not load", "load:rooms"},
 		{"the counters cannot be set", "sequences"},
 		{"the empty database cannot be opened", "open"},
+		{"the fresh database cannot be emptied", "truncate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pg, cl, part, man := setup("synapse")
@@ -253,22 +280,132 @@ func TestABlockedRollbackNamesTheWayBack(t *testing.T) {
 // operator is told, because a silent success is the expensive failure here.
 func TestAnArchiveWithoutCountersIsAnnounced(t *testing.T) {
 	pg, cl, part, man := setup("synapse")
+	man.FormatVersion = 1
 	man.Sequences = nil
 
+	log := runWithLog(t, pg, cl, part, man)
+	if !saidAbout(log, "sequences", "alten Format") {
+		t.Errorf("the missing counters must be said out loud, log was:\n%s", strings.Join(log, "\n"))
+	}
+}
+
+// …and a database that simply has none must not be reported as an old archive.
+//
+// The authentication service has exactly zero sequences, which the first rehearsal
+// against the live server duly flagged as a defect in a perfectly good archive. A
+// warning that fires on a healthy case is how a warning stops being read (§4.96), so
+// the statement keys on the archive's format rather than on a count.
+func TestADatabaseWithNoCountersIsNotAnOldArchive(t *testing.T) {
+	pg, cl, part, man := setup("synapse")
+	man.FormatVersion = backup.FormatVersion
+	man.Sequences = nil
+
+	log := runWithLog(t, pg, cl, part, man)
+	if saidAbout(log, "sequences", "alten Format") {
+		t.Errorf("nothing is wrong with this archive, log was:\n%s", strings.Join(log, "\n"))
+	}
+}
+
+// The service writes rows about itself the moment it starts — which schema it is on,
+// which worker processes have registered. Those belong to the installation being
+// restored into: loading the archive's copy tells a newer service it is an older one,
+// and hands out leases against workers that do not exist.
+func TestTablesThatBelongToTheTargetAreNotLoaded(t *testing.T) {
+	pg, cl, part, man := setup("synapse")
+
+	_, err := Database(context.Background(), part, man, cl, pg, "stamp", nil,
+		func(load func(string, io.Reader) error) error {
+			if err := load("events", strings.NewReader("a\n")); err != nil {
+				return err
+			}
+			return load("schema_version", strings.NewReader("99\n"))
+		})
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if strings.Contains(strings.Join(pg.steps, " "), "load schema_version") {
+		t.Errorf("the target's own schema bookkeeping was overwritten: %v", pg.steps)
+	}
+}
+
+func runWithLog(t *testing.T, pg *fakePG, cl *fakeCluster, part Part, man backup.HomeserverManifest,
+	feed ...Feed) []string {
+	t.Helper()
+	use := Feed(twoTables)
+	if len(feed) > 0 {
+		use = feed[0]
+	}
 	var log []string
 	prog := Progress(func(step, detail string) { log = append(log, step+": "+detail) })
-
-	if _, err := Database(context.Background(), part, man, cl, pg, "stamp", prog, twoTables); err != nil {
-		t.Fatalf("a format 1 archive must still restore: %v", err)
+	if _, err := Database(context.Background(), part, man, cl, pg, "stamp", prog, use); err != nil {
+		t.Fatalf("restore: %v", err)
 	}
-	var said bool
+	return log
+}
+
+func saidAbout(log []string, step, phrase string) bool {
 	for _, l := range log {
-		if strings.HasPrefix(l, "sequences: ") && strings.Contains(l, "keine Zähler") {
-			said = true
+		if strings.HasPrefix(l, step+": ") && strings.Contains(l, phrase) {
+			return true
 		}
 	}
-	if !said {
-		t.Errorf("the missing counters must be said out loud, log was:\n%s", strings.Join(log, "\n"))
+	return false
+}
+
+// A database built from scratch queues every initial background job. The archive comes
+// from a server that did all of it long ago, and keeping the fresh list sets the
+// restored server to redoing the lot — which is what the first rehearsal against the
+// live homeserver did: users_in_public_rooms went from 7 913 to 0 and the directory was
+// rebuilt row by row (§4.106).
+func TestQueuedWorkIsDroppedWhenTheSchemaMatches(t *testing.T) {
+	pg, cl, part, man := setup("synapse")
+	pg.schemaVersion = 94
+
+	log := runWithLog(t, pg, cl, part, man, feedWithSchema(94))
+	if strings.Contains(strings.Join(pg.steps, " "), "merge") {
+		t.Errorf("nothing needed keeping at the same schema version: %v", pg.steps)
+	}
+	if !saidAbout(log, "schema", "entfallen") {
+		t.Errorf("the decision must be stated: %s", strings.Join(log, "\n"))
+	}
+}
+
+// …and kept when the target runs something newer, because some of that work belongs to
+// deltas the archive has never seen and there is no way to tell which.
+func TestQueuedWorkIsKeptWhenTheTargetIsNewer(t *testing.T) {
+	pg, cl, part, man := setup("synapse")
+	pg.schemaVersion = 96
+
+	log := runWithLog(t, pg, cl, part, man, feedWithSchema(94))
+	if !strings.Contains(strings.Join(pg.steps, " "), "merge") {
+		t.Errorf("the newer schema's queued work must survive: %v", pg.steps)
+	}
+	if !saidAbout(log, "schema", "96") {
+		t.Errorf("both versions must be named: %s", strings.Join(log, "\n"))
+	}
+}
+
+// The counting happens before the merge. Otherwise the rows the merge puts back look
+// like rows the load did not write — which is exactly how the second rehearsal failed,
+// and the rollback it triggered was correct about a restore that was fine.
+func TestTheCountIsTakenBeforeAnythingIsAddedBack(t *testing.T) {
+	pg, cl, part, man := setup("synapse")
+	pg.schemaVersion = 96
+
+	runWithLog(t, pg, cl, part, man, feedWithSchema(94))
+	steps := strings.Join(pg.steps, " | ")
+	if strings.Index(steps, "merge") < strings.Index(steps, "verify") {
+		t.Errorf("verify must come first: %s", steps)
+	}
+}
+
+func feedWithSchema(version int) Feed {
+	return func(load func(string, io.Reader) error) error {
+		if err := twoTables(load); err != nil {
+			return err
+		}
+		return load("schema_version", strings.NewReader(
+			fmt.Sprintf("version,upgraded\n%d,t\n", version)))
 	}
 }
 

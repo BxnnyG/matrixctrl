@@ -4087,8 +4087,52 @@ sofort; der Fortschritt wird gepollt. Der Upgrade-Strom löst dasselbe Problem m
 WebSocket, was für tausend Logzeilen pro Minute richtig ist und für fünfzig Schritte
 nicht. Ein geschlossener Tab bricht nichts ab.
 
-**Was noch nicht geprobt ist.** Der Durchlauf am echten ESS — Synapse anhalten, Schema
-neu bauen lassen, Daten laden, ohne neue Anmeldung wieder einloggen. Die Bausteine sind
-einzeln am Cluster geprüft (Anhalten und Warten als Dienstaccount, Dateien in den Pod
-und zurückgelesen, der Tausch gegen ein echtes Postgres); der Durchlauf am Stück ist es
-nicht, und das gehört hierhin statt in eine Zusammenfassung, die es verschweigt.
+**Die Generalprobe am echten ESS** (2026-09-25, mit Zustimmung des Operators, auf dem
+Server, dessen DNS bereits umgezogen ist). Sie hat drei Läufe gebraucht, und die zwei
+Fehlschläge sind der Ertrag.
+
+*Erster Lauf, Konten:* 34 Tabellen, 28 Sekunden — und eine Abweichung, `queue_workers`
+88 → 89. Kein Verlust: der Dienst meldet sich beim Start in dieser Tabelle an. Sie
+gehört damit zur selben Sorte wie die Schema-Buchhaltung — und eine Zeile von der
+Quelle, die sich nie abgemeldet hat, beschreibt hier einen Arbeiter, den es nicht gibt,
+während Aufgaben gegen diese Liste vergeben werden. Zweitens meldete derselbe Lauf, das
+Archiv enthalte keine Zähler. Es stimmte und war irreführend: der Authentication
+Service hat schlicht keine. Die Warnung hing an der Anzahl statt am Archivformat — eine
+Warnung, die bei einem gesunden Fall feuert, ist eine, die man abschaltet (§4.96).
+
+*Zweiter Lauf, Synapse:* 173 Tabellen, 1 068 757 Zeilen in 71 Sekunden — und danach
+`users_in_public_rooms` **7 913 → 0**, `user_directory` 4 052 → 431 und steigend.
+
+Die Ursache ist die interessanteste Stelle dieser Etappe. Eine frisch gebaute Datenbank
+stellt **49 Hintergrundaufgaben** in die Warteschlange — das Benutzerverzeichnis füllen,
+diese Indizes bauen —, weil genau das ein neuer Homeserver zu tun hat. Das Original
+hatte **0** offen. Ich hatte `background_updates` als „Buchhaltung des Ziels" behandelt;
+sie ist aber Buchhaltung über die **Daten**, und die Daten des Archivs haben diese
+Arbeit längst hinter sich. Der wiederhergestellte Server fing also an, alles noch einmal
+zu tun: er leerte das Verzeichnis und baute es Zeile für Zeile neu auf. Es konvergiert —
+und sieht eine Stunde lang exakt wie Datenverlust aus. Auf einem großen Server wäre es
+ein Tag.
+
+*Die Rücknahme, unfreiwillig geprüft.* Der dritte Anlauf scheiterte an der eigenen
+Prüfung („background_updates: 0 erwartet, 51 gefunden") und hat sich **von allein
+zurückgenommen** — im laufenden Betrieb, am echten Homeserver. Danach: Schema 94,
+0 offene Aufgaben, 19 064 Events, 4 052 Verzeichniseinträge. Die Eigenschaft, um
+derentwillen der ganze Aufbau so gebaut ist, hat sich ungeplant bewiesen.
+
+*Die Regel, die daraus wurde.* Nicht „Ziel gewinnt" und nicht „Archiv gewinnt", sondern
+eine Frage an die Schema-Version: **stimmen sie überein, ist die Liste des Archivs die
+Wahrheit** und die Warteschlange des frisch gebauten Servers entfällt. **Ist das Ziel
+neuer**, gehören einige dieser Aufgaben zu Deltas, die das Archiv nie gesehen hat — und
+es gibt keine Möglichkeit zu unterscheiden, welche —, also bleiben alle stehen. Eine
+Hintergrundaufgabe ist wiederaufnehmbar; sie zweimal zu laufen ist billig neben der
+einen, die nie läuft.
+
+*Dritter Lauf:* 169 Tabellen, 1 068 759 Zeilen, 21 Zähler, 69 Sekunden. **Keine Tabelle
+hat Zeilen verloren** (173 geprüft), 0 offene Hintergrundaufgaben, und die Zähler stehen
+exakt wie vorher — `device_lists_sequence=47485`, `events_stream_seq=2869`,
+`state_group_id_seq=17389`, `receipts_sequence=1398`. Dazugeschrieben hat nur
+`cache_invalidation_stream_by_instance` (+2), weil Synapse beim Start zwei
+Cache-Invalidierungen notiert.
+
+**Merksatz aus der Probe:** *Der Unterschied zwischen einem wiederhergestellten Server
+und einem funktionierenden liegt in den Tabellen, die keine Daten sind.*

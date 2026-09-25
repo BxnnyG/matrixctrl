@@ -2,6 +2,8 @@ package backup
 
 import (
 	"context"
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -211,4 +213,206 @@ func TableFromArchivePath(name, prefix string) (string, bool) {
 		return "", false
 	}
 	return table, true
+}
+
+// BelongsToTheTarget are the tables a database keeps about *itself* rather than about
+// its data: which schema it is on, and which processes are running against it. They
+// belong to the installation being restored into and never to the archive.
+//
+// This is the same rule `neverRestored` states for MatrixCtrl's own database, arriving
+// at the homeserver for the same reason and with a sharper edge. The schema in a restore
+// target is built by the service on first start, in the version running now — so the
+// bookkeeping in the target describes *that* schema. Loading the archive's copy over it
+// tells a newer Synapse that it is an older one: it would try to apply deltas it has
+// already applied, against objects that already exist.
+//
+// They are also what makes a restore into a freshly created database possible at all.
+// Building the schema leaves rows in them, and a COPY of the archive's rows on top
+// collides on the primary key — the restore fails at the first table, alphabetically,
+// with a message about a duplicate key that explains nothing.
+var BelongsToTheTarget = map[string]bool{
+	// Synapse
+	"applied_schema_deltas":  true,
+	"applied_module_schemas": true,
+	"schema_version":         true,
+	"schema_compat_version":  true,
+	// Matrix Authentication Service (sqlx)
+	"_sqlx_migrations": true,
+	// …and its record of which worker processes have registered. Found by the first
+	// rehearsal against the live server: 88 rows went in and 89 came back, because the
+	// service registers itself on start. Restoring them is not merely noise — a row
+	// from the source that has not shut down describes a worker that does not exist
+	// here, and leases are handed out against that list.
+	"queue_workers": true,
+}
+
+// MergedWithTarget are tables restored from the archive that additionally keep rows the
+// target has and the archive does not, keyed by the column identifying a row.
+//
+// `background_updates` is Synapse's list of work still to do *on the data*, and the
+// first rehearsal against the live server showed what happens when the target's copy is
+// kept instead: a database built from scratch has 49 of them pending — populate the user
+// directory, build these indexes — because that is what a brand-new homeserver has to do.
+// The restored server then set about redoing all of it on data where it had long been
+// done, emptied `users_in_public_rooms` from 7 913 to 0 and rebuilt the directory row by
+// row. Nothing was lost in the end; it converged. But for an hour it looked exactly like
+// loss, and on a large server it would have been a day.
+//
+// Taking the archive's copy alone is not right either: a *newer* schema on the target
+// may have queued work the archive has never heard of, and dropping it leaves new
+// columns unfilled forever. So the archive's list wins and the target's extras are kept.
+var MergedWithTarget = map[string]string{
+	"background_updates": "update_name",
+}
+
+// KeepTargetOnly snapshots the merged tables before the load empties them.
+//
+// Into temporary tables, which live for this session only: nothing is left behind if the
+// restore fails, and the restore holds one connection for the whole load.
+func (l *Loader) KeepTargetOnly(ctx context.Context) error {
+	for table := range MergedWithTarget {
+		var exists bool
+		if err := l.conn.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			 WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = $1)`, table).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if _, err := l.conn.Exec(ctx, fmt.Sprintf(
+			`CREATE TEMP TABLE %s ON COMMIT PRESERVE ROWS AS SELECT * FROM %s`,
+			quoted(keepTable(table)), quoted(table))); err != nil {
+			return fmt.Errorf("%s sichern: %w", table, err)
+		}
+	}
+	return nil
+}
+
+// MergeKept puts back the rows only the target had, after the archive's are loaded.
+func (l *Loader) MergeKept(ctx context.Context) (int, error) {
+	kept := 0
+	for table, key := range MergedWithTarget {
+		var exists bool
+		if err := l.conn.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			 WHERE c.relkind = 'r' AND c.relname = $1 AND n.nspname LIKE 'pg_temp%')`,
+			keepTable(table)).Scan(&exists); err != nil {
+			return kept, err
+		}
+		if !exists {
+			continue
+		}
+		tag, err := l.conn.Exec(ctx, fmt.Sprintf(
+			`INSERT INTO %s SELECT k.* FROM %s k
+			 WHERE NOT EXISTS (SELECT 1 FROM %s t WHERE t.%s = k.%s)`,
+			quoted(table), quoted(keepTable(table)), quoted(table), quoted(key), quoted(key)))
+		if err != nil {
+			return kept, fmt.Errorf("%s zusammenführen: %w", table, err)
+		}
+		kept += int(tag.RowsAffected())
+	}
+	return kept, nil
+}
+
+func keepTable(table string) string { return "mxctrl_keep_" + table }
+
+// TruncateAll empties every table except the ones that describe the schema.
+//
+// Only ever called against a database this restore created minutes earlier: the design
+// renames the live one aside and never writes into it, so there is nothing here that an
+// operator had before. It is needed because "empty" is not what a freshly migrated
+// database is — the service leaves its bookkeeping behind, and some versions seed rows.
+//
+// One statement listing every table: Postgres refuses to truncate a table another one
+// references unless both are emptied together, and doing them together is also the only
+// way this stays a single moment.
+func (l *Loader) TruncateAll(ctx context.Context) (int, error) {
+	rows, err := l.conn.Query(ctx, `
+		SELECT c.relname
+		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relkind = 'r'
+		ORDER BY c.relname`)
+	if err != nil {
+		return 0, err
+	}
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if BelongsToTheTarget[name] {
+			continue
+		}
+		names = append(names, quoted(name))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(names) == 0 {
+		return 0, nil
+	}
+	_, err = l.conn.Exec(ctx, `TRUNCATE TABLE `+strings.Join(names, ", ")+` CASCADE`)
+	return len(names), err
+}
+
+// SchemaVersion reads the schema version a database records about itself.
+//
+// Returns 0 when there is no such table, which is a normal answer: only Synapse keeps
+// one. The caller uses it to decide whether the target's schema is newer than the
+// archive's, and "no answer" has to mean "cannot tell" rather than "version zero".
+func (l *Loader) SchemaVersion(ctx context.Context) (int, error) {
+	var v int
+	err := l.conn.QueryRow(ctx, `
+		SELECT COALESCE((SELECT max(version) FROM schema_version), 0)
+		WHERE EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		              WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = 'schema_version')`).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return v, err
+}
+
+// SchemaVersionFromCSV reads the same number out of the archive's copy of that table.
+//
+// The table is not restored — it describes the schema the target built, not the one the
+// archive came from — but the number in it is exactly what decides whether the target is
+// running something newer, so it is read on the way past.
+func SchemaVersionFromCSV(r io.Reader) (int, error) {
+	rd := csv.NewReader(r)
+	rd.FieldsPerRecord = -1
+	header, err := rd.Read()
+	if err != nil {
+		return 0, err
+	}
+	col := -1
+	for i, name := range header {
+		if strings.TrimSpace(name) == "version" {
+			col = i
+			break
+		}
+	}
+	if col < 0 {
+		return 0, fmt.Errorf("no version column")
+	}
+	best := 0
+	for {
+		row, err := rd.Read()
+		if err == io.EOF {
+			return best, nil
+		}
+		if err != nil {
+			return best, err
+		}
+		if col >= len(row) {
+			continue
+		}
+		var v int
+		if _, err := fmt.Sscanf(strings.TrimSpace(row[col]), "%d", &v); err == nil && v > best {
+			best = v
+		}
+	}
 }

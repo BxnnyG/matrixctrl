@@ -15,6 +15,40 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.95] — 2026-09-25
+
+Three findings from rehearsing 0.1.94's restore against a live homeserver. Without
+them a restore lands a server that comes back and then spends the next hours rebuilding
+what it already had.
+
+### Fixed
+
+- **A restored server no longer redoes the work its data has already had done.** A
+  database built from scratch queues every initial background job — populate the user
+  directory, build these indexes — because that is what a new homeserver has to do. The
+  archive comes from a server that finished all of it long ago. 0.1.94 kept the fresh
+  list: the rehearsal watched `users_in_public_rooms` go from 7 913 to 0 and the
+  directory rebuild itself row by row. It converges, and for an hour it looks exactly
+  like loss. The rule now asks the schema version: the same version means the archive's
+  list is the truth, a newer target keeps its queued work because some of it belongs to
+  deltas the archive has never seen.
+- **Rows are counted before anything is added back**, so a merge cannot look like a load
+  that came up short. The second rehearsal rolled itself back over exactly that —
+  correctly, about a restore that was fine.
+- **The "this archive has no counters" warning keys on the archive's format, not on a
+  count of zero.** The authentication service legitimately has none, and the first
+  rehearsal duly flagged its perfectly good archive. A warning that fires on a healthy
+  case is one that gets switched off.
+- **The record of which worker processes have registered stays with the installation.**
+  A row from the source that never shut down describes a worker that does not exist
+  here, and work is handed out against that list.
+
+### Verified
+
+- The whole run against the live homeserver: 169 tables, 1 068 759 rows and 21 counters
+  in 69 seconds, no table losing a row (173 checked), and the counters back at exactly
+  their previous values. The database that was replaced is kept under its own name.
+
 ## [0.1.94] — 2026-09-25
 
 ### Added

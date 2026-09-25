@@ -57,6 +57,10 @@ type Postgres interface {
 // Sink is the connection that gets filled.
 type Sink interface {
 	DeferConstraints(ctx context.Context) error
+	KeepTargetOnly(ctx context.Context) error
+	TruncateAll(ctx context.Context) (int, error)
+	MergeKept(ctx context.Context) (int, error)
+	SchemaVersion(ctx context.Context) (int, error)
 	LoadCSV(ctx context.Context, table string, r io.Reader) (int64, error)
 	SetSequences(ctx context.Context, seqs []backup.Sequence) (int, []string, error)
 	Verify(ctx context.Context, loaded map[string]int64) ([]backup.Mismatch, error)
@@ -231,10 +235,35 @@ func Database(ctx context.Context, p Part, man backup.HomeserverManifest,
 	if err := sink.DeferConstraints(ctx); err != nil {
 		return rollback(err)
 	}
+	// "Freshly created" is not "empty": building the schema leaves the service's own
+	// bookkeeping behind, and a COPY on top of it collides on the primary key. The
+	// tables that describe the schema are the ones kept — they belong to the version
+	// running here, not to the one the archive came from.
+	if err := sink.KeepTargetOnly(ctx); err != nil {
+		return rollback(err)
+	}
+	emptied, err := sink.TruncateAll(ctx)
+	if err != nil {
+		return rollback(err)
+	}
+	prog.say("prepare", "%d Tabellen geleert, die Schema-Buchhaltung bleibt stehen", emptied)
 
 	res.Rows = map[string]int64{}
 	prog.say("load", "%d Tabellen werden eingespielt", len(man.Tables))
+	skipped, archiveSchema := 0, 0
 	if err := feed(func(table string, r io.Reader) error {
+		// The archive's copy of the schema bookkeeping would tell a newer service that
+		// it is an older one. The target's own stays — except for the one number in it
+		// that says which version the archive came from, which is read on the way past.
+		if backup.BelongsToTheTarget[table] {
+			skipped++
+			if table == "schema_version" {
+				if v, err := backup.SchemaVersionFromCSV(r); err == nil {
+					archiveSchema = v
+				}
+			}
+			return nil
+		}
 		n, err := sink.LoadCSV(ctx, table, r)
 		if err != nil {
 			return err
@@ -247,13 +276,21 @@ func Database(ctx context.Context, p Part, man backup.HomeserverManifest,
 		return rollback(err)
 	}
 
-	set, skipped, err := sink.SetSequences(ctx, man.Sequences)
+	if skipped > 0 {
+		prog.say("load", "%d Tabellen der Schema-Buchhaltung übersprungen", skipped)
+	}
+
+	set, skippedSeqs, err := sink.SetSequences(ctx, man.Sequences)
 	if err != nil {
 		return rollback(err)
 	}
-	res.Sequences, res.SkippedSeqs = set, skipped
-	if len(man.Sequences) == 0 {
-		prog.say("sequences", "dieses Archiv enthält keine Zähler (Format 1) — "+
+	res.Sequences, res.SkippedSeqs = set, skippedSeqs
+	// Keyed on the archive's format, not on the number of counters. A database can
+	// legitimately have none — the authentication service has exactly zero — and the
+	// first rehearsal duly warned that its perfectly good archive was missing them.
+	// A warning that fires on a healthy case is how a warning stops being read (§4.96).
+	if man.FormatVersion < 2 {
+		prog.say("sequences", "dieses Archiv ist im alten Format und enthält die Zähler nicht — "+
 			"der Server vergibt Nummern neu, die er schon vergeben hat")
 	} else {
 		prog.say("sequences", "%d Zähler gesetzt", set)
@@ -268,6 +305,40 @@ func Database(ctx context.Context, p Part, man backup.HomeserverManifest,
 		return rollback(fmt.Errorf("die Datenbank enthält nicht, was geschrieben wurde: %v", bad))
 	}
 	prog.say("verify", "%d Tabellen, %d Zeilen — gezählt, nicht behauptet", res.Tables, res.TotalRows)
+
+	// Only after the counting, and only when the target is running a newer schema.
+	//
+	// A database built from scratch queues every initial background job — populate the
+	// user directory, build these indexes — because that is what a brand-new homeserver
+	// has to do. The archive comes from a server that did all of it long ago. Keeping
+	// the fresh list unconditionally sets the restored server to redoing the lot: the
+	// first rehearsal against the live server emptied users_in_public_rooms from 7 913
+	// to 0 and rebuilt the directory row by row, which converges and for an hour looks
+	// exactly like loss (§4.106).
+	//
+	// When the schema versions match, the archive's list is the truth and the queued
+	// work is redundant. When the target is newer, some of those jobs belong to deltas
+	// the archive has never seen, and there is no way to tell which — so they are all
+	// kept, because a background update is resumable and running one twice is cheap
+	// next to never running one that was needed.
+	targetSchema, err := sink.SchemaVersion(ctx)
+	if err != nil {
+		return rollback(err)
+	}
+	switch {
+	case targetSchema == 0 || archiveSchema == 0:
+		// No schema version to compare (the authentication service keeps none).
+	case targetSchema > archiveSchema:
+		kept, err := sink.MergeKept(ctx)
+		if err != nil {
+			return rollback(err)
+		}
+		prog.say("schema", "dieses ESS führt Schema %d, das Archiv kam von %d — "+
+			"%d Hintergrundaufgaben bleiben offen und laufen nach dem Start", targetSchema, archiveSchema, kept)
+	default:
+		prog.say("schema", "Schema %d wie im Archiv — die Hintergrundaufgaben eines "+
+			"frisch gebauten Servers entfallen, die Daten haben sie hinter sich", targetSchema)
+	}
 
 	sink.Close(ctx)
 	if err := start(want); err != nil {
