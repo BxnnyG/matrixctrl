@@ -80,14 +80,17 @@ type Part struct {
 
 // Result is what happened, in numbers the operator can check.
 type Result struct {
-	Database     string
-	PreviousName string // where the old data now lives; empty if there was none
-	Rows         map[string]int64
-	Tables       int
-	TotalRows    int64
-	Sequences    int
-	SkippedSeqs  []string
-	Mismatches   []backup.Mismatch
+	Database string `json:"database"`
+	// PreviousName is where the old data now lives; empty if there was none. It is in
+	// the response because an operator who has just replaced a homeserver needs to know
+	// what to keep and what to remove, and a name they can read is the difference.
+	PreviousName string            `json:"previous_name,omitempty"`
+	Rows         map[string]int64  `json:"-"`
+	Tables       int               `json:"tables"`
+	TotalRows    int64             `json:"total_rows"`
+	Sequences    int               `json:"sequences"`
+	SkippedSeqs  []string          `json:"skipped_sequences,omitempty"`
+	Mismatches   []backup.Mismatch `json:"mismatches,omitempty"`
 }
 
 // Feed hands the runner one table at a time. The caller owns the archive walk, so the

@@ -159,6 +159,12 @@ func NewRouter(deps Deps) http.Handler {
 			// came from, and that is worth seeing before it overwrites anything (E69).
 			r.Post("/restore/preview", deps.Status.RestorePreview)
 			r.Post("/restore", deps.Status.Restore)
+			// The whole archive: the homeserver's database, the accounts, the files and
+			// the keys — not only MatrixCtrl's own part (etappe 106). It answers at once
+			// and reports progress separately, because the work outlasts any proxy in
+			// front of this panel.
+			r.Post("/restore/full", deps.Status.RestoreFull)
+			r.Get("/restore/progress", deps.Status.RestoreProgress)
 			r.Get("/events", deps.Status.Events)
 			r.Get("/components/{name}/pods", deps.Status.ComponentDetail)
 			r.Get("/pods/{deployment}", deps.Status.DeploymentPods)

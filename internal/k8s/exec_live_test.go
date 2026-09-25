@@ -146,3 +146,80 @@ func TestLiveSecretYAMLIsApplyable(t *testing.T) {
 		}
 	}
 }
+
+// Putting files back, in the pod, as the account that will do it.
+//
+// TarFromPod has been proven since etappe 102; the way back had not, and "the same
+// mechanism in reverse" is exactly the sort of assumption this repository keeps finding
+// in its own comments. It writes into a directory of its own under /media, reads it back
+// and removes it — so it exercises the real path on the real volume without touching a
+// single uploaded file.
+func TestLiveTarIntoPod(t *testing.T) {
+	if os.Getenv("RUN_LIVE") == "" {
+		t.Skip("set RUN_LIVE=1")
+	}
+	admin, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	pods, err := admin.PodsByLabel(ctx, "ess", "app.kubernetes.io/name=synapse-main")
+	if err != nil || len(pods) == 0 {
+		t.Skipf("no synapse pod here: %v", err)
+	}
+	pod := pods[0]
+	c := asServiceAccount(ctx, t, admin)
+
+	free, err := c.FreeSpaceInPod(ctx, "ess", pod, "synapse", "/media")
+	if err != nil {
+		t.Fatalf("free space: %v", err)
+	}
+	t.Logf("frei auf /media: %.1f GB", float64(free)/1024/1024/1024)
+	if free <= 0 {
+		t.Fatal("a restore has to be able to ask how much room is left")
+	}
+
+	staging := "/media/.matrixctrl-restore-test"
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := c.RunInPod(ctx, "ess", pod, "synapse", "rm", "-rf", staging); err != nil {
+			t.Errorf("the staging directory was left in the pod: %v", err)
+		}
+	})
+	if _, err := c.RunInPod(ctx, "ess", pod, "synapse", "mkdir", "-p", staging); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	body := []byte("restored by the live test\n")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "proof.txt", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.TarIntoPod(ctx, "ess", pod, "synapse", staging, &buf); err != nil {
+		t.Fatalf("streaming the files in: %v", err)
+	}
+
+	// Read back rather than trusting the absence of an error: tar exits 0 on an empty
+	// stream, which would look exactly like a successful restore of nothing.
+	got, err := c.RunInPod(ctx, "ess", pod, "synapse", "cat", staging+"/proof.txt")
+	if err != nil {
+		t.Fatalf("reading it back: %v", err)
+	}
+	if got != strings.TrimSpace(string(body)) {
+		t.Errorf("what arrived is not what was sent: %q", got)
+	}
+	t.Logf("in den Pod geschrieben und zurückgelesen: %q", got)
+}

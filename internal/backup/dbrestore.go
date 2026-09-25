@@ -153,9 +153,9 @@ func (l *Loader) SetSequences(ctx context.Context, seqs []Sequence) (set int, sk
 
 // Mismatch is one table whose restored row count is not what the manifest promised.
 type Mismatch struct {
-	Table    string
-	Expected int64
-	Found    int64
+	Table    string `json:"table"`
+	Expected int64  `json:"expected"`
+	Found    int64  `json:"found"`
 }
 
 func (m Mismatch) String() string {

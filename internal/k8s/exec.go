@@ -13,6 +13,48 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// execInPod runs one command in a container and wires the streams.
+//
+// Three callers wanted this before it existed and each built its own request, executor
+// and error handling — the shape that put `pods/exec` in the archive path twice and
+// would have put a third copy here (rule 3). stderr is always collected: when a command
+// in a container refuses, its one line is the entire explanation, and a stream that ends
+// early with no reason is the failure mode this project keeps meeting.
+func (c *Client) execInPod(ctx context.Context, namespace, pod, container string,
+	cmd []string, stdin io.Reader, stdout io.Writer) (string, error) {
+
+	if c == nil || c.Static == nil || c.rest == nil {
+		return "", fmt.Errorf("no cluster connection")
+	}
+	req := c.Static.CoreV1().RESTClient().Post().
+		Resource("pods").Namespace(namespace).Name(pod).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: container,
+			Command:   cmd,
+			Stdin:     stdin != nil,
+			Stdout:    stdout != nil,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(c.rest, "POST", req.URL())
+	if err != nil {
+		return "", fmt.Errorf("exec into %s/%s: %w", namespace, pod, err)
+	}
+	var errOut strings.Builder
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin: stdin, Stdout: stdout, Stderr: &errOut,
+	})
+	msg := strings.TrimSpace(errOut.String())
+	if err != nil {
+		if msg != "" {
+			return msg, fmt.Errorf("%s in %s/%s: %s", cmd[0], namespace, pod, msg)
+		}
+		return msg, fmt.Errorf("%s in %s/%s: %w", cmd[0], namespace, pod, err)
+	}
+	return msg, nil
+}
+
 // TarFromPod streams a directory out of a container as a tar.
 //
 // The uploaded files live on a volume that only the Synapse pod mounts, so nothing
@@ -24,71 +66,73 @@ import (
 // The operator was asked before this existed, because it widens what MatrixCtrl does
 // inside the cluster (etappe 102).
 func (c *Client) TarFromPod(ctx context.Context, namespace, pod, container, dir string, out io.Writer) error {
-	if c == nil || c.Static == nil || c.rest == nil {
-		return fmt.Errorf("no cluster connection")
+	// `-C dir .` rather than tarring an absolute path: the archive then contains
+	// relative names and unpacks into whatever directory it is given, which is what a
+	// restore onto a differently-laid-out pod needs.
+	_, err := c.execInPod(ctx, namespace, pod, container,
+		[]string{"tar", "-cf", "-", "-C", dir, "."}, nil, out)
+	return err
+}
+
+// TarIntoPod streams a tar back in, unpacking it in the container.
+//
+// The counterpart of TarFromPod and the reason the archive stores the media as one tar
+// member rather than unpacking it: what came out goes back in as a stream, and a
+// homeserver with a hundred gigabytes of uploads is never held anywhere in between.
+//
+// It unpacks into `dir` without deleting anything first. The caller stages into a
+// directory of its own and moves the result into place, because /media is a mount
+// point: nothing can be created beside it and it cannot be renamed — the same shape
+// that broke the config restore in etappe 73.
+func (c *Client) TarIntoPod(ctx context.Context, namespace, pod, container, dir string, in io.Reader) error {
+	_, err := c.execInPod(ctx, namespace, pod, container,
+		[]string{"tar", "-xf", "-", "-C", dir}, in, io.Discard)
+	return err
+}
+
+// RunInPod runs a command and returns its output, for the small filesystem steps a
+// restore needs around the tar: making a staging directory, moving it into place,
+// asking how much room is left.
+func (c *Client) RunInPod(ctx context.Context, namespace, pod, container string, cmd ...string) (string, error) {
+	var out strings.Builder
+	if _, err := c.execInPod(ctx, namespace, pod, container, cmd, nil, &out); err != nil {
+		return strings.TrimSpace(out.String()), err
 	}
+	return strings.TrimSpace(out.String()), nil
+}
 
-	req := c.Static.CoreV1().RESTClient().Post().
-		Resource("pods").Namespace(namespace).Name(pod).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: container,
-			// `-C dir .` rather than tarring an absolute path: the archive then
-			// contains relative names and unpacks into whatever directory it is given,
-			// which is what a restore onto a differently-laid-out pod needs.
-			Command: []string{"tar", "-cf", "-", "-C", dir, "."},
-			Stdout:  true,
-			Stderr:  true,
-		}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(c.rest, "POST", req.URL())
+// FreeSpaceInPod reports the bytes left on the filesystem holding dir.
+//
+// Asked before a restore writes anything: running out of room halfway through a media
+// restore is a failure that leaves half the uploads in a staging directory, and a
+// number beforehand turns it into a sentence the operator reads instead.
+func (c *Client) FreeSpaceInPod(ctx context.Context, namespace, pod, container, dir string) (int64, error) {
+	out, err := c.RunInPod(ctx, namespace, pod, container, "df", "-Pk", dir)
 	if err != nil {
-		return fmt.Errorf("exec into %s/%s: %w", namespace, pod, err)
+		return 0, err
 	}
-
-	// stderr is collected rather than discarded: when tar refuses, its one line is the
-	// entire explanation, and a stream that ends early with no reason is the failure
-	// mode this project keeps meeting.
-	var errOut strings.Builder
-	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdout: out,
-		Stderr: &errOut,
-	}); err != nil {
-		if msg := strings.TrimSpace(errOut.String()); msg != "" {
-			return fmt.Errorf("tar in %s/%s said: %s", namespace, pod, msg)
-		}
-		return fmt.Errorf("streaming from %s/%s: %w", namespace, pod, err)
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) < 4 {
+		return 0, fmt.Errorf("could not read the free space on %s: %q", dir, out)
 	}
-	return nil
+	var kb int64
+	if _, err := fmt.Sscanf(fields[3], "%d", &kb); err != nil {
+		return 0, fmt.Errorf("could not read the free space on %s: %q", dir, out)
+	}
+	return kb * 1024, nil
 }
 
 // DirSizeInPod reports how large a directory is, so the choice to include it can be
 // made against a number instead of a feeling.
 func (c *Client) DirSizeInPod(ctx context.Context, namespace, pod, container, dir string) (int64, error) {
-	if c == nil || c.Static == nil || c.rest == nil {
-		return 0, fmt.Errorf("no cluster connection")
-	}
-	req := c.Static.CoreV1().RESTClient().Post().
-		Resource("pods").Namespace(namespace).Name(pod).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: container,
-			Command:   []string{"du", "-sk", dir},
-			Stdout:    true,
-			Stderr:    true,
-		}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(c.rest, "POST", req.URL())
+	out, err := c.RunInPod(ctx, namespace, pod, container, "du", "-sk", dir)
 	if err != nil {
 		return 0, err
 	}
-	var outBuf, errBuf strings.Builder
-	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{Stdout: &outBuf, Stderr: &errBuf}); err != nil {
-		return 0, err
-	}
 	var kb int64
-	if _, err := fmt.Sscanf(strings.TrimSpace(outBuf.String()), "%d", &kb); err != nil {
-		return 0, fmt.Errorf("could not read the size of %s: %q", dir, strings.TrimSpace(outBuf.String()))
+	if _, err := fmt.Sscanf(out, "%d", &kb); err != nil {
+		return 0, fmt.Errorf("could not read the size of %s: %q", dir, out)
 	}
 	return kb * 1024, nil
 }

@@ -41,6 +41,11 @@ type StatusHandler struct {
 	backupDB   *pgxpool.Pool
 	backupRepo string
 	appVersion string
+	// restore is the running restore, if there is one. A restore outlives the request
+	// that started it (etappe 106), so its progress lives here rather than in a
+	// response that nothing is waiting for.
+	restore   *restoreJob
+	restoreMu sync.Mutex
 }
 
 // SetBackup wires what a backup needs: the database and the config repository path
@@ -327,6 +332,24 @@ func (h *StatusHandler) synapseDSN(ctx context.Context) (string, error) {
 type restorePreview struct {
 	backup.Manifest
 	ServerName string `json:"server_name,omitempty"`
+	// Parts is what else is in the file beyond MatrixCtrl's own share, and Counters
+	// says whether the homeserver part carries its sequences.
+	//
+	// Both exist so the screen can say what *this* archive can do before anything is
+	// pressed. An archive written before etappe 106 restores rooms and accounts and
+	// leaves the counters at their start, which is the one failure that looks like a
+	// success — so it is named in advance rather than discovered afterwards.
+	Parts    []string      `json:"parts,omitempty"`
+	Counters *bool         `json:"counters,omitempty"`
+	PartRows []archivePart `json:"part_rows,omitempty"`
+}
+
+// archivePart is one database in the archive, as a line the operator can read.
+type archivePart struct {
+	Name      string `json:"name"`
+	Tables    int    `json:"tables"`
+	Rows      int64  `json:"rows"`
+	Sequences int    `json:"sequences"`
 }
 
 func (h *StatusHandler) RestorePreview(w http.ResponseWriter, r *http.Request) {
@@ -335,7 +358,25 @@ func (h *StatusHandler) RestorePreview(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	JSON(w, http.StatusOK, restorePreview{Manifest: a.Manifest, ServerName: archiveServerName(a)})
+	p := restorePreview{Manifest: a.Manifest, ServerName: archiveServerName(a), Parts: a.Parts}
+	for prefix, man := range a.PartManifests {
+		var rows int64
+		for _, t := range man.Tables {
+			rows += t.Rows
+		}
+		p.PartRows = append(p.PartRows, archivePart{
+			Name:      strings.TrimSuffix(prefix, "/"),
+			Tables:    len(man.Tables),
+			Rows:      rows,
+			Sequences: len(man.Sequences),
+		})
+		if prefix == "homeserver/" {
+			has := len(man.Sequences) > 0
+			p.Counters = &has
+		}
+	}
+	sort.Slice(p.PartRows, func(i, j int) bool { return p.PartRows[i].Name < p.PartRows[j].Name })
+	JSON(w, http.StatusOK, p)
 }
 
 // archiveServerName reads serverName out of the archived configuration.

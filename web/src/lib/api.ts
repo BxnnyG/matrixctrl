@@ -55,7 +55,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  *  hand breaks it. This existed as a private helper on the backup page; the setup page
  *  needs the same thing now, and two copies of a fetch wrapper is how one of them ends
  *  up with a different error message than the other. */
-async function upload<T>(path: string, body: Blob, onProgress?: (sent: number) => void): Promise<T> {
+async function upload<T>(path: string, body: Blob, onProgress?: (sent: number) => void,
+                         headers?: Record<string, string>): Promise<T> {
   const token = getToken();
 
   // XMLHttpRequest, not fetch.
@@ -69,6 +70,10 @@ async function upload<T>(path: string, body: Blob, onProgress?: (sent: number) =
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${BASE}${path}`);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    // Extra headers rather than query parameters for the recovery key: a URL ends up in
+    // the access log of every proxy on the way, and this one opens the homeserver's
+    // identity (§4.35 removed a token from a URL for the same reason).
+    for (const [k, v] of Object.entries(headers ?? {})) xhr.setRequestHeader(k, v);
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => onProgress(e.loaded);

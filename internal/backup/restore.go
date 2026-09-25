@@ -34,8 +34,15 @@ var neverRestored = map[string]bool{"schema_migrations": true}
 // Archive is a read but not yet applied backup.
 type Archive struct {
 	Manifest Manifest
-	tables   map[string][]byte // table name -> CSV
-	config   map[string][]byte // path under config-repo/ -> contents
+	// Parts is what the combined manifest says is inside, so a preview can name the
+	// parts this reader deliberately does not load (etappe 106).
+	Parts []string
+	// PartManifests are the other databases' own manifests, by prefix. Read because
+	// they are small and decide what a restore can promise — whether the counters are
+	// there at all — while their data is streamed elsewhere.
+	PartManifests map[string]HomeserverManifest
+	tables        map[string][]byte // table name -> CSV
+	config        map[string][]byte // path under config-repo/ -> contents
 }
 
 // Read parses an archive without changing anything, so the operator can be shown what
@@ -47,7 +54,8 @@ func Read(r io.Reader) (*Archive, error) {
 	}
 	defer gz.Close()
 
-	a := &Archive{tables: map[string][]byte{}, config: map[string][]byte{}}
+	a := &Archive{tables: map[string][]byte{}, config: map[string][]byte{},
+		PartManifests: map[string]HomeserverManifest{}}
 	tr := tar.NewReader(gz)
 	seenManifest := false
 	// A full archive (etappe 72) puts MatrixCtrl's part under matrixctrl/ and Synapse's
@@ -69,18 +77,48 @@ func Read(r io.Reader) (*Archive, error) {
 		// Refuse anything that would escape its directory. A tar can contain "../"
 		// and this one is uploaded by a browser.
 		clean := filepath.Clean("/" + h.Name)[1:]
+		// Everything below matrixctrl/ is read as if it were at the root. The other
+		// parts belong to other databases and to the media volume; they are restored by
+		// internal/restore, which streams them, and are skipped here *before* being
+		// read. They used to be read first and discarded afterwards, which meant an
+		// archive with a hundred gigabytes of uploads allocated its way through this
+		// loop to reach a file it was going to ignore.
+		inner := clean
+		otherPart := ""
+		switch {
+		case strings.HasPrefix(clean, nested):
+			inner = strings.TrimPrefix(clean, nested)
+		case strings.HasPrefix(clean, "homeserver/"),
+			strings.HasPrefix(clean, "mas/"),
+			strings.HasPrefix(clean, "media/"),
+			strings.HasPrefix(clean, "secrets/"):
+			// Their manifests are read — they are a few hundred bytes and they decide
+			// what a preview may promise. Their data is not.
+			if !strings.HasSuffix(clean, "/manifest.json") {
+				continue
+			}
+			otherPart = strings.TrimSuffix(clean, "manifest.json")
+		}
+
+		if otherPart != "" {
+			var man HomeserverManifest
+			if data, err := io.ReadAll(io.LimitReader(tr, 1<<20)); err == nil {
+				if json.Unmarshal(data, &man) == nil {
+					a.PartManifests[otherPart] = man
+				}
+			}
+			continue
+		}
+
+		wanted := clean == "manifest.json" || inner == "manifest.json" ||
+			(strings.HasPrefix(inner, "db/") && strings.HasSuffix(inner, ".csv")) ||
+			strings.HasPrefix(inner, "config-repo/")
+		if !wanted {
+			continue
+		}
 		data, err := io.ReadAll(io.LimitReader(tr, 256<<20))
 		if err != nil {
 			return nil, err
-		}
-		// Everything below matrixctrl/ is read as if it were at the root; homeserver/
-		// is deliberately skipped, because Synapse's tables belong to another database
-		// and are restored with psql, not written into this one.
-		inner := clean
-		if strings.HasPrefix(clean, nested) {
-			inner = strings.TrimPrefix(clean, nested)
-		} else if strings.HasPrefix(clean, "homeserver/") {
-			continue
 		}
 
 		switch {
@@ -91,6 +129,7 @@ func Read(r io.Reader) (*Archive, error) {
 			var full FullManifest
 			if json.Unmarshal(data, &full) == nil && len(full.Parts) > 0 {
 				a.Manifest = full.Config
+				a.Parts = full.Parts
 				a.Manifest.FormatVersion = full.FormatVersion
 				a.Manifest.ESS = full.ESS
 				a.Manifest.CreatedAt = full.CreatedAt
