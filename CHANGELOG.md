@@ -15,6 +15,19 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.99] — 2026-09-26
+
+### Fixed
+
+- **After a restore, Synapse and MAS are restarted so they re-read the restored keys.**
+  The keys land in `ess-generated` as the last step, but both services render that secret
+  into their config only at startup — and by then both are already running with their
+  pre-restore values from the database swap. Left alone, the shared secret MAS presents
+  to Synapse's admin API no longer matches: Synapse answers 403 "This endpoint must only
+  be called by MAS", and every login fails after rooms, accounts, media and keys had all
+  restored correctly. The live migration hit exactly this. The restore now bumps a
+  restart annotation on both workloads once the keys are in (§4.108).
+
 ## [0.1.98] — 2026-09-26
 
 ### Fixed

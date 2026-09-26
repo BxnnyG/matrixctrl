@@ -134,3 +134,24 @@ func poll(ctx context.Context, every time.Duration, cond func() (bool, error)) e
 		}
 	}
 }
+
+// RolloutRestart recreates a workload's pods so they re-read what they load at startup.
+//
+// A restore rewrites the ess-generated secret last (the homeserver's keys, §4.106), and
+// Synapse and MAS render that secret into their config at startup — so after a restore
+// they are still running with the values they had before it, and the shared secret MAS
+// presents to Synapse's admin API no longer matches. The symptom is a 403 "This endpoint
+// must only be called by MAS" and a login that fails after everything else succeeded.
+// Restarting both makes them converge on the restored secret.
+//
+// Implemented as the annotation bump `kubectl rollout restart` uses, so it works for a
+// Deployment and a StatefulSet alike without scaling to zero.
+func (c *Client) RolloutRestart(ctx context.Context, namespace, kind, name string) error {
+	patch := fmt.Appendf(nil,
+		`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":%q}}}}}`,
+		time.Now().UTC().Format(time.RFC3339))
+	if err := c.Patch(ctx, kind, namespace, name, types.MergePatchType, patch); err != nil {
+		return fmt.Errorf("restart %s/%s: %w", kind, name, err)
+	}
+	return nil
+}

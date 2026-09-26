@@ -4163,3 +4163,35 @@ Behoben mit `to_regclass('public.schema_version')`, das NULL liefert statt zu sc
 ohne die Tabelle meldet die Abfrage Schema 0. Ein Live-Test legt jetzt eine Datenbank
 ohne die Tabelle an (die Form von MAS) und besteht nur, wenn die Abfrage 0 zurückgibt
 statt zu werfen.
+
+### §4.108 — Der Schlüssel lag richtig, gelesen hat ihn keiner (2026-09-26, agent, etappe 106 Nachtrag)
+
+Der Umzug war vollständig — Räume, Konten, Medien, Schlüssel, alles am Ziel und
+nachgezählt — und der Login scheiterte trotzdem, mit einer MAS-Fehlerseite. Die Ursache
+im Log war eindeutig:
+
+```
+403 Forbidden  /_synapse/mas/query_user?localpart=…
+M_UNKNOWN: This endpoint must only be called by MAS
+```
+
+MAS ruft interne Synapse-Endpunkte mit `MAS_SYNAPSE_SHARED_SECRET` auf. Das liegt in
+`ess-generated` und wird vom Restore **zuletzt** geschrieben — nach dem
+Datenbank-Tausch, bei dem Synapse und MAS bereits wieder hochgefahren waren. Beide
+rendern das Secret aber nur **beim Start** in ihre Konfiguration. Also lief nach dem
+Restore jeder mit dem Stand von *vorher*, das gemeinsame Geheimnis passte nicht mehr
+zusammen, und Synapse wies MAS ab. Jeder andere Teil hatte funktioniert; genau der
+letzte Handschlag fehlte.
+
+Das ist verwandt mit dem wiederkehrenden Muster, aber eine eigene Form: nicht eine
+Prüfung, die die falsche Frage stellt, sondern **eine Änderung, die niemand liest, weil
+die Leser schon liefen.** Ein Wert korrekt an seinen Platz zu schreiben ist nicht
+dasselbe, wie ihn wirksam zu machen.
+
+**Merksatz:** *Ein Geheimnis zu ersetzen heißt, alle neu zu starten, die es beim Start
+lesen — sonst hält man einen Wert, den keiner kennt.*
+
+Der Restore stößt jetzt nach dem Schlüssel-Schritt einen Neustart von Synapse und MAS
+an (die Annotation, die `kubectl rollout restart` setzt). Beste Absicht, kein harter
+Fehler: die Daten liegen dann bereits, und ein Neustart, der langsam bereit meldet, darf
+den Umzug nicht scheitern lassen. Für den laufenden Umzug wurde von Hand neu gestartet.

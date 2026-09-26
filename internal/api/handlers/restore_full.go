@@ -271,6 +271,20 @@ func (h *StatusHandler) runRestore(ctx context.Context, path string, opts restor
 			job.say("keys", "die Schlüssel konnten nicht zurückgespielt werden: "+err.Error())
 		} else if res != nil {
 			report.Keys = res
+			// The keys live in ess-generated, which Synapse and MAS render into their
+			// config only at startup — and by now both are already running with the
+			// pre-restore values from their database swap. Left alone, the shared secret
+			// MAS presents to Synapse no longer matches (403 "must only be called by
+			// MAS") and every login fails after everything else succeeded. Restarting
+			// both makes them re-read the restored secret. Best-effort: the data is in,
+			// and a restart that is slow to report ready must not fail the restore.
+			for _, p := range databaseParts(h.essRelease) {
+				if err := h.k8s.RolloutRestart(ctx, h.essNS, p.Workload.Kind, p.Workload.Name); err != nil {
+					job.say("restart", p.Workload.Name+" konnte nicht neu gestartet werden: "+err.Error())
+					continue
+				}
+				job.say("restart", p.Workload.Name+" startet neu, damit es die zurückgespielten Schlüssel liest")
+			}
 		}
 	}
 
