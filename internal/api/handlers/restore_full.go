@@ -238,10 +238,14 @@ func (h *StatusHandler) runRestore(ctx context.Context, path string, opts restor
 			job.say("skip", fmt.Sprintf("%s ist nicht in diesem Archiv", p.Database))
 			continue
 		}
-		if len(man.Sequences) == 0 {
+		// Keyed on the archive's format, not on a count of zero. A database can legitimately
+		// have no sequences — the authentication service has none — and keying on the count
+		// made this warn about a perfectly good format-2 archive (§4.107). The per-database
+		// restore emits the authoritative message; this one only flags a genuinely old file.
+		if full.FormatVersion < 2 {
 			job.say("warn", fmt.Sprintf(
-				"%s: dieses Archiv enthält keine Zähler (Format 1) — der Server vergibt "+
-					"Stream-Nummern neu, die er schon vergeben hat", p.Database))
+				"%s: dieses Archiv ist im alten Format und enthält die Zähler nicht — der Server "+
+					"vergibt Stream-Nummern neu, die er schon vergeben hat", p.Database))
 		}
 		res, err := restore.Database(ctx, p, man, cluster, admin, stamp, prog,
 			tableFeed(path, p.Prefix))

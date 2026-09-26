@@ -52,6 +52,9 @@ func mediaPod() *fakePod {
 // The order matters: stage, unpack, count, and only then put into place.
 func TestMediaStagesBeforeItPlaces(t *testing.T) {
 	p := mediaPod()
+	// The copy must not be `cp -a`: that preserves times onto /media, a mount point the
+	// kernel refuses, which made the live restore report failure after the files had
+	// already landed (§4.106/§4.107).
 
 	n, err := Media(context.Background(), p, "ess", "pod", "synapse", "/media", "s",
 		1<<20, strings.NewReader("tarbytes"), nil)
@@ -67,7 +70,7 @@ func TestMediaStagesBeforeItPlaces(t *testing.T) {
 		"mkdir -p /media/.matrixctrl-restore-s",
 		"tar -> /media/.matrixctrl-restore-s",
 		"find /media/.matrixctrl-restore-s -type f",
-		"cp -a /media/.matrixctrl-restore-s/. /media",
+		"cp -R /media/.matrixctrl-restore-s/. /media",
 		"rm -rf /media/.matrixctrl-restore-s",
 	}
 	if got := strings.Join(p.steps, " | "); got != strings.Join(want, " | ") {
@@ -89,7 +92,7 @@ func TestMediaRefusesAnEmptyStream(t *testing.T) {
 	if err == nil {
 		t.Fatal("an empty unpack must not be reported as a restore")
 	}
-	if strings.Contains(strings.Join(p.steps, " "), "cp -a") {
+	if strings.Contains(strings.Join(p.steps, " "), "cp -R") {
 		t.Error("nothing may be copied into place when nothing arrived")
 	}
 	if !strings.Contains(strings.Join(p.steps, " | "), "rm -rf") {

@@ -84,7 +84,15 @@ func Media(ctx context.Context, p Pod, ns, pod, container, dir, stamp string,
 	}
 	prog.say("media", "%d Dateien angekommen", files)
 
-	if _, err := p.RunInPod(ctx, ns, pod, container, "cp", "-a", staging+"/.", dir); err != nil {
+	// cp -R, not cp -a. `-a` implies --preserve=all, which makes cp set the timestamps
+	// of the destination directory too — and the destination is /media, a mount point,
+	// whose times the kernel will not let anything change: "cp: preserving times for
+	// '/media/.': Operation not permitted". The live migration hit exactly that, and the
+	// non-zero exit reported a *failed* media restore after all 290 files had already
+	// been copied — a message that said the opposite of what happened (§4.106). The
+	// media store is content-addressed, so file timestamps carry no meaning here; -R
+	// copies the tree without touching the mount point's own metadata.
+	if _, err := p.RunInPod(ctx, ns, pod, container, "cp", "-R", staging+"/.", dir); err != nil {
 		return files, fmt.Errorf("die Dateien an ihren Platz kopieren: %w", err)
 	}
 	prog.say("media", "%d Dateien liegen wieder in %s", files, dir)

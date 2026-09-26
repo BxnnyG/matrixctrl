@@ -15,6 +15,22 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.98] — 2026-09-26
+
+### Fixed
+
+- **A media restore no longer reports failure after it succeeded.** The copy into place
+  used `cp -a`, whose `--preserve=all` makes cp set the timestamps of the destination
+  directory too — and the destination is `/media`, a mount point the kernel will not let
+  anything re-time ("Operation not permitted"). All the files had already been copied;
+  the non-zero exit turned a finished restore into a reported failure. It now uses
+  `cp -R`, which copies the content-addressed store without touching the mount point's
+  own metadata (§4.106).
+- **The "archive has no counters" warning no longer fires on a database that legitimately
+  has none.** In the full-restore handler it was keyed on a count of zero rather than the
+  archive's format version, so a perfectly good format-2 archive of the authentication
+  service (which has no sequences) was flagged as old (§4.107).
+
 ## [0.1.97] — 2026-09-25
 
 ### Fixed
