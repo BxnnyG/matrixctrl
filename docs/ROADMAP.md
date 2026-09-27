@@ -93,7 +93,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 104 | Die Prüfung lief als der Falsche — `pods/exec` erteilt, und die Verifikation repariert | ✅ 2026-09-20 · `v0.1.92` · [plan](plans/etappe-104-erlaubnis-die-nie-erteilt-wurde.md) |
 | 105 | Eine Frage, die nur „nein“ sagen kann — `can-i` fragte nach einem Pod namens `exec` | ✅ 2026-09-25 · `v0.1.93` · [plan](plans/etappe-105-eine-frage-die-nur-nein-sagen-kann.md) |
 | 106 | Zurückspielen, was drin ist — Zähler im Archiv, ein Tausch statt eines Überschreibens, und die Generalprobe am echten Homeserver | ✅ 2026-09-25 · `v0.1.94`–`v0.1.95` · [plan](plans/etappe-106-zurueckspielen-was-drin-ist.md) |
-| 107–108 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
+| 107–111 | Einstellungen, neu gedacht — Wahrheit · Übernehmen · Aufgaben I+II · Expertenebene | 📋 geplant · [plan](plans/etappe-107-einstellungen-neu-gedacht.md) |
+| 112–113 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei (verschoben: der akute Umzug ist erledigt) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |
 | 70 | Die Volumes — und ein Navigationspunkt, der ins Leere zeigte | ✅ 2026-09-05 · `v0.1.66` · [plan](plans/etappe-70-homeserver-export.md) |
