@@ -190,13 +190,13 @@ Die bisher geplanten 107–108 (Umzug als ein Vorgang, Server-zu-Server) rücken
 - **Keine automatische Übersetzung der Chart-Doku.** Ebene 1 wird deutsch geschrieben;
   Ebene 2 zeigt die Chart-Texte, repariert, im Original.
 
-## Offene Entscheidungen für den Operator
+## Entschieden (Operator, 2026-09-27)
 
-1. Wird die Aufgaben-Ebene die Startansicht, mit „Alle Einstellungen" als Umschalter?
-   (Empfehlung: ja.)
-2. Welche externen Anbieter zuerst? (Vorschlag: generisches OIDC, Google, GitHub.)
-3. Soll „Übernehmen" bei einem Fehlschlag selbst zurückspringen oder fragen?
-   (Empfehlung: fragen, mit vorausgewähltem Rücksprung.)
+1. **Die Aufgaben-Ebene wird die Startansicht**, „Alle Einstellungen" und YAML sind
+   Umschalter daneben.
+2. **Anbieter zuerst: generisches OIDC, Google, GitHub.**
+3. **„Übernehmen" fragt bei einem Fehlschlag**, mit vorausgewähltem Rücksprung auf den
+   letzten guten Stand.
 
 ## Fertig wenn
 

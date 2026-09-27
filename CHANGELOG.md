@@ -15,6 +15,43 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.100] — 2026-09-27
+
+Etappe 107, the first of five that rebuild the settings page. This one fixes what was
+*wrong* on it before anything is rearranged: every later layer sits on a schema that has
+to match the running version and on help text that has to be true.
+
+### Fixed
+
+- **The form is built from the chart that is actually running.** It used a schema compiled
+  into the binary, and only 26.5.x was ever shipped — every other version silently fell
+  back to it. The installation it was used on runs 26.8.0: four whole sections were
+  invisible (`affinity`, `priorityClassName`, `runtimeClassName`, `schedulerName`) and
+  validation checked against a chart that was not deployed. The schema is now read from
+  the release itself (no network needed, follows an upgrade without a restart), and the
+  header names the version — a fallback to the embedded schema is shown as one.
+- **Help text belongs to the setting it is under.** The description of a setting took every
+  comment line above it, including commented-out *other* settings and their docs: MAS's
+  `additional` was described by PostgreSQL ports, usernames and two secrets. Across the real
+  section files 98 descriptions lose foreign text, 15 that showed nothing but a neighbouring
+  key's name now show nothing, and YAML examples inside the docs keep their shape.
+- **Memory and CPU are fields you can find and change.** They are open maps in the schema, so
+  the form showed "nur via YAML" and a search for "memory" found only Redis — the setting
+  that kept a migrated Postgres unschedulable for five days was invisible in the console.
+- **YAML mode checks what you type and can deploy.** Syntax errors are marked on their line
+  and block saving; after saving the result is checked against the running chart's schema;
+  and the Deploy button, which YAML mode simply did not have, is there.
+- **TLS, URL, ID, CPU and friends are written as abbreviations** instead of "Tls Enabled".
+
+### Changed
+
+- **"Nur via YAML" is a button that opens the YAML editor** instead of a dead end.
+- **One way to the history.** "Versionen & Diff" in the navigation led to the same page as the
+  "Verlauf" button under a third name. The navigation entry is now "Einstellungen".
+- **Every view of the settings page is a URL** (`?section=…&mode=yaml`). The second,
+  more capable YAML editor at `/config/<section>` — validation, diff, deploy — was linked from
+  nowhere; its checks moved into the settings page and its route now forwards there.
+
 ## [0.1.99] — 2026-09-26
 
 ### Fixed

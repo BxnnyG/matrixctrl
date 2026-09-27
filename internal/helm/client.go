@@ -28,6 +28,9 @@ type Client struct {
 	// revCache holds the immutable per-revision facts the history page needs,
 	// keyed release → revision. Guarded by relMu (etappe 39).
 	revCache map[string]map[int]revisionFacts
+	// schemaCache holds the deployed chart's values schema per release, keyed by the
+	// same release-secret identity as relCache. Guarded by relMu (etappe 107).
+	schemaCache map[string]memoisedSchema
 
 	// facts persists what revCache holds, so the cold read happens once per
 	// revision rather than once per process. Nil is supported and means

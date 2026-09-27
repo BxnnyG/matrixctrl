@@ -45,6 +45,28 @@ func Get(version string) ([]byte, error) {
 }
 
 // majorMinorOf extracts the "major.minor" part of a semver string, e.g. "26.5.1" → "26.5".
+// VersionOf names the embedded schema Get would pick for a version — the one actually
+// served, which is not the one asked for whenever no file matches.
+func VersionOf(version string) string {
+	majorMinor := majorMinorOf(version)
+	entries, err := fs.ReadDir(schemasFS, "schemas")
+	if err != nil {
+		return ""
+	}
+	var fallback string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		prefix := strings.TrimSuffix(strings.TrimSuffix(e.Name(), ".x.json"), ".json")
+		if prefix == majorMinor {
+			return prefix + ".x"
+		}
+		fallback = prefix + ".x"
+	}
+	return fallback
+}
+
 func majorMinorOf(v string) string {
 	parts := strings.SplitN(v, ".", 3)
 	if len(parts) >= 2 {

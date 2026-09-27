@@ -273,6 +273,11 @@ func main() {
 	}
 	wsHandler := handlers.NewWSHandler(helmHandler)
 	configHandler := handlers.NewConfigHandler(configStore, configGit, essVersion, configRepoPath, configSeedPath)
+	// The schema of the chart that is actually deployed, read per request and cached by
+	// release revision — not the one embedded in this binary (etappe 107).
+	if helmClient != nil {
+		configHandler.SetDeployedSchema(func() ([]byte, string, error) { return helmClient.DeployedSchema(essRelease) })
+	}
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
 
 	// Whether MatrixCtrl may ask GHCR for newer releases. On by default: the cluster

@@ -16,7 +16,11 @@ import (
 type ConfigHandler struct {
 	store      *config.Store
 	git        *gitpkg.Repo
-	essVersion string // current deployed ESS version for schema selection
+	essVersion string // ESS version read at startup — only the fallback's key now
+	// deployedSchema reads the schema from the chart that is actually running
+	// (etappe 107). Nil outside a cluster, and then the embedded schema is used —
+	// visibly, see schemaFor.
+	deployedSchema func() ([]byte, string, error)
 	// repoPath and seedPath answer "where does my configuration live" — a question the
 	// panel could not answer at all until etappe 71.
 	repoPath string
@@ -25,6 +29,40 @@ type ConfigHandler struct {
 
 func NewConfigHandler(store *config.Store, git *gitpkg.Repo, essVersion, repoPath, seedPath string) *ConfigHandler {
 	return &ConfigHandler{store: store, git: git, essVersion: essVersion, repoPath: repoPath, seedPath: seedPath}
+}
+
+// SetDeployedSchema wires the reader for the running chart's schema. Separate from the
+// constructor so a handler without cluster access stays a valid handler.
+func (h *ConfigHandler) SetDeployedSchema(f func() ([]byte, string, error)) { h.deployedSchema = f }
+
+// schemaSource says where the schema a response is based on came from, so the form can
+// say it too. A fallback that nobody can see is how the settings page validated against
+// 26.5.x for months while 26.8.0 was running.
+type schemaSource struct {
+	Version  string `json:"version"`
+	From     string `json:"from"` // "deployed" or "embedded"
+	Fallback bool   `json:"fallback"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// schemaFor returns the schema of the running chart, or the embedded one when that
+// cannot be read — and in that case says why.
+func (h *ConfigHandler) schemaFor() ([]byte, schemaSource, error) {
+	var reason string
+	if h.deployedSchema != nil {
+		data, version, err := h.deployedSchema()
+		if err == nil {
+			return data, schemaSource{Version: version, From: "deployed"}, nil
+		}
+		reason = err.Error()
+	} else {
+		reason = "kein Cluster-Zugriff"
+	}
+	data, err := cfgschema.Get(h.essVersion)
+	if err != nil {
+		return nil, schemaSource{}, err
+	}
+	return data, schemaSource{Version: cfgschema.VersionOf(h.essVersion), From: "embedded", Fallback: true, Reason: reason}, nil
 }
 
 // GET /api/v1/config/location — where the configuration actually lives.
@@ -171,7 +209,7 @@ func (h *ConfigHandler) ValidateMerged(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	schemaData, schemaErr := cfgschema.Get(h.essVersion)
+	schemaData, _, schemaErr := h.schemaFor()
 	if schemaErr != nil {
 		// No schema — just confirm YAML is syntactically valid
 		JSON(w, http.StatusOK, map[string]interface{}{"valid": true, "errors": nil, "note": "no schema available"})
@@ -229,8 +267,9 @@ func (h *ConfigHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		"comments": comments,
 		"files":    files,
 	}
-	if schemaData, err := cfgschema.Get(h.essVersion); err == nil {
+	if schemaData, src, err := h.schemaFor(); err == nil {
 		resp["schema"] = json.RawMessage(schemaData)
+		resp["schema_source"] = src
 	}
 	JSON(w, http.StatusOK, resp)
 }
@@ -255,7 +294,7 @@ func (h *ConfigHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/config/schema — returns the ESS values JSON Schema for the current version
 func (h *ConfigHandler) GetSchema(w http.ResponseWriter, r *http.Request) {
-	data, err := cfgschema.Get(h.essVersion)
+	data, _, err := h.schemaFor()
 	if err != nil {
 		// Return minimal schema if not found
 		JSON(w, http.StatusOK, map[string]interface{}{

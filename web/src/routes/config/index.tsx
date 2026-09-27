@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo, useRef, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import * as jsYaml from "js-yaml";
+import type { OnMount } from "@monaco-editor/react";
 import { YamlEditor } from "@/components/config/YamlEditor";
 import { api } from "@/lib/api";
 import { useUpgradeStream } from "@/lib/ws";
@@ -13,7 +15,7 @@ interface ConfigLocation {
   commits: number;
   versioned: boolean;
 }
-import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves } from "@/lib/schema";
+import { type JSONSchema, fieldKind, humanize, getByPath, countLeaves, collectLeaves, mapEntries } from "@/lib/schema";
 import { groupNav, orderKeys } from "@/lib/sections";
 import { Icon, Badge, Button, Toggle, Spinner, EmptyState, type IconName } from "@/components/mc";
 import { DiffView } from "@/components/config/DiffView";
@@ -32,12 +34,20 @@ const SECTION_ICONS: Record<string, IconName> = {
 };
 const iconFor = (file: string): IconName => SECTION_ICONS[file] ?? "file";
 
+// Every view of this page is a URL — `?section=synapse.yaml&mode=yaml` — so a setting
+// can be linked to, and the old per-section editor can simply forward here.
 export const Route = createFileRoute("/config/")({
   component: Settings,
+  validateSearch: (s: Record<string, unknown>): { section?: string; mode?: Mode } => ({
+    section: typeof s.section === "string" ? s.section : undefined,
+    mode: s.mode === "yaml" || s.mode === "diff" || s.mode === "standard" ? s.mode : undefined,
+  }),
 });
 
+interface SchemaSource { version: string; from: "deployed" | "embedded"; fallback: boolean; reason?: string }
 interface SettingsResponse {
   schema?: JSONSchema;
+  schema_source?: SchemaSource;
   values: Record<string, unknown>;
   comments: Record<string, string>;
   files: Record<string, string>; // top-level key → "section.yaml"
@@ -56,8 +66,9 @@ function Settings() {
     staleTime: 60_000,
   });
 
-  const [mode, setMode] = useState<Mode>("standard");
-  const [fileSel, setFileSel] = useState<string | null>(null);
+  const search = Route.useSearch();
+  const [mode, setMode] = useState<Mode>(search.mode ?? "standard");
+  const [fileSel, setFileSel] = useState<string | null>(search.section ?? null);
   // Cheap and static; asked once so the header can state where the configuration is.
   //
   // It used to sit further down, next to the header that reads it — which put it after
@@ -143,7 +154,8 @@ function Settings() {
   if (!schema) return <div style={{ padding: 24, fontSize: 13, color: "var(--text-faint)" }}>Kein Schema verfügbar.</div>;
 
   const searchHits = query.trim()
-    ? Object.values(fileGroups).flat().flatMap((top) => collectLeaves(schema.properties?.[top], top))
+    // In navigation order — Synapse and Postgres before the one-shot helper jobs.
+    ? fileList.flatMap((f) => fileGroups[f] ?? []).flatMap((top) => collectLeaves(schema.properties?.[top], top, data?.values))
         .filter((l) => l.path.toLowerCase().includes(query.toLowerCase()) || (data?.comments[l.path] ?? "").toLowerCase().includes(query.toLowerCase()))
         .slice(0, 120)
     : null;
@@ -175,16 +187,29 @@ function Settings() {
             (etappe 71). Compact by default; the detail is in the tooltip. */}
         {location && (
           <span
-            title={`Git-Repository auf einem eigenen Volume: ${location.path}\n` +
-              `${location.files} Dateien · ${(location.bytes / 1024).toFixed(0)} KB · ${location.commits} Commits` +
+            title={`Gespeichert in einem Git-Repository auf eigenem Volume: ${location.path}\n` +
+              `${location.files} Dateien · ${(location.bytes / 1024).toFixed(0)} KB · ${location.commits} Versionen` +
               (location.seed ? `\n\nDer Ordner ${location.seed} war nur die Saat beim ersten Start und wird nicht mehr gelesen.` : "")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: "var(--radius-sm)",
-              background: "var(--surface-2)", border: "1px solid var(--border-soft)", cursor: "default" }}>
-            <Icon name="database" size={13} style={{ color: "var(--text-faint)" }} />
-            <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{location.path}</span>
-            {location.versioned && (
-              <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>· {location.commits} Versionen</span>
-            )}
+            aria-label="Wo die Einstellungen gespeichert sind"
+            style={{ display: "inline-grid", placeItems: "center", width: 28, height: 28, borderRadius: "var(--radius-sm)",
+              background: "var(--surface-2)", border: "1px solid var(--border-soft)", color: "var(--text-faint)", cursor: "default" }}>
+            <Icon name="database" size={13} />
+          </span>
+        )}
+
+        {/* Which chart the form is built from. It used to be a schema compiled into the
+            binary, silently 26.5.x whatever was running (etappe 107) — so it is named,
+            and a fallback is shown as one rather than passed off as the truth. */}
+        {data?.schema_source && (
+          <span title={data.schema_source.fallback
+              ? `Das Schema des laufenden Charts war nicht lesbar (${data.schema_source.reason ?? "unbekannt"}). Formular und Prüfung nutzen das eingebaute Schema ${data.schema_source.version} — Felder neuerer Versionen fehlen.`
+              : "Formular und Prüfung nutzen das Schema aus dem Chart, das gerade läuft."}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 9px", borderRadius: "var(--radius-sm)", cursor: "default",
+              background: data.schema_source.fallback ? "color-mix(in oklch, var(--status-warn) 14%, transparent)" : "var(--surface-2)",
+              border: `1px solid ${data.schema_source.fallback ? "var(--status-warn)" : "var(--border-soft)"}`,
+              color: data.schema_source.fallback ? "var(--status-warn)" : "var(--text-faint)", fontSize: 11.5 }}>
+            <Icon name={data.schema_source.fallback ? "alert" : "check"} size={13} />
+            ESS {data.schema_source.version}{data.schema_source.fallback ? " (eingebaut)" : ""}
           </span>
         )}
 
@@ -196,11 +221,11 @@ function Settings() {
             {saveStd.isPending ? <Spinner size={13} /> : "Speichern"}
           </Button>
         )}
-        {mode !== "yaml" && (
+        {/* In every mode. YAML mode used to have no deploy at all: save there, then
+            switch tabs to find the button (etappe 107). */}
           <Button variant="primary" size="sm" icon="rocket" disabled={deploy.isPending || !!deployId} onClick={saveAndDeploy}>
             {dirty ? "Speichern & Deployen" : "Deployen"}
           </Button>
-        )}
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -248,7 +273,7 @@ function Settings() {
             <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--text-faint)" }}>{searchHits.length} Treffer für „{query}"</p>
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
-                {searchHits.map((l, i) => <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} divider={i > 0} />)}
+                {searchHits.map((l, i) => <Field key={l.path} node={l.node} path={l.path} comment={data?.comments[l.path]} value={effectiveValue(l.path)} onChange={(v) => setValue(l.path, v)} divider={i > 0} onYaml={() => { setQuery(""); setMode("yaml"); }} trail />)}
               </div>
             </div>
           ) : mode === "diff" ? (
@@ -290,8 +315,8 @@ function Settings() {
                       </div>
                     </div>
                     {fieldKind(node) === "object"
-                      ? <SchemaSection node={node} path={top} comments={data?.comments ?? {}} effectiveValue={effectiveValue} setValue={setValue} />
-                      : <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}><Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} /></div>}
+                      ? <SchemaSection node={node} path={top} comments={data?.comments ?? {}} effectiveValue={effectiveValue} setValue={setValue} onYaml={() => setMode("yaml")} />
+                      : <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}><Field node={node} path={top} comment={data?.comments[top]} value={effectiveValue(top)} onChange={(v) => setValue(top, v)} onYaml={() => setMode("yaml")} /></div>}
                   </section>
                 );
               })}
@@ -318,18 +343,55 @@ function Settings() {
   );
 }
 
+interface SchemaCheck { valid: boolean; errors: Array<{ field: string; message: string }> | null }
+
 function YamlPane({ sliceName, qc }: { sliceName: string; qc: ReturnType<typeof useQueryClient> }) {
   const [content, setContent] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [syntax, setSyntax] = useState<{ line: number; message: string } | null>(null);
+  const [check, setCheck] = useState<SchemaCheck | null>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+
   const { data: slice, isLoading } = useQuery({
     queryKey: ["config", "slice", sliceName],
     queryFn: () => api.get<Slice>(`/api/v1/config/slices/${sliceName}`),
   });
+  const value = content ?? slice?.content ?? "";
+
+  // Syntax is checked as you type, and the error is marked on its line — taken from the
+  // editor at /config/$slice, which had this all along and was linked from nowhere.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      let err: { line: number; message: string } | null = null;
+      try { jsYaml.load(value); } catch (e: unknown) {
+        const mark = (e as { mark?: { line?: number } }).mark;
+        const reason = (e as { reason?: string }).reason ?? "ungültiges YAML";
+        err = { line: (mark?.line ?? 0) + 1, message: reason };
+      }
+      setSyntax(err);
+      const model = editorRef.current?.getModel();
+      const m = monacoRef.current;
+      if (model && m) {
+        m.editor.setModelMarkers(model, "yaml-syntax", err ? [{
+          severity: m.MarkerSeverity.Error, message: err.message,
+          startLineNumber: err.line, endLineNumber: err.line, startColumn: 1, endColumn: 200,
+        }] : []);
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [value]);
+
   const save = useMutation({
     mutationFn: (c: string) => api.put(`/api/v1/config/slices/${sliceName}`, { content: c }),
-    onSuccess: () => { setDirty(false); qc.invalidateQueries({ queryKey: ["config"] }); },
+    onSuccess: async () => {
+      setDirty(false);
+      qc.invalidateQueries({ queryKey: ["config"] });
+      // Then against the schema of the chart that is running — which, since etappe
+      // 107, is the one this check actually uses.
+      try { setCheck(await api.post<SchemaCheck>("/api/v1/config/validate-merged", {})); } catch { setCheck(null); }
+    },
   });
-  const value = content ?? slice?.content ?? "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -337,17 +399,30 @@ function YamlPane({ sliceName, qc }: { sliceName: string; qc: ReturnType<typeof 
         <Icon name="file" size={14} style={{ color: "var(--text-faint)" }} />
         <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)" }}>{slice?.file ?? `${sliceName}.yaml`}</span>
         {dirty && <span style={{ fontSize: 10.5, color: "var(--status-warn)" }}>ungespeichert</span>}
+        {syntax
+          ? <span style={{ fontSize: 11.5, color: "var(--status-err)" }}>Zeile {syntax.line}: {syntax.message}</span>
+          : dirty && <span style={{ fontSize: 11.5, color: "var(--status-ok)" }}>gültiges YAML</span>}
         <div style={{ flex: 1 }} />
-        <Button variant="primary" size="sm" icon={save.isPending ? undefined : "download"} disabled={!dirty || save.isPending} onClick={() => save.mutate(value)}>
+        <Button variant="primary" size="sm" icon={save.isPending ? undefined : "download"} disabled={!dirty || save.isPending || !!syntax} onClick={() => save.mutate(value)}>
           {save.isPending ? <Spinner size={12} /> : "Speichern"}
         </Button>
       </div>
+      {check && !dirty && (
+        <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--border)", fontSize: 12, background: "var(--panel)",
+          color: check.valid ? "var(--status-ok)" : "var(--status-err)" }}>
+          {check.valid
+            ? "Gespeichert und gegen das Schema des laufenden Charts geprüft — passt."
+            : <>Gespeichert, aber das Schema widerspricht:{" "}
+                {(check.errors ?? []).slice(0, 5).map((e, i) => <div key={i} style={{ fontFamily: "var(--mono)", marginTop: 2 }}>{e.field}: {e.message}</div>)}</>}
+        </div>
+      )}
       <div style={{ flex: 1 }}>
         {isLoading ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 16, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>
         ) : (
           <YamlEditor height="100%" defaultLanguage="yaml" value={value} theme="vs-dark"
-            onChange={(v) => { setContent(v ?? ""); setDirty(true); }}
+            onMount={(editor, monaco) => { editorRef.current = editor; monacoRef.current = monaco; }}
+            onChange={(v) => { setContent(v ?? ""); setDirty(true); setCheck(null); }}
             options={{ fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: "on", tabSize: 2, automaticLayout: true }} />
         )}
       </div>
@@ -355,25 +430,22 @@ function YamlPane({ sliceName, qc }: { sliceName: string; qc: ReturnType<typeof 
   );
 }
 
-interface LeafEntry { path: string; node: JSONSchema }
-function collectLeaves(node: JSONSchema | undefined, path: string, acc: LeafEntry[] = []): LeafEntry[] {
-  if (!node) return acc;
-  if (fieldKind(node) === "object" && node.properties) {
-    for (const [k, child] of Object.entries(node.properties)) collectLeaves(child, `${path}.${k}`, acc);
-  } else if (path) acc.push({ path, node });
-  return acc;
-}
-
 interface GroupProps {
   node: JSONSchema; path: string; comments: Record<string, string>;
   effectiveValue: (p: string) => unknown; setValue: (p: string, v: unknown) => void; depth?: number;
+  onYaml?: () => void;
 }
 
 function SchemaSection(props: GroupProps) {
   const { node, path, comments, depth = 0 } = props;
   if (!node.properties) return null;
   const ordered = orderKeys(Object.keys(node.properties)).map((k) => [k, node.properties![k]] as const);
-  const leaves = ordered.filter(([, c]) => fieldKind(c) !== "object");
+  // An open map whose entries the form can render (memory and CPU under resources, or
+  // keys that already have a value) is a group of fields, not a "nur via YAML" dead end.
+  const entriesOf = (key: string, child: JSONSchema) => mapEntries(child, `${path}.${key}`, props.effectiveValue(`${path}.${key}`));
+  const isMap = (key: string, child: JSONSchema) => fieldKind(child) === "freeform" && entriesOf(key, child).length > 0;
+  const leaves = ordered.filter(([k, c]) => fieldKind(c) !== "object" && !isMap(k, c));
+  const maps = ordered.filter(([k, c]) => isMap(k, c));
   const groups = ordered.filter(([, c]) => fieldKind(c) === "object");
 
   return (
@@ -382,10 +454,24 @@ function SchemaSection(props: GroupProps) {
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
           {leaves.map(([key, child], i) => {
             const childPath = `${path}.${key}`;
-            return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} divider={i > 0} />;
+            return <Field key={childPath} node={child} path={childPath} comment={comments[childPath]} value={props.effectiveValue(childPath)} onChange={(v) => props.setValue(childPath, v)} divider={i > 0} onYaml={props.onYaml} />;
           })}
         </div>
       )}
+      {maps.map(([key, child]) => {
+        const childPath = `${path}.${key}`;
+        const entries = entriesOf(key, child);
+        return (
+          <CollapsibleCard key={childPath} title={humanize(key)} comment={comments[childPath]} count={String(entries.length)} depth={depth}>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+              {entries.map((e, i) => (
+                <Field key={e.path} node={e.node} path={e.path} comment={comments[e.path]} value={props.effectiveValue(e.path)}
+                  onChange={(v) => props.setValue(e.path, v)} divider={i > 0} onYaml={props.onYaml} />
+              ))}
+            </div>
+          </CollapsibleCard>
+        );
+      })}
       {groups.map(([key, child]) => {
         const childPath = `${path}.${key}`;
         const childLeaves = Object.values(child.properties ?? {}).filter((c) => fieldKind(c) !== "object").length;
@@ -419,8 +505,8 @@ function CollapsibleCard({ title, comment, count, depth, children }: { title: st
   );
 }
 
-interface FieldProps { node: JSONSchema; path: string; comment?: string; value: unknown; onChange: (v: unknown) => void; divider?: boolean }
-function Field({ node, path, comment, value, onChange, divider }: FieldProps) {
+interface FieldProps { node: JSONSchema; path: string; comment?: string; value: unknown; onChange: (v: unknown) => void; divider?: boolean; onYaml?: () => void; trail?: boolean }
+function Field({ node, path, comment, value, onChange, divider, onYaml, trail }: FieldProps) {
   const kind = fieldKind(node);
   const key = path.split(".").pop() ?? path;
   const inputStyle: React.CSSProperties = { padding: "7px 10px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 13, fontFamily: "var(--font)" };
@@ -428,8 +514,14 @@ function Field({ node, path, comment, value, onChange, divider }: FieldProps) {
   return (
     <div className="mc-row" style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "11px 14px", borderTop: divider ? "1px solid var(--border-soft)" : "none" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
+        {/* In search results 78 rows were all called "Memory"; the trail says whose. */}
+        {trail && path.includes(".") && (
+          <div style={{ fontSize: 11, color: "var(--text-faint)", marginBottom: 1 }}>
+            {path.split(".").slice(0, -1).map(humanize).join(" › ")}
+          </div>
+        )}
         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{humanize(key)}</span>
-        {comment && <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)", lineHeight: 1.5 }}>{comment}</p>}
+        {comment && <HelpText text={comment} />}
         <code style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--text-faint)", opacity: 0.7 }}>{path}</code>
       </div>
       <div style={{ flexShrink: 0, paddingTop: 2 }}>
@@ -445,9 +537,34 @@ function Field({ node, path, comment, value, onChange, divider }: FieldProps) {
         ) : kind === "string" ? (
           <input type="text" value={value === undefined || value === null ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} style={{ ...inputStyle, width: 280 }} />
         ) : (
-          <span style={{ fontSize: 10, color: "var(--text-faint)", fontStyle: "italic" }}>nur via YAML</span>
+          // Not a dead end any more: one click to the place where it can be edited.
+          onYaml
+            ? <Button variant="ghost" size="sm" icon="file" onClick={onYaml}>Im YAML bearbeiten</Button>
+            : <span style={{ fontSize: 10, color: "var(--text-faint)", fontStyle: "italic" }}>nur via YAML</span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Help text with its examples shown as examples. The backend keeps YAML samples on their
+ *  own indented lines (etappe 107); consecutive lines of that shape are set in the code
+ *  font, the rest reads as prose. */
+function HelpText({ text }: { text: string }) {
+  const isCode = (l: string) => /^\s/.test(l) || /^[\w.\-"'<>]+:( \S+)?$/.test(l) || /^- /.test(l);
+  const blocks: { code: boolean; lines: string[] }[] = [];
+  for (const line of text.split("\n")) {
+    const code = isCode(line);
+    const last = blocks[blocks.length - 1];
+    if (last && last.code === code) last.lines.push(line);
+    else blocks.push({ code, lines: [line] });
+  }
+  return (
+    <div style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-faint)", lineHeight: 1.5 }}>
+      {blocks.map((b, i) => b.code
+        ? <pre key={i} style={{ margin: "4px 0", padding: "6px 9px", fontFamily: "var(--mono)", fontSize: 11.5, background: "var(--surface-2)",
+            border: "1px solid var(--border-soft)", borderRadius: "var(--radius-sm)", whiteSpace: "pre", overflowX: "auto" }}>{b.lines.join("\n")}</pre>
+        : b.lines.map((l, j) => <p key={`${i}-${j}`} style={{ margin: 0 }}>{l}</p>))}
     </div>
   );
 }

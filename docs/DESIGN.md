@@ -70,7 +70,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 
 | System | Status | Rest / note |
 |---|---|---|
-| S1 Config management | ✅ (E4, E5, E8) | Comment-preserving, git-backed, schema-validated |
+| S1 Config management | ✅ (E4, E5, E8, E107) | Comment-preserving, git-backed, schema-validated — **against the running chart since E107** (was a compiled-in 26.5.x while 26.8.0 ran). Help text belongs to its own key; memory/CPU editable and searchable. The task-oriented redesign is planned as E108–E111 (§4.109) |
 | S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14); an upgrade whose process dies is reconciled to `interrupted` at startup instead of reading as running forever (P2-16) |
 | S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21) |
 | S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
@@ -4195,3 +4195,44 @@ Der Restore stößt jetzt nach dem Schlüssel-Schritt einen Neustart von Synapse
 an (die Annotation, die `kubectl rollout restart` setzt). Beste Absicht, kein harter
 Fehler: die Daten liegen dann bereits, und ein Neustart, der langsam bereit meldet, darf
 den Umzug nicht scheitern lassen. Für den laufenden Umzug wurde von Hand neu gestartet.
+
+### §4.109 — Das Formular zeigte das Chart, nicht die Aufgaben (2026-09-27, operator, etappe 107)
+
+> „die ist sau unübersichtlich, man weiß nicht, was man wo einstellt"
+
+Nach einem kompletten Umzug, bei dem jede Stelle der Konfiguration gebraucht wurde. Der
+Selbstbericht ist diesmal **angesehen**, nicht aus dem Code erschlossen: eine lokale
+Instanz mit einer Kopie der echten Konfiguration, ohne Cluster-Zugriff, von Playwright
+fotografiert. Die Zahlen: **1 411 Einstellungen, 331 davon im Formular nicht bedienbar**,
+gegliedert nach YAML-Dateien. Der ganze Befund und die fünf Etappen stehen im Plan
+(`plans/etappe-107-einstellungen-neu-gedacht.md`); hier die Entscheidungen von 107.
+
+**Das Schema kommt aus dem laufenden Chart.** Eingebaut war nur 26.5.x, und für jede andere
+Version griff der Lader stillschweigend auf die letzte Datei zurück. Gelaufen ist 26.8.0 —
+gemessen fehlten vier ganze Abschnitte, und „gültig" hieß gültig für ein Chart, das nicht
+lief. Helm legt das komplette Chart samt `values.schema.json` im Release-Secret ab; von dort
+wird es jetzt gelesen, zwischengespeichert nach derselben Release-Identität wie der
+Release-Cache (kalt ~500 ms, warm 7 ms), ohne Netz, und nach einem Upgrade ohne Neustart.
+Der Rückfall auf das eingebaute Schema bleibt, **aber sichtbar**: der Seitenkopf nennt die
+Version und markiert „eingebaut". Ein Rückfall, den niemand sieht, ist das, was hier
+monatelang passiert ist.
+
+**Zu einem Schlüssel gehört nur der Kommentar direkt über ihm.** `yaml.v3` gibt jedem
+Schlüssel alle Kommentarzeilen bis zum vorigen — in ESS-Dateien regelmäßig auskommentierte
+Nachbar-Einstellungen samt deren Doku. Die Regel, gegen alle echten Abschnittsdateien
+geprüft: von unten lesen, bei einer Leerzeile oder einer auskommentierten Einstellung mit
+*anderem* Namen aufhören; ein auskommentiertes Beispiel desselben (oder eines Eltern-)
+Schlüssels wird übersprungen, denn ESS schreibt Doku, dann Beispiel, dann Schlüssel. Die
+erste Fassung hörte auch dort auf und nahm 22 Einstellungen ihre Beschreibung; der Test gegen
+die echten Dateien hat das gezeigt, bevor es ausgeliefert war. Ergebnis: 98 Beschreibungen
+ohne fremden Text, 15 zeigten bisher nur den Namen eines Nachbarschlüssels und sind jetzt
+leer — und das ist richtig.
+
+**Offene Maps sind Felder.** `resources.requests/limits` sind im Schema Maps; das Formular
+zeigte „nur via YAML", die Suche fand „memory" nur bei Redis. Für Ressourcen-Maps werden
+`memory` und `cpu` angeboten, auch ungesetzt, und vorhandene Schlüssel jeder Map als Felder
+gezeigt. Die Suche nach „memory" findet jetzt 78 Stellen statt 2 — mit dem Pfad in lesbarer
+Form, weil 78 Zeilen namens „Memory" nichts sagen.
+
+**Merksatz:** *Ein Formular, das nicht zur laufenden Version passt, ist keine vereinfachte
+Ansicht der Wahrheit, sondern eine andere.*

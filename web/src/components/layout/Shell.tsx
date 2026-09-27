@@ -11,9 +11,11 @@ interface NavGroup { group: string; phase?: string; items: NavItem[] }
 
 const NAV: NavGroup[] = [
   { group: "Übersicht", items: [{ id: "dashboard", label: "Dashboard", icon: "dashboard", to: "/" }] },
+  // One entrance to the history: the "Verlauf" button on the settings page. This entry
+  // led to the same page under a third name ("Versionen & Diff" beside "Verlauf" and
+  // "Änderungen"), which is two names too many for one thing (etappe 107).
   { group: "Konfiguration", items: [
-    { id: "config", label: "Config", icon: "sliders", to: "/config" },
-    { id: "history", label: "Versionen & Diff", icon: "git", to: "/config/history" },
+    { id: "config", label: "Einstellungen", icon: "sliders", to: "/config" },
   ] },
   { group: "Deployment", items: [
     { id: "helm", label: "Updates", icon: "helm", to: "/helm" },
@@ -46,8 +48,8 @@ const NAV: NavGroup[] = [
 
 const TITLES: Record<string, [string, string]> = {
   "/": ["Dashboard", "Komponenten-Status & Cluster-Health"],
-  "/config": ["Konfiguration", "Versionierte YAML pro ESS-Sektion"],
-  "/config/history": ["Versionen & Diff", "Git-Historie der Config · Rollback"],
+  "/config": ["Einstellungen", "Was dein Server tut — versioniert, jede Änderung rückgängig machbar"],
+  "/config/history": ["Verlauf", "Jede gespeicherte Version der Einstellungen · Zurückspringen"],
   "/helm": ["Updates", "Helm-Upgrades mit Patch-erhaltenden Hooks"],
   "/helm/history": ["Upgrade-Verlauf", "Vergangene Upgrades · Revision & Hook-Ergebnis"],
   "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
