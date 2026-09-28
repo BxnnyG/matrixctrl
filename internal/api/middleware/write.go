@@ -16,6 +16,8 @@ import (
 //   - the two validate endpoints answer "would this be accepted", touching nothing.
 //   - restore/preview reads an uploaded archive and reports what is in it. The restore
 //     itself is not here.
+//   - config/preview renders the pending configuration and reports what applying it
+//     would do. Applying it is not here, and neither is discarding it.
 //
 // Deliberately absent: /api/v1/rtc/reachability. It writes nothing either, but it
 // leaves the cluster and discloses this installation's public address to two third
@@ -27,6 +29,7 @@ var readOnlySafe = map[string]bool{
 	"/api/v1/config/validate":        true,
 	"/api/v1/config/validate-merged": true,
 	"/api/v1/status/restore/preview": true,
+	"/api/v1/config/preview":         true,
 }
 
 // RequireWrite refuses changes from sessions that may only look.

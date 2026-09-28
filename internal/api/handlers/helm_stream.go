@@ -42,7 +42,31 @@ type upgradeStream struct {
 	phase    string
 	progress *rollout.Progress
 
+	// origin is where an apply started from, so a failed one can be taken back to
+	// exactly there (etappe 108). Zero for operations that are not config applies.
+	origin applyOrigin
+
 	mu sync.Mutex
+}
+
+// applyOrigin is the state before an apply: the config commit and the Helm revision.
+type applyOrigin struct {
+	configSHA string
+	revision  int
+}
+
+func (s *upgradeStream) setOrigin(o applyOrigin) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.origin = o
+}
+
+// originIfDone returns the origin once the operation has finished. Taking back an
+// apply that is still running would race Helm against itself.
+func (s *upgradeStream) originIfDone() (applyOrigin, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.origin, s.done
 }
 
 // setPhase records which step of the operation is running. Callers announce their

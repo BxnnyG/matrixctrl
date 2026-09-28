@@ -44,9 +44,9 @@ func (c *Client) DeployedSchema(name string) ([]byte, string, error) {
 
 	// One revision, decoded by Helm's own storage layer — the same ~500 ms read the
 	// release view uses, and only when the release secret has changed.
-	rel, err := c.cfg.Releases.Get(name, id.Revision)
+	rel, id, err := c.newestRelease(name)
 	if err != nil {
-		return nil, "", fmt.Errorf("release %s revision %d: %w", name, id.Revision, err)
+		return nil, "", err
 	}
 	if rel.Chart == nil || len(rel.Chart.Schema) == 0 {
 		return nil, "", fmt.Errorf("the deployed chart of %s carries no values schema", name)

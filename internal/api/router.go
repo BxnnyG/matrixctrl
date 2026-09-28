@@ -218,6 +218,10 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/settings", deps.Config.GetSettings)
 			r.Post("/settings", deps.Config.PutSettings)
 			r.Get("/diff", deps.Config.GetDiff)
+			// What "Übernehmen" would do, and throwing pending edits away (etappe 108).
+			r.Post("/preview", deps.Helm.PreviewConfig)
+			r.Post("/discard", deps.Config.Discard)
+			r.Post("/revert-apply", deps.Helm.RevertApply)
 			r.Post("/apply", deps.Config.Apply)
 			r.Get("/history", deps.Config.GetHistory)
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)

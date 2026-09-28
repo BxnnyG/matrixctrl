@@ -173,6 +173,75 @@ func (repo *Repo) ResetToCommit(sha string) error {
 	})
 }
 
+// DiscardChanges puts every tracked file back to the last commit — "Verwerfen" on the
+// settings page (etappe 108). Untracked files are left alone: the form only ever edits
+// section files that are already committed, and deleting a file nobody asked about is
+// not what "discard my edits" means.
+func (repo *Repo) DiscardChanges() error {
+	wt, err := repo.r.Worktree()
+	if err != nil {
+		return err
+	}
+	head, err := repo.r.Head()
+	if err != nil {
+		return fmt.Errorf("no commit to go back to: %w", err)
+	}
+	return wt.Reset(&gogit.ResetOptions{Commit: head.Hash(), Mode: gogit.HardReset})
+}
+
+// HeadSHA is the full hash of the current commit — what "Übernehmen" remembers as the
+// state to go back to (etappe 108).
+func (repo *Repo) HeadSHA() (string, error) {
+	head, err := repo.r.Head()
+	if err != nil {
+		return "", err
+	}
+	return head.Hash().String(), nil
+}
+
+// RestoreCommit makes the files of an earlier commit the current state, as a new commit
+// on top — a revert of everything since, not a rewrite of history (etappe 108).
+//
+// ResetToCommit moves the branch back and the commits after it are gone. After a failed
+// apply that is the wrong record: what was tried, and that it was taken back, is exactly
+// what the history page should still show. Here the tree of the target is checked out
+// hard, the branch is moved back to where it was without touching index or worktree, and
+// what differs is committed. Uncommitted edits are discarded; callers run it right after
+// a commit, when there are none. Returns "" when the target already is the current tree.
+func (repo *Repo) RestoreCommit(sha, msg, authorName, authorEmail string) (string, error) {
+	target, err := repo.resolveShortSHA(sha)
+	if err != nil {
+		return "", err
+	}
+	head, err := repo.r.Head()
+	if err != nil {
+		return "", err
+	}
+	if head.Hash() == target {
+		return "", nil
+	}
+	wt, err := repo.r.Worktree()
+	if err != nil {
+		return "", err
+	}
+	if err := wt.Reset(&gogit.ResetOptions{Commit: target, Mode: gogit.HardReset}); err != nil {
+		return "", err
+	}
+	if err := wt.Reset(&gogit.ResetOptions{Commit: head.Hash(), Mode: gogit.SoftReset}); err != nil {
+		return "", err
+	}
+	hash, err := wt.Commit(msg, &gogit.CommitOptions{
+		Author: &object.Signature{Name: authorName, Email: authorEmail, When: time.Now()},
+	})
+	if errors.Is(err, gogit.ErrEmptyCommit) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("git commit: %w", err)
+	}
+	return hash.String()[:8], nil
+}
+
 func (repo *Repo) resolveShortSHA(sha string) (plumbing.Hash, error) {
 	// Try exact match first.
 	hash := plumbing.NewHash(sha)

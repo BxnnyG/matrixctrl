@@ -15,6 +15,38 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.101] — 2026-09-28
+
+Etappe 108: „Übernehmen" asks before it acts.
+
+### Changed
+
+- **The capacity check refuses instead of warning.** A configuration with a service that
+  fits on no node is refused *before* anything is committed — a `409` naming the service,
+  what it asks for and what the largest node has. It used to be a log line after the commit
+  while the deploy went ahead; it was right twice in production, both times with an outage.
+  An explicit override remains, behind a second confirmation.
+- **Settings: one bar for pending changes** at the foot of the page, on every view: which
+  sections changed, which services would restart, `Ansehen` · `Verwerfen` · `Übernehmen`.
+  The prediction renders the chart already stored in the release (~2 s, no registry).
+- **Progress per service** while applying, the same panel the update page uses; the raw
+  log is one click away.
+- With nothing pending, the header offers „Erneut anwenden" (e.g. to re-run hooks).
+
+### Added
+
+- **Going back after a failed apply, preselected.** Cluster to the exact revision the apply
+  replaced, settings to the commit it started from — as a new commit, so the history keeps
+  the attempt. The old rollback took „the previous revision" and left the settings on the
+  broken values for the next apply to roll out again.
+- `POST /api/v1/config/preview` (read-only role allowed), `/config/discard`,
+  `/config/revert-apply`.
+
+### Fixed
+
+- A release in `failed` no longer counts as stuck for applying: Helm upgrades out of it, and
+  a corrected configuration is how it is usually repaired. Only `pending-*` blocks.
+
 ## [0.1.100] — 2026-09-27
 
 Etappe 107, the first of five that rebuild the settings page. This one fixes what was

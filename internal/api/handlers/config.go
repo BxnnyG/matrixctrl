@@ -274,6 +274,18 @@ func (h *ConfigHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, resp)
 }
 
+// POST /api/v1/config/discard — throw away every uncommitted edit (etappe 108).
+//
+// The "Verwerfen" of the pending-changes bar. Back to the last commit, comments and all;
+// nothing on the cluster changes, because nothing uncommitted ever reached it.
+func (h *ConfigHandler) Discard(w http.ResponseWriter, r *http.Request) {
+	if err := h.store.Discard(); err != nil {
+		Error(w, http.StatusInternalServerError, "Verwerfen fehlgeschlagen: "+err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "discarded"})
+}
+
 // POST /api/v1/config/settings — apply form edits (path→value + removals) directly
 // to the owning section files, preserving comments. No commit (UI commits/deploys).
 func (h *ConfigHandler) PutSettings(w http.ResponseWriter, r *http.Request) {

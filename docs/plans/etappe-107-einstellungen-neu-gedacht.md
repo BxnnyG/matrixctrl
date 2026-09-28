@@ -210,3 +210,84 @@ Die bisher geplanten 107–108 (Umzug als ein Vorgang, Server-zu-Server) rücken
 - Ein falsch gerouteter Domain-Name (zeigt auf etwas anderes als diesen Server) ist in
   „Server & Adressen" rot markiert — der Fehler, der beim Umzug den Login blockiert hat.
 - Genau ein YAML-Editor, genau ein Verlaufs-Eingang.
+
+---
+
+## Etappe 108 — Übernehmen (Umsetzungsplan, 2026-09-28)
+
+### Was gemessen wurde
+
+Die Bausteine gibt es alle — sie sind nur nicht zu einem Weg verbunden:
+
+| Baustein | Stand |
+|---|---|
+| Manifest rendern (`helm.Render`) | vorhanden (E55) |
+| Kapazität prüfen (`capacity.Check`) | vorhanden — **aber nur als Warnung**, erst *nach* dem Commit, mitten im laufenden Deploy (P1-16c) |
+| Rollback | vorhanden (API, Knopf auf der Update-Seite) |
+| Verwerfen | fehlt — der Store kann Commit und Diff, `git.ResetToCommit` gibt es |
+| Fortschritt pro Dienst | der Stream liefert ihn (`onProgress`), die Config-Seite zeigt nur Rohlog |
+
+**P1-16c wird entschieden.** Der Eintrag sagte: scharf schalten, „sobald die Prüfung in
+Produktion ein paar Mal recht hatte". Sie hatte zweimal recht, beide Male mit echtem
+Ausfall — August (Postgres 35 h unschedulebar) und September (Postgres 5 Tage `Pending`
+nach dem Umzug). Beide Male stand die Warnung im Log, und das Deploy lief trotzdem.
+
+### Was gebaut wird
+
+1. **`POST /api/v1/config/preview`** — die Frage „was würde Übernehmen tun?", ohne etwas
+   zu tun. Rendert die ausstehende Konfiguration, prüft die Kapazität, und vergleicht die
+   Pod-Vorlagen des gerenderten Manifests mit denen des laufenden Releases: **welche
+   Dienste starten neu**. Kein Commit, kein Apply.
+2. **Die Kapazitätsprüfung sperrt** — vor dem Commit, synchron, als `409` mit den
+   Befunden. Ein `override_capacity: true` bleibt als bewusster Ausweg für den Fall, dass
+   die Prüfung irrt; die Oberfläche versteckt ihn hinter einer ausdrücklichen Bestätigung.
+3. **`POST /api/v1/config/discard`** — Arbeitsstand auf den letzten Commit zurück.
+4. **Die Leiste „Änderungen ausstehend"** am unteren Rand der Einstellungen, sobald der
+   Arbeitsstand vom letzten Commit abweicht: Anzahl, vorhergesagte Neustarts,
+   `[Ansehen] [Verwerfen] [Übernehmen]`. „Übernehmen" fragt zuerst die Vorschau; sperrt
+   sie, steht der Grund da statt eines Deploys.
+5. **Fortschritt als Dienst-Liste** statt Rohlog (das bleibt aufklappbar) — eine geteilte
+   Komponente, die die Update-Seite ebenfalls nutzen kann.
+6. **Bei Fehlschlag fragen, mit vorausgewähltem Rücksprung** (Entscheidung 3):
+   „Auf den letzten guten Stand zurück" ist der vorausgewählte Knopf, daneben „So lassen".
+
+### Randfälle
+
+- **Kein Cluster / Render scheitert:** die Vorschau sagt „konnte nicht geprüft werden" —
+  und das sperrt nicht (unbekannt ≠ passt nicht), wird aber sichtbar genannt (§4.55).
+- **Release in schlechtem Zustand** (`pending-*`, `failed`): Übernehmen verweist auf den
+  Rücksprung, statt in einen halben Zustand zu deployen (§4.88).
+- **Keine ausstehenden Änderungen:** keine Leiste; „Deployen" des aktuellen Stands bleibt
+  über den Seitenkopf möglich (z. B. um Hooks neu anzuwenden).
+- **Beide Auth-Modi:** alles hinter derselben Admin-Prüfung wie der bisherige Deploy.
+
+### Fertig wenn
+
+- Eine Änderung, die Postgres auf 4 Gi setzt, wird auf einem 8-Gi-Knoten **vor** dem
+  Anwenden abgelehnt, mit Dienst, Anforderung und freiem Platz im Satz — und nichts wurde
+  committet.
+- Die Vorschau nennt die Dienste, die neu starten, bevor irgendetwas passiert.
+- „Verwerfen" setzt den Arbeitsstand zurück, und die Leiste verschwindet.
+- Ein fehlgeschlagenes Übernehmen bietet den Rücksprung vorausgewählt an.
+
+### Nachtrag beim Bauen: was „Rücksprung" zurücksetzt
+
+Der vorhandene Rollback-Knopf setzt nur den Cluster zurück, mit `revision: 0` („die
+vorige"). Für den Fehlschlag nach „Übernehmen" reicht das nicht, zweimal:
+
+- **Die Konfiguration bliebe auf dem kaputten Stand.** Übernehmen committet vor dem
+  Deploy. Rollt nur Helm zurück, sagt das Repository etwas anderes als der Cluster, und
+  das nächste Übernehmen rollt denselben Fehler wieder aus.
+- **„Die vorige" ist nicht immer die richtige.** Scheitert das Upgrade, bevor Helm eine
+  Revision schreibt (Render-Fehler, gesperrtes Release), ist „die vorige" eine zu weit.
+
+Darum merkt sich jedes Übernehmen, *wovon* es ausging — Commit und Helm-Revision — und
+`POST /api/v1/config/revert-apply {upgrade_id}` geht genau dorthin: Cluster auf die
+gemerkte Revision (nur wenn sich die Revision überhaupt geändert hat, mit den
+post-rollback-Hooks wie beim bestehenden Rollback), danach die Konfiguration als **neuer
+Commit** mit dem Inhalt von damals. Kein Hard-Reset: der Verlauf behält, was versucht
+wurde und dass es zurückgenommen wurde.
+
+Der Merkzettel lebt im Stream, also im Speicher. Nach einem Neustart von MatrixCtrl ist
+er weg — dann sagt der Endpunkt das und verweist auf Verlauf und Update-Seite, statt zu
+raten.

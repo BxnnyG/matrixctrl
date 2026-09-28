@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/google/uuid"
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
-	"github.com/bxnnyg/matrixctrl/internal/capacity"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
 	"github.com/bxnnyg/matrixctrl/internal/rollout"
@@ -162,6 +160,10 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Message string `json:"message"`
+		// OverrideCapacity applies a configuration the capacity check refused. The way
+		// out for the day the check is wrong — the UI puts it behind an explicit
+		// confirmation, and the upgrade record says it was used.
+		OverrideCapacity bool `json:"override_capacity"`
 	}
 	_ = Decode(r, &req)
 	if req.Message == "" {
@@ -174,6 +176,30 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentVersion := rel.Version // semver only, e.g. "26.5.1"
+
+	// The verdict comes first — before the commit, before the stream, before anything
+	// the operator would have to undo (etappe 108, P1-16c). A configuration that cannot
+	// be placed on any node is refused here with the reason, instead of being committed
+	// as "applied" and then warned about in a log line while it takes a service down.
+	values, err := h.pendingValues(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Die ausstehende Konfiguration war nicht lesbar: "+err.Error())
+		return
+	}
+	verdict := h.verdictFor(r.Context(), name, values)
+	if verdict.Blocking && !req.OverrideCapacity {
+		JSON(w, http.StatusConflict, map[string]interface{}{
+			"blocked": true,
+			"error":   "Diese Konfiguration passt nicht auf den Cluster und wurde nicht angewendet — es wurde nichts gespeichert.",
+			"verdict": verdict,
+		})
+		return
+	}
+
+	revisionBefore := 0
+	if rel, err := h.helm.GetRelease(name); err == nil && rel != nil {
+		revisionBefore = rel.Revision
+	}
 
 	upgradeID := uuid.New().String()
 	stream := &upgradeStream{status: "pending"}
@@ -201,6 +227,13 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 			h.progressSnapshot(ctx, stream, started))
 		defer stopSnapshots()
 
+		// Where this apply starts from, before anything moves (etappe 108).
+		origin := applyOrigin{revision: revisionBefore}
+		if head, err := h.configStore.HeadSHA(); err == nil {
+			origin.configSHA = head
+		}
+		stream.setOrigin(origin)
+
 		sha, commitErr := h.configStore.Commit(ctx, commitMsg, userID)
 		if commitErr != nil {
 			if strings.Contains(commitErr.Error(), "nothing to commit") || strings.Contains(commitErr.Error(), "clean") {
@@ -214,28 +247,12 @@ func (h *HelmHandler) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 
 		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET status='running' WHERE id=$1", upgradeUUID)
 
-		var values map[string]interface{}
-		if h.configStore != nil {
-			contents, err := h.configStore.MergedContent(ctx)
-			if err != nil {
-				stream.emit("WARNING: could not load config values: " + err.Error())
-			} else {
-				values, err = config.MergeToMap(contents)
-				if err != nil {
-					stream.emit("WARNING: could not merge config values: " + err.Error())
-					values = nil
-				} else {
-					stream.emit(fmt.Sprintf("Loaded %d config slices.", len(contents)))
-				}
-			}
+		// Values and verdict were settled before the commit; the verdict that let this
+		// apply through is the one recorded with it.
+		if values != nil {
+			stream.emit("Configuration loaded.")
 		}
-
-		// Capacity preflight, before anything is applied (etappe 55). The values that
-		// took this homeserver down for 37 hours were written through this panel; this
-		// is the last moment they can be measured against the cluster they are about
-		// to reach. It renders the chart rather than reading the values, because the
-		// multipliers that matter live in the chart (§4.53).
-		h.emitCapacityPreflight(ctx, stream, name, currentVersion, values, upgradeUUID)
+		h.recordVerdict(ctx, stream, verdict, req.OverrideCapacity, upgradeUUID)
 
 		stream.emit("Applying config to cluster (version " + currentVersion + ")...")
 		stream.setPhase(rollout.PhaseApply)
@@ -303,65 +320,4 @@ func (h *HelmHandler) GetUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 		"logs":   stream.logs,
 		"done":   stream.done,
 	})
-}
-
-// emitCapacityPreflight renders the pending config and reports any workload that would
-// not fit, into the stream the operator is already watching.
-//
-// Deliberately not a refusal. A config that can schedule nothing is exactly the thing
-// to block, and E49 set the precedent that a skipped check is a failure unless someone
-// says otherwise — but a false positive here would block every deployment, and this
-// check has never run in anger. Warn first, watch it be right, then decide (P1-16c).
-func (h *HelmHandler) emitCapacityPreflight(ctx context.Context, stream *upgradeStream,
-	releaseName, version string, values map[string]interface{}, upgradeID uuid.UUID) {
-
-	if h.helm == nil || h.k8s == nil {
-		return
-	}
-	manifest, err := h.helm.Render(ctx, releaseName, version, values)
-	if err != nil {
-		// Not checked is not the same as fine, and saying so costs one line.
-		stream.emit("NOTE: capacity preflight skipped — the chart could not be rendered: " + err.Error())
-		return
-	}
-	nodes, err := h.k8s.NodeInfo(ctx)
-	if err != nil {
-		stream.emit("NOTE: capacity preflight skipped — node capacity unavailable: " + err.Error())
-		return
-	}
-
-	findings := capacity.Check(manifest, capacity.FromNodeInfo(nodes))
-	for _, f := range findings {
-		switch f.Level {
-		case capacity.LevelBlocked:
-			stream.emit("WARNING: " + f.Message)
-		case capacity.LevelWarn:
-			stream.emit("NOTE: " + f.Message)
-		case capacity.LevelUnknown:
-			stream.emit("NOTE: " + f.Message)
-		}
-	}
-	if capacity.Blocking(findings) {
-		stream.emit("WARNING: Diese Konfiguration wird angewendet, aber mindestens ein Pod " +
-			"kann danach auf keinem Node laufen. Genau so entstand der Ausfall vom 16.–18.08.")
-	} else if len(findings) == 0 {
-		stream.emit("Capacity preflight: every workload fits the cluster.")
-	}
-
-	// Recorded, not only streamed (etappe 63). Until now the preflight's verdict existed
-	// solely in a WebSocket, so once the tab closed "were we warned before applying
-	// that?" had no answer — and that is precisely when the question gets asked.
-	//
-	// An empty findings list is stored as an empty array rather than left NULL: "checked
-	// and nothing was wrong" and "never checked" are different answers, and NULL is
-	// reserved for the second (§4.59's rule against inventing a past).
-	if findings == nil {
-		findings = []capacity.Finding{}
-	}
-	if blob, err := json.Marshal(findings); err == nil {
-		if _, err := h.db.Exec(ctx,
-			"UPDATE upgrade_history SET pre_flight=$1 WHERE id=$2", blob, upgradeID); err != nil {
-			log.Printf("preflight: could not record findings: %v", err)
-		}
-	}
 }

@@ -200,6 +200,21 @@ func (s *Store) MergedContent(_ context.Context) ([]string, error) {
 // Diff returns a working-tree diff vs HEAD.
 func (s *Store) Diff() (string, error) { return s.git.Diff() }
 
+// Discard throws away every uncommitted edit (etappe 108).
+func (s *Store) Discard() error { return s.git.DiscardChanges() }
+
+// HeadSHA is the commit the configuration currently stands on.
+func (s *Store) HeadSHA() (string, error) { return s.git.HeadSHA() }
+
+// RestoreCommit puts the configuration of an earlier commit back, as a new commit.
+func (s *Store) RestoreCommit(sha, msg, userID string) (string, error) {
+	author := userID
+	if author == "" {
+		author = "admin"
+	}
+	return s.git.RestoreCommit(sha, msg, author, author+"@matrixctrl")
+}
+
 func (s *Store) readSlice(meta SliceMeta) (Slice, error) {
 	p := filepath.Join(s.path, meta.File)
 	data, err := os.ReadFile(p)

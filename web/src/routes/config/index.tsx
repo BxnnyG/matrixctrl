@@ -5,7 +5,8 @@ import * as jsYaml from "js-yaml";
 import type { OnMount } from "@monaco-editor/react";
 import { YamlEditor } from "@/components/config/YamlEditor";
 import { api } from "@/lib/api";
-import { useUpgradeStream } from "@/lib/ws";
+import { ApplyBar } from "@/components/config/ApplyBar";
+import { parseDiff } from "@/components/config/DiffView";
 
 interface ConfigLocation {
   path: string;
@@ -53,7 +54,6 @@ interface SettingsResponse {
   files: Record<string, string>; // top-level key → "section.yaml"
 }
 interface Slice { name: string; file: string; content: string }
-interface DeployResponse { upgrade_id: string }
 
 type Mode = "standard" | "yaml" | "diff";
 
@@ -89,11 +89,7 @@ function Settings() {
   const [changes, setChanges] = useState<Record<string, unknown>>({});
   const [saved, setSaved] = useState(false);
 
-  const [deployId, setDeployId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [done, setDone] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const logRef = useRef<HTMLDivElement>(null);
+  const [redeploy, setRedeploy] = useState(0);
 
   const dirty = Object.keys(changes).length > 0;
 
@@ -119,35 +115,21 @@ function Settings() {
     },
   });
 
-  const deploy = useMutation({
-    mutationFn: (msg: string) => api.post<DeployResponse>("/api/v1/helm/releases/ess/apply-config", { message: msg }),
-    onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
-  });
-
-  // Uncommitted working-tree changes — what "Deployen" would actually ship.
+  // Uncommitted working-tree changes — what "Übernehmen" would ship. Always loaded
+  // now: the pending-changes bar is on every view of the page (etappe 108).
   const { data: diffData, isFetching: diffLoading } = useQuery({
     queryKey: ["config", "diff"],
     queryFn: () => api.get<{ diff: string }>("/api/v1/config/diff"),
-    enabled: mode === "diff",
     refetchOnWindowFocus: false,
   });
   const hasDiff = !!diffData?.diff && !diffData.diff.startsWith("(") && /^[+-]/m.test(diffData.diff);
-
-  useUpgradeStream(deployId, {
-    onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
-    onDone: (s) => { setDone(true); setStatus(s); if (s === "success") qc.invalidateQueries({ queryKey: ["helm"] }); },
-  });
+  const pendingFiles = useMemo(() => hasDiff ? parseDiff(diffData!.diff).map((f) => f.displayName) : [], [hasDiff, diffData]);
 
   function effectiveValue(path: string): unknown {
     if (path in changes) return changes[path];
     return getByPath(data?.values, path);
   }
   function setValue(path: string, v: unknown) { setChanges((p) => ({ ...p, [path]: v })); setSaved(false); }
-
-  async function saveAndDeploy() {
-    if (dirty) await saveStd.mutateAsync();
-    deploy.mutate("config: Einstellungen angewendet");
-  }
 
   if (isLoading) return <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 24, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>;
   const schema = data?.schema;
@@ -221,11 +203,12 @@ function Settings() {
             {saveStd.isPending ? <Spinner size={13} /> : "Speichern"}
           </Button>
         )}
-        {/* In every mode. YAML mode used to have no deploy at all: save there, then
-            switch tabs to find the button (etappe 107). */}
-          <Button variant="primary" size="sm" icon="rocket" disabled={deploy.isPending || !!deployId} onClick={saveAndDeploy}>
-            {dirty ? "Speichern & Deployen" : "Deployen"}
-          </Button>
+        {/* With nothing pending, applying the current state again is still possible —
+            to re-run the hooks, say. With edits pending, the bar at the foot is the way
+            (etappe 108): it says what they would do before doing it. */}
+        {!dirty && !hasDiff && (
+          <Button variant="outline" size="sm" icon="rocket" onClick={() => setRedeploy((n) => n + 1)}>Erneut anwenden</Button>
+        )}
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -282,7 +265,7 @@ function Settings() {
                 <div style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name="diff" size={18} /></div>
                 <div>
                   <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>Ausstehende Änderungen</h2>
-                  <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--text-faint)" }}>Was ein Deploy jetzt auf den Cluster bringen würde (Working-Tree gegen letzten Commit).</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--text-faint)" }}>Was „Übernehmen" jetzt auf den Cluster bringen würde — gegen den zuletzt übernommenen Stand.</p>
                 </div>
               </div>
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
@@ -291,7 +274,7 @@ function Settings() {
                 ) : hasDiff ? (
                   <DiffView raw={diffData!.diff} />
                 ) : (
-                  <EmptyState icon="check" title="Keine ausstehenden Änderungen" sub="Working-Tree und letzter Commit sind identisch — es gibt nichts zu deployen." />
+                  <EmptyState icon="check" title="Keine ausstehenden Änderungen" sub="Alles ist übernommen — es gibt nichts anzuwenden." />
                 )}
               </div>
             </div>
@@ -321,24 +304,13 @@ function Settings() {
                 );
               })}
 
-              {deployId && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Deploy</span>
-                    {done && status === "success" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-ok)" }}><Icon name="check" size={14} stroke={2.2} /> Erfolgreich</span>}
-                    {done && status === "hooks-failed" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-warn)" }}><Icon name="alert" size={14} /> Hooks fehlgeschlagen</span>}
-                    {done && status === "failed" && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--status-err)" }}><Icon name="x" size={14} stroke={2.2} /> Fehlgeschlagen</span>}
-                  </div>
-                  <div ref={logRef} className="mc-scroll" style={{ background: "oklch(0.13 0.005 256)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, fontFamily: "var(--mono)", fontSize: 12, color: "oklch(0.82 0.13 150)", maxHeight: 256, overflowY: "auto", lineHeight: 1.6 }}>
-                    {logs.map((line, i) => <div key={i} style={{ color: line.startsWith("ERROR") ? "var(--status-err)" : line.startsWith("WARNING") ? "var(--status-warn)" : undefined }}>{line}</div>)}
-                    {!done && <div style={{ animation: "mc-ping 1.2s ease infinite", marginTop: 2 }}>▋</div>}
-                  </div>
-                </div>
-              )}
             </div>
           ) : null}
         </main>
       </div>
+
+      <ApplyBar files={pendingFiles} unsaved={Object.keys(changes).length} diffKey={diffData?.diff ?? ""}
+        onSave={() => saveStd.mutateAsync()} onView={() => setMode("diff")} redeploy={redeploy} />
     </div>
   );
 }

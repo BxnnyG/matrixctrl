@@ -1148,7 +1148,7 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   renders the chart and measures every workload against the largest node before the
   upgrade runs. Proven by rendering the real config of 2026-08-06: `ess-postgres` at
   8250m against a 6000m node, out of a values file that says 4000m.
-  *Now open as **P1-16c**: should it refuse?* E55 warns and applies anyway. Blocking is
+  ✅ **P1-16c decided 2026-09-28 (E108): it refuses.** Right twice in production, both times with a real outage (August: 35 h; September: 5 days Pending after a migration), and both times the warning scrolled past while the deploy went ahead. Now checked before the commit, refused with the reason, with an explicit override. *History:* E55 warned and applied anyway. Blocking is
   the obvious next step and deliberately not taken yet — a false positive would stop
   every deployment, and the check has not run in anger. Revisit once it has been right
   a few times in production.

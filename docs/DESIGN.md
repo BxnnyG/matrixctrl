@@ -4236,3 +4236,49 @@ Form, weil 78 Zeilen namens „Memory" nichts sagen.
 
 **Merksatz:** *Ein Formular, das nicht zur laufenden Version passt, ist keine vereinfachte
 Ansicht der Wahrheit, sondern eine andere.*
+
+### §4.110 — Erst fragen, dann übernehmen (2026-09-28, operator, etappe 108)
+
+> „Übernehmen fragt bei Fehlschlag, mit vorausgewähltem Rücksprung" — Entscheidung 3 aus
+> dem Plan 107–111.
+
+**Die Kapazitätsprüfung sperrt, vor dem Commit.** Sie warnte seit E55 — nach dem Commit, als
+Logzeile, während das Deploy weiterlief. Sie hatte zweimal recht, beide Male mit Ausfall
+(P1-16c). Jetzt beantwortet *ein* Urteil (`configVerdict`) sowohl die Vorschau als auch das
+Anwenden: gleiche Werte, gleicher Render, keine Chance, dass sich die beiden widersprechen.
+Eine Ablehnung ist ein `409` mit Dienst, Anforderung und Platz — und es wurde nichts
+committet. `override_capacity` bleibt als Ausweg für den Tag, an dem die Prüfung irrt, hinter
+einer ausdrücklichen zweiten Bestätigung. „Konnte nicht geprüft werden" sperrt nicht
+(unbekannt ≠ passt nicht, §4.55), wird aber so genannt.
+
+**Die Vorschau rendert das Chart, das schon im Release liegt.** Kein Registry-Zugriff, ~2 s
+statt ~30 s. `ClientOnly` in Helm überschreibt die übergebene `action.Configuration`
+(Release-Speicher im RAM, Fake-Kube-Client) — auf der gemeinsamen Konfiguration hätte die
+erste Vorschau jedes spätere Upgrade still ins Leere laufen lassen. Darum eine eigene,
+isolierte; der Live-Test prüft, dass die gemeinsame danach dieselben Zeiger hat, und der
+Gegenversuch mit der gemeinsamen scheitert.
+
+**Neustarts werden am ganzen Pod-Template erkannt**, nicht an den Containern: ESS rollt
+Synapse nach einer Config-Änderung über eine Checksummen-Annotation. Dieselben Werte müssen
+*keinen* Neustart vorhersagen — eine Vorhersage, die immer „startet neu" sagt, lernt man zu
+überlesen.
+
+**Der Rücksprung geht genau dorthin, wo das Übernehmen anfing.** Der vorhandene Rollback
+nahm „die vorige Revision" und ließ die Konfiguration auf dem kaputten Stand — das nächste
+Übernehmen hätte denselben Fehler wieder ausgerollt, und scheitert Helm vor dem Schreiben
+einer Revision, ist „die vorige" eine zu weit. Jedes Übernehmen merkt sich Commit und
+Revision; `revert-apply` setzt den Cluster auf diese Revision (nur wenn sie sich geändert
+hat, mit den post-rollback-Hooks) und die Konfiguration als **neuen Commit** auf den Inhalt
+von damals. Kein Hard-Reset: der Verlauf zeigt den Versuch und seine Rücknahme.
+
+**`failed` ist kein Sperrzustand für Übernehmen**, nur `pending-*`. Helm upgradet aus
+`failed` heraus, und eine korrigierte Konfiguration ist der übliche Weg hinaus.
+
+**Der erste Befund des Live-Tests war echt.** Der Gegenversuch „die laufenden Werte dürfen
+nicht abgelehnt werden" scheiterte: die im Release gespeicherten Werte fordern für Postgres
+8500m CPU auf einem 6000m-Node. Die Pods laufen nur, weil ihre Ressourcen von Hand gesetzt
+wurden. Das war kein Fehler der Prüfung, sondern genau der Fall, den sie verhindern soll —
+das nächste Übernehmen hätte Postgres wieder auf `Pending` gesetzt. Der Gegenversuch nimmt
+jetzt eine Konfiguration, die passt; die Beobachtung steht im Testlog.
+
+**Merksatz:** *Eine Warnung, nach der trotzdem ausgeführt wird, ist ein Protokoll.*
