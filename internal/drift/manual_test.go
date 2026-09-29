@@ -218,7 +218,7 @@ func TestSummariseManual(t *testing.T) {
 		{Kind: Human, Covered: false}, {Kind: Human, Covered: true},
 		{Kind: Foreign}, {Kind: Human, Covered: false},
 	}
-	un, hand, foreign := SummariseManual(edits)
+	un, hand, foreign, _ := SummariseManual(edits)
 	if un != 2 || hand != 1 || foreign != 1 {
 		t.Fatalf("got %d/%d/%d", un, hand, foreign)
 	}
@@ -266,7 +266,7 @@ func TestTheIngressCaseIsReportedLoudly(t *testing.T) {
 	if edits[0].Covered || edits[0].Kind != Human {
 		t.Fatalf("must be an uncovered human edit: %+v", edits[0])
 	}
-	if un, _, _ := SummariseManual(edits); un != 1 {
+	if un, _, _, _ := SummariseManual(edits); un != 1 {
 		t.Fatalf("it must count as unmaintained, got %d", un)
 	}
 }

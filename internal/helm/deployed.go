@@ -93,3 +93,13 @@ func (c *Client) RenderDeployed(ctx context.Context, name string, values map[str
 	}
 	return rel.Manifest, out.Manifest, nil
 }
+
+// ReleaseManifest is the rendered manifest of a release's newest revision — what the
+// chart wants on the cluster (etappe 111).
+func (c *Client) ReleaseManifest(name string) (string, error) {
+	rel, _, err := c.newestRelease(name)
+	if err != nil {
+		return "", err
+	}
+	return rel.Manifest, nil
+}

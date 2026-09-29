@@ -88,6 +88,10 @@ type ManualEdit struct {
 	// hand-edit on an unmaintained one means nothing will ever restore it. Same
 	// evidence, different sentence.
 	Covered bool `json:"covered"`
+	// MatchesChart reports that every one of these fields has, live, the value the
+	// running release's manifest gives it — hand-written once, but nothing the chart
+	// would not set the same way (etappe 111). Set by the caller, who has the manifest.
+	MatchesChart bool `json:"matches_chart,omitempty"`
 	// UpdatedAt is when that manager last wrote, in the object's own words.
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
@@ -281,7 +285,7 @@ func FindManualEdits(objects []ObjectFields, hookPaths map[string][]string) []Ma
 // one of the three that nothing in the system will ever put back.
 func rank(e ManualEdit) int {
 	switch {
-	case e.Kind == Human && !e.Covered:
+	case e.Kind == Human && !e.Covered && !e.MatchesChart:
 		return 0
 	case e.Kind == Human:
 		return 1
@@ -365,10 +369,13 @@ func walkJSON(prefix string, node map[string]any, out *[]string) {
 	}
 }
 
-// SummariseManual counts what the dashboard needs: the number that should be zero.
-func SummariseManual(edits []ManualEdit) (unmaintained, byHand, foreign int) {
+// SummariseManual counts what the dashboard needs: the number that should be zero,
+// and, apart from it, hand-set fields that equal the chart's values (etappe 111).
+func SummariseManual(edits []ManualEdit) (unmaintained, byHand, foreign, aligned int) {
 	for _, e := range edits {
 		switch {
+		case e.Kind == Human && !e.Covered && e.MatchesChart:
+			aligned++
 		case e.Kind == Human && !e.Covered:
 			unmaintained++
 		case e.Kind == Human:

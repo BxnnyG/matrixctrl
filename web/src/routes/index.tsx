@@ -29,6 +29,8 @@ interface ManualEdit {
   kind: "human" | "automation" | "foreign";
   paths: string[];
   covered: boolean;
+  /** Every field equals the running release's value (etappe 111). */
+  matches_chart?: boolean;
 }
 
 interface DriftResponse {
@@ -40,6 +42,7 @@ interface DriftResponse {
   manual_partial: boolean;
   manual_unmaintained: number;
   manual_by_hand: number;
+  manual_aligned?: number;
   manual_foreign: number;
 }
 
@@ -429,14 +432,31 @@ function Dashboard() {
           <Icon name="alert" size={18} style={{ color: "var(--status-warn)", marginTop: 1 }} />
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ fontSize: 13, color: "var(--text)" }}>
-              <strong>{drift!.manual_unmaintained} Feld{drift!.manual_unmaintained === 1 ? "" : "er"} von Hand gesetzt, ohne dass ein Hook es trägt.</strong>{" "}
+              {/* Counted in objects, and said so: "2 Felder" over a list of seven
+                  field paths was the count of objects under the wrong noun (E111). */}
+              <strong>Von Hand gesetzte Werte in {drift!.manual_unmaintained} Objekt{drift!.manual_unmaintained === 1 ? "" : "en"}, die weder ein Hook trägt noch das Chart so setzt.</strong>{" "}
               Helm überschreibt solche Felder nicht — sie überleben jedes Upgrade unbemerkt.
             </div>
             <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4, fontFamily: "var(--mono)", lineHeight: 1.6 }}>
-              {(drift!.manual_edits ?? []).filter((e) => e.kind === "human" && !e.covered).slice(0, 4)
+              {(drift!.manual_edits ?? []).filter((e) => e.kind === "human" && !e.covered && !e.matches_chart).slice(0, 4)
                 .map((e) => `${e.resource}/${e.name}: ${e.paths.join(", ")}`).join(" · ")}
             </div>
           </div>
+        </Card>
+      )}
+
+      {/* Quieter still: hand-set once, but the chart now sets the same values — the
+          emergency resources of 2026-09-28, written into the settings afterwards.
+          Worth one line so the ownership is not a mystery; not worth an alarm. */}
+      {(drift?.manual_aligned ?? 0) > 0 && (drift?.manual_unmaintained ?? 0) === 0 && (
+        <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface-2)" }}>
+          <Icon name="check" size={17} style={{ color: "var(--status-ok)" }} />
+          <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-dim)" }}>
+            Von Hand gesetzte Werte in {drift!.manual_aligned} Objekt{drift!.manual_aligned === 1 ? "" : "en"} — sie stimmen inzwischen mit den Einstellungen überein, Helm setzt sie genauso.{" "}
+            <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>
+              {(drift!.manual_edits ?? []).filter((e) => e.matches_chart).map((e) => `${e.resource}/${e.name}`).join(" · ")}
+            </span>
+          </span>
         </Card>
       )}
 

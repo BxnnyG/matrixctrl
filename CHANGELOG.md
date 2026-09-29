@@ -15,6 +15,15 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.105] — 2026-09-29
+
+### Fixed
+
+- The dashboard no longer warns about hand-set fields whose live values equal what the
+  running release sets (compared as Kubernetes quantities: `1` = `1000m`). Such fields get
+  a quiet line instead. Fields that still differ from the chart stay loud.
+- The warning counted objects but called them fields; it now says objects.
+
 ## [0.1.104] — 2026-09-29
 
 ### Fixed

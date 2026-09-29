@@ -4379,3 +4379,22 @@ lag. Beim Speichern übernimmt MatrixCtrl jetzt die Schreibweise des Anbieters, 
 
 **Merksatz:** *Ein Login ist so sicher wie die Regel, nach der er einem Account zugeordnet
 wird.*
+
+### §4.113 — Wer ein Feld schrieb, sagt nicht, ob es abweicht (2026-09-29, agent, etappe 111)
+
+Die Startseite warnte laut vor „von Hand gesetzten Feldern, die jedes Upgrade unbemerkt
+überleben" — für die Ressourcen von Postgres und Synapse, die im Notfall per
+`kubectl set resources` gesetzt und danach mit **denselben Werten** in die Einstellungen
+übernommen worden waren. Helms Drei-Wege-Merge fand nichts zu ändern, also blieb `kubectl`
+Besitzer; der Bericht las die Besitzer richtig und zog den falschen Schluss.
+
+**Entscheidung:** Ein von Hand gesetzter Eintrag, dessen Felder live alle den Wert aus dem
+Manifest des laufenden Releases haben, ist keine Ausnahme mehr — er bekommt eine leise
+Zeile statt der Warnung. Mengen werden als Quantity verglichen (die API liefert `1`, die
+Einstellungen sagen `1000m`). Ein Feld, das das Chart gar nicht setzt, zählt nie als gleich;
+ohne lesbares Manifest bleibt alles laut. Gegenprobe live: auf dem alten Server, dessen
+Release noch 8500m für Postgres verlangt, bleiben dieselben Einträge laut.
+
+Nebenbei: die Warnung zählte Objekte und nannte sie „Felder" (2 Objekte, 7 Felder).
+
+**Merksatz:** *Besitz ist ein Indiz, kein Befund.*

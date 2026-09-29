@@ -199,6 +199,9 @@ func main() {
 	statusHandler.SetBackup(pool, configRepoPath, version.Version)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
 	driftHandler := handlers.NewDriftHandler(pool, k8sClient, essNS)
+	if helmClient != nil {
+		driftHandler.SetManifestSource(func() (string, error) { return helmClient.ReleaseManifest(essRelease) })
+	}
 	usersHandler := handlers.NewUsersHandler(authHandler.MAS)
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)

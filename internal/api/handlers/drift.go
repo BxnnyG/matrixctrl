@@ -17,7 +17,14 @@ type DriftHandler struct {
 	db    *pgxpool.Pool
 	k8s   *k8s.Client
 	essNS string
+	// manifest is the running release's rendered manifest — what the chart wants.
+	// Nil without a cluster; hand-set fields are then judged as before.
+	manifest func() (string, error)
 }
+
+// SetManifestSource lets the report tell hand-set fields that differ from the chart
+// from those that now equal it (etappe 111).
+func (h *DriftHandler) SetManifestSource(f func() (string, error)) { h.manifest = f }
 
 func NewDriftHandler(db *pgxpool.Pool, k8sClient *k8s.Client, essNS string) *DriftHandler {
 	return &DriftHandler{db: db, k8s: k8sClient, essNS: essNS}
@@ -48,7 +55,8 @@ func (h *DriftHandler) Status(w http.ResponseWriter, r *http.Request) {
 	counts := drift.Summary(findings)
 
 	manual, manualPartial := h.manualEdits(ctx, actions)
-	unmaintained, byHand, foreign := drift.SummariseManual(manual)
+	h.markChartMatches(ctx, manual)
+	unmaintained, byHand, foreign, aligned := drift.SummariseManual(manual)
 
 	JSON(w, http.StatusOK, map[string]any{
 		"findings":  findings,
@@ -64,7 +72,39 @@ func (h *DriftHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"manual_unmaintained": unmaintained,
 		"manual_by_hand":      byHand,
 		"manual_foreign":      foreign,
+		"manual_aligned":      aligned,
 	})
+}
+
+// markChartMatches sets MatchesChart on hand-edits whose fields all equal the release
+// manifest. Without a manifest nothing is marked: unknown is not harmless.
+func (h *DriftHandler) markChartMatches(ctx context.Context, edits []drift.ManualEdit) {
+	if h.manifest == nil || h.k8s == nil {
+		return
+	}
+	manifest, err := h.manifest()
+	if err != nil || manifest == "" {
+		return
+	}
+	for i := range edits {
+		e := &edits[i]
+		if e.Kind != drift.Human {
+			continue
+		}
+		chart := drift.ManifestObject(manifest, e.Resource, e.Name)
+		if chart == nil {
+			continue
+		}
+		raw, err := h.k8s.GetObjectJSON(ctx, e.Resource, e.Namespace, e.Name)
+		if err != nil {
+			continue
+		}
+		var live map[string]any
+		if json.Unmarshal(raw, &live) != nil {
+			continue
+		}
+		e.MatchesChart = drift.MatchesChart(live, chart, e.Paths)
+	}
 }
 
 // manualEdits answers the other half of the drift question: which fields does
