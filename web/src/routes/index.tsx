@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { api } from "@/lib/api";
 import { Card, Icon, StatusDot, Badge, Button, SectionTitle, Meter, Spinner, EmptyState, type IconName } from "@/components/mc";
 import { ComponentDrawer, EventRow, type EventInfo } from "@/components/status/ComponentDrawer";
+import { VersionsCard } from "@/components/VersionsCard";
 import type { CSSProperties } from "react";
 
 export const Route = createFileRoute("/")({
@@ -48,6 +49,9 @@ interface DriftResponse {
 
 interface ComponentStatus {
   name: string;
+  /** Main container image and its tag (etappe 112). */
+  image?: string;
+  version?: string;
   kind?: string;
   status: string;
   ready: number;
@@ -421,6 +425,8 @@ function Dashboard() {
           <Button variant="soft" size="sm" iconRight="chevRight" onClick={() => navigate({ to: "/hooks" })}>Hooks ausführen</Button>
         </Card>
       )}
+
+      <VersionsCard components={components} chartVersion={rel?.chart_version} />
 
       {/* Hand-edits nothing maintains. This is the failure MatrixCtrl was built to
           prevent and could not see until now: Helm's three-way merge preserves

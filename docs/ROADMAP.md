@@ -98,7 +98,12 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 109 | Lehren aus dem Upgrade auf 26.9.3: festgeschriebene Images sperren (mit „dem Chart folgen"), verwaiste ClusterIPs in hostAliases, Rücksprung nur nach echter Änderung, Sequenzen nachziehen, Stepper | ✅ 2026-09-29 · `v0.1.102` · [plan](plans/etappe-109-lehren-aus-dem-upgrade.md) |
 | 110 | Anmeldung mit Google, GitHub, eigenem OIDC (Zitadel): einmal in MAS, kein Übernahmepfad, Secret nur im Cluster | ✅ 2026-09-29 · `v0.1.103` · [plan](plans/etappe-110-externe-anmeldung.md) |
 | 111 | Von Hand gesetzt, aber gleich dem Chart: keine Warnung mehr für Felder, die Helm genauso setzt | ✅ 2026-09-29 · `v0.1.105` · [plan](plans/etappe-111-handgesetzt-aber-gleich.md) |
-| 112–114 | Einstellungen III: Aufgaben I+II · Expertenebene | 📋 geplant · [plan](plans/etappe-107-einstellungen-neu-gedacht.md) |
+| 112 | Versionen auf einen Blick (Dashboard): ESS + neueste, MatrixCtrl + Update, jeder Dienst | ✅ 2026-09-29 · `v0.1.106` · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
+| 113–114 | Einstellungen: Aufgaben-Ebene I+II als Startansicht (für Einsteiger) | 📋 geplant · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
+| 115 | TLS & DNS je Hostname | 📋 geplant |
+| 116 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
+| 117 | Worker-Insights | 📋 geplant |
+| 118 | Bridges (Hookshot, Appservices) | 📋 geplant |
 | 112–113 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei (verschoben: der akute Umzug ist erledigt) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |
 | 71 | Wo die Konfiguration wirklich liegt — die beruhigendste Eigenschaft, die nie jemand ausgesprochen hat | ✅ 2026-09-05 · `v0.1.67` · [plan](plans/etappe-71-where-the-config-lives.md) |

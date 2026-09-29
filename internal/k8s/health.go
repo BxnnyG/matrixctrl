@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -11,7 +12,12 @@ import (
 )
 
 type ComponentHealth struct {
-	Name     string `json:"name"`
+	Name string `json:"name"`
+	// Image and Version of the workload's main container, as the pod template says
+	// (etappe 112: "Versionen von allem auf den ersten Blick"). Version is the tag;
+	// empty for an image pinned by digest only.
+	Image    string `json:"image,omitempty"`
+	Version  string `json:"version,omitempty"`
 	Kind     string `json:"kind"` // Deployment | StatefulSet
 	Status   string `json:"status"`
 	Ready    int32  `json:"ready"`
@@ -58,6 +64,8 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		result = append(result, ComponentHealth{
 			Name:          d.Name,
 			Kind:          "Deployment",
+			Image:         mainImage(d.Name, d.Spec.Template.Spec.Containers),
+			Version:       imageVersion(mainImage(d.Name, d.Spec.Template.Spec.Containers)),
 			Status:        workloadStatus(d.Status.ReadyReplicas, desired),
 			Ready:         d.Status.ReadyReplicas,
 			Desired:       desired,
@@ -86,6 +94,8 @@ func (c *Client) ComponentHealth(ctx context.Context, namespace string) ([]Compo
 		result = append(result, ComponentHealth{
 			Name:          s.Name,
 			Kind:          "StatefulSet",
+			Image:         mainImage(s.Name, s.Spec.Template.Spec.Containers),
+			Version:       imageVersion(mainImage(s.Name, s.Spec.Template.Spec.Containers)),
 			Status:        workloadStatus(s.Status.ReadyReplicas, desired),
 			Ready:         s.Status.ReadyReplicas,
 			Desired:       desired,
@@ -203,4 +213,35 @@ func lastRestartAt(statuses []corev1.ContainerStatus) *time.Time {
 		}
 	}
 	return last
+}
+
+// mainImage is the image of the container the workload exists for: the one whose name
+// the workload's name contains ("synapse" in ess-synapse-main, "postgres" in
+// ess-postgres — not its exporter), else the first. Sidecars carry versions too, and
+// showing the exporter's as "Postgres" would be a confident wrong answer.
+func mainImage(workload string, containers []corev1.Container) string {
+	if len(containers) == 0 {
+		return ""
+	}
+	best := -1
+	for i, c := range containers {
+		if strings.Contains(workload, c.Name) && (best < 0 || len(c.Name) > len(containers[best].Name)) {
+			best = i
+		}
+	}
+	if best < 0 {
+		best = 0
+	}
+	return containers[best].Image
+}
+
+// imageVersion is the tag of an image reference: after the last colon that follows the
+// last slash (a registry port is not a tag), before any digest.
+func imageVersion(image string) string {
+	ref, _, _ := strings.Cut(image, "@")
+	name := ref[strings.LastIndex(ref, "/")+1:]
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		return name[i+1:]
+	}
+	return ""
 }

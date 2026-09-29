@@ -15,6 +15,14 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.106] — 2026-09-29
+
+### Added
+
+- **Versions on the dashboard:** ESS with the newest available release, MatrixCtrl with its
+  update check, and the running version of every service (main container, not sidecars),
+  named by what it does.
+
 ## [0.1.105] — 2026-09-29
 
 ### Fixed

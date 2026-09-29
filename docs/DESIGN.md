@@ -4398,3 +4398,19 @@ Release noch 8500m für Postgres verlangt, bleiben dieselben Einträge laut.
 Nebenbei: die Warnung zählte Objekte und nannte sie „Felder" (2 Objekte, 7 Felder).
 
 **Merksatz:** *Besitz ist ein Indiz, kein Befund.*
+
+### §4.114 — Versionen auf einen Blick (2026-09-29, operator, etappe 112)
+
+> „wie siehts aus mit Versionen von allem auf den ersten Blick, also aufm Dashboard"
+
+Das Dashboard zeigte Gesundheit und keine einzige Version. Jetzt eine Karte: ESS mit der
+neuesten verfügbaren Version, MatrixCtrl mit seinem Update-Check, und je Dienst die Version,
+die wirklich läuft — der Tag des **Haupt**-Containers aus dem Pod-Template. Haupt-Container
+heißt: der, dessen Name im Workload-Namen steckt (`postgres` in `ess-postgres`, nicht der
+Exporter daneben); ein Seitenwagen mit eigener Version als „Postgres" anzuzeigen wäre eine
+selbstsichere falsche Antwort. Die Dienste heißen, was sie tun („Anmeldung (MAS)",
+„Anrufe (LiveKit)"), der Chart-Name steht im Tooltip. Die Abfragen teilen sich die
+Cache-Schlüssel mit Seitenleiste und Update-Seite — keine zusätzlichen Requests.
+
+Selbstbericht und Reihenfolge für 113–118 (Aufgaben-Ebene, TLS & DNS, Föderation,
+Worker-Insights, Bridges): `plans/etappe-112-uebersicht-was-fehlt.md`.
