@@ -153,27 +153,38 @@ func TestExtractTags(t *testing.T) {
 // A diagnostic that cannot conjugate reads as one nobody maintains — badly timed,
 // since it appears at the moment an upgrade is about to go wrong.
 func TestDescribeAgreesInNumber(t *testing.T) {
-	one := Describe([]Finding{{Component: "a", Config: "1.0.0", Chart: "1.1.0"}})
-	if !strings.Contains(one, "1 Image-Tag in der Config ist älter") {
-		t.Errorf("singular: %s", one)
+	one := Describe([]Finding{{Component: "a", Config: "1.0.0", Chart: "1.1.0", Kind: KindOlder}})
+	if one != "1 festgeschriebenes Image passt nicht zum Chart: a: Config 1.0.0, Chart 1.1.0." {
+		t.Errorf("singular: %q", one)
 	}
-	if !strings.Contains(one, "Diese Komponente wird") {
-		t.Errorf("singular tail: %s", one)
-	}
-
+	// Asserted whole. An earlier version checked a prefix and shipped
+	// "Diese Komponenten werden wird …" past a test that read as covering it (E43).
 	two := Describe([]Finding{
-		{Component: "a", Config: "1.0.0", Chart: "1.1.0"},
-		{Component: "b", Config: "2.0.0", Chart: "2.1.0"},
+		{Component: "a", Config: "1.0.0", Chart: "1.1.0", Kind: KindOlder},
+		{Component: "redis", Config: "library/redis:7.4", Kind: KindOrphan},
 	})
-	if !strings.Contains(two, "2 Image-Tags in der Config sind älter") {
-		t.Errorf("plural: %s", two)
+	const want = "2 festgeschriebene Images passen nicht zum Chart: a: Config 1.0.0, Chart 1.1.0 · redis: Config library/redis:7.4, Chart hat dafür kein Image mehr."
+	if two != want {
+		t.Errorf("plural:\n got %q\nwant %q", two, want)
 	}
-	// Asserted whole, and by suffix. The earlier version checked
-	// Contains(…, "Diese Komponenten werden"), which is a prefix of the broken
-	// "Diese Komponenten werden wird vom Upgrade nicht mit aktualisiert." — so the
-	// bug shipped past a test that reads as though it covers exactly this (E43).
-	const wantTail = "Diese Komponenten werden vom Upgrade nicht mit aktualisiert."
-	if !strings.HasSuffix(two, wantTail) {
-		t.Errorf("plural tail: got %q, want suffix %q", two, wantTail)
+}
+
+// 26.9: the chart dropped redis.image when Valkey replaced Redis. The config still
+// pinned library/redis:7.4 — the counter-probe is matrixTools, which the chart still
+// ships an image for and so is Compare's business, not this one's.
+func TestAnImageTheChartNoLongerHasIsAnOrphan(t *testing.T) {
+	cfg := map[string]interface{}{
+		"redis":       map[string]interface{}{"image": map[string]interface{}{"repository": "library/redis", "tag": "7.4-alpine"}},
+		"matrixTools": map[string]interface{}{"image": map[string]interface{}{"tag": "0.7.3"}},
+		"synapse":     map[string]interface{}{"replicas": 1},
+	}
+	chart := map[string]interface{}{
+		"redis":       map[string]interface{}{"maxMemory": "40mb"},
+		"valkey":      map[string]interface{}{"image": map[string]interface{}{"tag": "8.1"}},
+		"matrixTools": map[string]interface{}{"image": map[string]interface{}{"tag": "0.10.3"}},
+	}
+	got := Orphaned(cfg, chart)
+	if len(got) != 1 || got[0].Component != "redis" || got[0].Kind != KindOrphan || got[0].Config != "library/redis:7.4-alpine" {
+		t.Fatalf("got %+v", got)
 	}
 }

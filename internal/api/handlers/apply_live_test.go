@@ -176,3 +176,50 @@ func deepCopyMap(t *testing.T, in map[string]interface{}) map[string]interface{}
 	}
 	return out
 }
+
+// The alias check against a real cluster, both ways: the running release's alias to
+// Traefik is silent, and the same alias moved by one address — what a move to another
+// cluster does — is reported with Traefik as the suggestion (etappe 109).
+func TestLiveStaleHostAliases(t *testing.T) {
+	if os.Getenv("RUN_LIVE") == "" {
+		t.Skip("set RUN_LIVE=1")
+	}
+	hc, err := helm.New("ess")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kc, err := k8s.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	running, err := hc.GetReleaseValues("ess")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewHelmHandler(hc, nil, nil, "ess", nil, kc, "ess")
+	ctx := context.Background()
+
+	v := h.verdictFor(ctx, "ess", running)
+	if v.AliasesUnchecked {
+		t.Fatal("the services could not be listed — this test needs cluster-wide read")
+	}
+	if len(v.StaleAliases) != 0 {
+		t.Fatalf("the running aliases are correct here, nothing should be reported: %+v", v.StaleAliases)
+	}
+
+	rtc, _ := running["matrixRTC"].(map[string]interface{})
+	aliases, _ := rtc["hostAliases"].([]interface{})
+	if len(aliases) == 0 {
+		t.Skip("this installation has no RTC hostAlias to move")
+	}
+	moved := deepCopyMap(t, running)
+	a := moved["matrixRTC"].(map[string]interface{})["hostAliases"].([]interface{})[0].(map[string]interface{})
+	good := a["ip"].(string)
+	a["ip"] = "10.43.254.254"
+
+	v = h.verdictFor(ctx, "ess", moved)
+	if len(v.StaleAliases) != 1 || v.StaleAliases[0].Suggest != good {
+		t.Fatalf("want one stale alias suggesting %s, got %+v", good, v.StaleAliases)
+	}
+	t.Logf("gemeldet: %s", v.StaleAliases[0].Message)
+}

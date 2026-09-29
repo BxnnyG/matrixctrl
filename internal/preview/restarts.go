@@ -62,6 +62,7 @@ type podTemplate struct {
 	// template is the pod template re-encoded as JSON, so two renders of the same chart
 	// compare equal regardless of key order or YAML formatting.
 	template string
+	spec     *corev1.PodTemplateSpec
 }
 
 func templates(manifest string) map[string]podTemplate {
@@ -103,7 +104,7 @@ func templates(manifest string) map[string]podTemplate {
 		if err != nil {
 			continue
 		}
-		out[head.Kind+"/"+head.Metadata.Name] = podTemplate{kind: head.Kind, name: head.Metadata.Name, template: string(blob)}
+		out[head.Kind+"/"+head.Metadata.Name] = podTemplate{kind: head.Kind, name: head.Metadata.Name, template: string(blob), spec: tmpl}
 	}
 	return out
 }

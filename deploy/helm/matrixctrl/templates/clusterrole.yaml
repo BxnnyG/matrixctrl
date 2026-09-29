@@ -42,6 +42,15 @@ rules:
     resources: ["namespaces"]
     verbs: ["get", "list", "create"]
 
+  # Read-only, every namespace: the apply preview checks hostAliases against the
+  # Services that exist (etappe 109, operator decision 2026-09-29). An alias to the
+  # ingress controller points into kube-system, so a check limited to the ESS
+  # namespace would call every correct alias stale. ClusterIPs and names only —
+  # Services carry no credentials. Without it the preview says "nicht prüfbar".
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list"]
+
   # Read-only discovery for Helm's RESTMapper. Kubernetes already grants these to
   # every authenticated account through the built-in `system:discovery` role, so
   # this is redundant on a conformant cluster — stated anyway so the chart does not

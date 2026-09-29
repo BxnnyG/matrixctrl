@@ -37,26 +37,46 @@ const STATE_COLOR: Record<ProgressComponent["state"], string> = {
   waiting: "var(--text-faint)",
 };
 
-/** The stepper. Answers "what is it doing" without reading the log upward. */
-function PhaseSteps({ phase }: { phase: UpgradeProgress["phase"] }) {
+/** How an operation ended, once it has. */
+export type Outcome = "success" | "hooks-failed" | "failed" | null | undefined;
+
+export type StepState = "done" | "running" | "failed" | "pending";
+
+/** One step of the stepper.
+ *
+ *  "Fertig" is a step you arrive at, not one you work on: reaching it is the end, so it
+ *  is ticked — it used to spin forever after a finished apply. And a step on which the
+ *  operation failed shows that, instead of a spinner that suggests it is still trying. */
+export function stepState(i: number, phase: UpgradeProgress["phase"], outcome: Outcome): StepState {
   const at = Math.max(0, PHASES.findIndex((p) => p.key === phase));
+  if (i < at) return "done";
+  if (i > at) return "pending";
+  if (outcome === "failed") return "failed";
+  if (phase === "done" || outcome === "success" || outcome === "hooks-failed") return "done";
+  return "running";
+}
+
+/** The stepper. Answers "what is it doing" without reading the log upward. */
+function PhaseSteps({ phase, outcome }: { phase: UpgradeProgress["phase"]; outcome?: Outcome }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap" }}>
       {PHASES.map((p, i) => {
-        const done = i < at;
-        const active = i === at;
+        const state = stepState(i, phase, outcome);
+        const done = state === "done";
+        const failed = state === "failed";
+        const active = state === "running" || failed;
         return (
           <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", borderRadius: 999, background: active ? "var(--accent-soft)" : "transparent" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", borderRadius: 999, background: state === "running" ? "var(--accent-soft)" : "transparent" }}>
               <div style={{
                 display: "grid", placeItems: "center", width: 16, height: 16, borderRadius: 999, flexShrink: 0,
-                background: done ? "var(--status-ok)" : active ? "var(--accent)" : "var(--surface-2)",
+                background: done ? "var(--status-ok)" : failed ? "var(--status-err)" : active ? "var(--accent)" : "var(--surface-2)",
                 color: done || active ? "var(--surface)" : "var(--text-faint)",
                 border: done || active ? "none" : "1px solid var(--border)",
               }}>
-                {done ? <Icon name="check" size={10} /> : active ? <Spinner size={9} /> : null}
+                {done ? <Icon name="check" size={10} /> : failed ? <Icon name="x" size={10} /> : active ? <Spinner size={9} /> : null}
               </div>
-              <span style={{ fontSize: 12, fontWeight: active ? 650 : 500, color: done ? "var(--text-dim)" : active ? "var(--accent)" : "var(--text-faint)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 12, fontWeight: active ? 650 : 500, color: done ? "var(--text-dim)" : failed ? "var(--status-err)" : active ? "var(--accent)" : "var(--text-faint)", whiteSpace: "nowrap" }}>
                 {p.label}
               </span>
             </div>
@@ -76,14 +96,14 @@ function PhaseSteps({ phase }: { phase: UpgradeProgress["phase"] }) {
  *  while new ones start, so "4 of 9" can fall while everything is going right —
  *  whereas the workload set is fixed for the operation and is what `helm --wait` is
  *  itself waiting on. */
-export function ProgressPanel({ progress, elapsed }: { progress: UpgradeProgress; elapsed: number }) {
+export function ProgressPanel({ progress, elapsed, outcome }: { progress: UpgradeProgress; elapsed: number; outcome?: Outcome }) {
   const pct = progress.total > 0 ? Math.round((progress.ready / progress.total) * 100) : 0;
   const showNumbers = progress.total > 0 && SHOWS_NUMBERS.includes(progress.phase);
 
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <PhaseSteps phase={progress.phase} />
+        <PhaseSteps phase={progress.phase} outcome={outcome} />
         {/* Ticks every second in the client. The backend's 30 s log line was the
             only sign of life on a healthy upgrade, which is precisely when the
             panel was quietest. */}

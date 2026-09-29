@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { useUpgradeStream, type UpgradeProgress } from "@/lib/ws";
 import { type ConfigVerdict, refusal, restartSummary, serviceName } from "@/lib/apply";
-import { ProgressPanel } from "@/components/RolloutProgress";
+import { ProgressPanel, type Outcome } from "@/components/RolloutProgress";
 import { Button, ConfirmDialog, Icon, Spinner } from "@/components/mc";
 
 // "Änderungen ausstehend" at the foot of the settings page (etappe 108).
@@ -27,7 +27,7 @@ interface Props {
   redeploy: number;
 }
 
-type Outcome = { status: string } | null;
+type Finished = { status: string } | null;
 
 export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: Props) {
   const qc = useQueryClient();
@@ -47,13 +47,17 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
   const [progress, setProgress] = useState<UpgradeProgress | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLog, setShowLog] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome>(null);
+  const [outcome, setOutcome] = useState<Finished>(null);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [reverted, setReverted] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const revisionBefore = useRef<number | null>(null);
+  // Read once after a failure; `rev: null` means it could not be read, and then the
+  // rollback is offered as before — unknown is not "nothing changed".
+  const [afterFailure, setAfterFailure] = useState<{ rev: number | null } | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const running = !!upgradeId && !outcome;
 
@@ -70,6 +74,9 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
     },
     onProgress: setProgress,
     onDone: (status) => {
+      if (status === "failed") {
+        releaseRevision().then((rev) => setAfterFailure({ rev }));
+      }
       setOutcome({ status });
       qc.invalidateQueries({ queryKey: ["config"] });
       qc.invalidateQueries({ queryKey: ["helm"] });
@@ -120,6 +127,8 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
       if (unsaved > 0) await onSave();
       const v = (await preview.refetch()).data;
       if (!override && refusal(v)) return; // the reason is on screen instead
+      revisionBefore.current = await releaseRevision();
+      setAfterFailure(null);
       apply.mutate(override);
     } catch (e) {
       setError((e as Error).message);
@@ -137,6 +146,12 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
   if (!pending && !upgradeId && !error && !starting && !apply.isPending) return null;
 
   const failed = outcome?.status === "failed";
+  // Failed before Helm wrote a revision — a refused pre-flight, a schema error: the
+  // cluster is as it was, so there is nothing to go back from. Offering it anyway would
+  // revert the *settings*, which is how a correct fix nearly got undone in production
+  // (etappe 109). Decided by the release revision, not the phase: the pre-flight that
+  // refused runs inside "Anwenden".
+  const untouched = failed && afterFailure?.rev != null && revisionBefore.current !== null && afterFailure.rev === revisionBefore.current;
   const busy = apply.isPending || preview.isFetching;
 
   return (
@@ -146,7 +161,7 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
       )}
       {upgradeId && (
         <div className="mc-scroll" style={{ maxHeight: "48vh", overflowY: "auto", padding: "14px 22px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-          {progress ? <ProgressPanel progress={progress} elapsed={elapsed} /> : (
+          {progress ? <ProgressPanel progress={progress} elapsed={elapsed} outcome={outcome?.status as Outcome} /> : !outcome && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)" }}><Spinner size={14} /> Wird übernommen…</div>
           )}
 
@@ -155,7 +170,12 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
             <Line tone="warn" icon="alert">Übernommen, aber mindestens ein Hook danach ist fehlgeschlagen — manuelle Patches fehlen womöglich. Details auf der Hooks-Seite.</Line>
           )}
           {/* Decision 3: ask, with going back preselected. */}
-          {failed && !reverted && (
+          {untouched && (
+            <Line tone="err" icon="x">
+              Übernehmen wurde abgebrochen, bevor etwas angewendet wurde — auf dem Cluster hat sich nichts geändert. Der Grund steht im Log; die Einstellungen sind gespeichert und können nach einer Korrektur erneut übernommen werden.
+            </Line>
+          )}
+          {failed && !untouched && afterFailure !== null && !reverted && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: "var(--radius)", border: "1px solid var(--status-err)", background: "color-mix(in oklch, var(--status-err) 8%, var(--surface))" }}>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <Icon name="x" size={16} style={{ color: "var(--status-err)", marginTop: 1 }} />
@@ -197,6 +217,19 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
             </div>
           ))}
           {verdict?.stuck && <div style={{ fontSize: 12.5, color: "var(--text-dim)", paddingLeft: 26 }}>Zurücksetzen geht über den Rollback auf der Update-Seite.</div>}
+        </div>
+      )}
+      {/* Warnings, not refusals: an alias may point somewhere on purpose. The move to a
+          new server left one on the old cluster's Traefik, and Element Call failed until
+          it was found by hand (etappe 109). */}
+      {!running && pending && (verdict?.stale_aliases?.length ?? 0) > 0 && (
+        <div style={{ padding: "12px 22px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+          {verdict!.stale_aliases!.map((a, i) => (
+            <Line key={i} tone="warn" icon="alert">
+              {a.message}
+              {a.suggest && <> In den Einstellungen unter <code style={{ fontFamily: "var(--mono)" }}>hostAliases</code> die IP <code style={{ fontFamily: "var(--mono)" }}>{a.ip}</code> durch <code style={{ fontFamily: "var(--mono)" }}>{a.suggest}</code> ersetzen.</>}
+            </Line>
+          ))}
         </div>
       )}
       {error && !refused && <div style={{ padding: "12px 22px 0" }}><Line tone="err" icon="alert">{error}</Line></div>}
@@ -255,6 +288,15 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
       </ConfirmDialog>
     </div>
   );
+}
+
+/** The newest revision of the managed release, or null when it cannot be read. */
+async function releaseRevision(): Promise<number | null> {
+  try {
+    return (await api.get<{ revision: number }>("/api/v1/helm/releases/ess")).revision ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function Line({ tone, icon, children }: { tone: "ok" | "warn" | "err"; icon: "check" | "alert" | "x" | "rotate"; children: React.ReactNode }) {

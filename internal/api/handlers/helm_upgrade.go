@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
+	"github.com/bxnnyg/matrixctrl/internal/imagepin"
 	"github.com/bxnnyg/matrixctrl/internal/rollout"
 )
 
@@ -26,9 +28,35 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ToVersion string `json:"to_version"`
 		DryRun    bool   `json:"dry_run"`
+		// OverridePinnedImages starts the upgrade although the config pins images the
+		// target chart does not match. Behind an explicit confirmation in the UI.
+		OverridePinnedImages bool `json:"override_pinned_images"`
 	}
 	if err := Decode(r, &req); err != nil || req.ToVersion == "" {
 		Error(w, http.StatusBadRequest, "to_version required")
+		return
+	}
+
+	// Pinned images, checked before anything starts (etappe 109, operator decision
+	// 2026-09-29, superseding E31's warn-only). On 2026-09-28 the warning line was
+	// right twice — matrix-tools too old for the chart's init job, and a Redis image
+	// run as Valkey — and both times the upgrade went ahead and failed. Refused with
+	// the list; the upgrade page offers to let those components follow the chart.
+	pinnedValues, err := h.pendingValues(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Die Konfiguration war nicht lesbar: "+err.Error())
+		return
+	}
+	pinned, pinErr := h.pinnedImages(req.ToVersion, pinnedValues)
+	if pinErr != nil {
+		log.Printf("upgrade %s: pinned images not checked: %v", req.ToVersion, pinErr)
+	}
+	if len(pinned) > 0 && !req.OverridePinnedImages {
+		JSON(w, http.StatusConflict, map[string]interface{}{
+			"blocked": true,
+			"error":   imagepin.Describe(pinned) + " Das Upgrade wurde nicht gestartet.",
+			"pinned":  pinned,
+		})
 		return
 	}
 
@@ -86,12 +114,10 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Reported before the rollout starts, so the operator sees it while there is
-		// still something to decide. Not blocking and not auto-fixed: unpinning is an
-		// upgrade decision with consequences — here a seven-minor-version MAS jump
-		// with database migrations — and that belongs to the operator (E31).
-		if line := h.pinnedTagWarning(ctx, req.ToVersion, values); line != "" {
-			stream.emit("WARNUNG: " + line)
+		// Only reached with pinned images when the operator overrode the refusal
+		// above; the log records that it was a decision, not an oversight.
+		if len(pinned) > 0 {
+			stream.emit("WARNING: " + imagepin.Describe(pinned) + " — bewusst übergangen.")
 		}
 
 		// Apply, not rollout: helm has not written anything yet. The snapshot

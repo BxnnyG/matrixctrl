@@ -286,6 +286,34 @@ func (h *ConfigHandler) Discard(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "discarded"})
 }
 
+// POST /api/v1/config/follow-chart {items: [{component, kind}]} — let pinned images
+// come from the chart again (etappe 109). "orphan" comments out the whole image block,
+// anything else the tag. Nothing is committed; the edits are pending changes.
+func (h *ConfigHandler) FollowChart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items []struct {
+			Component string `json:"component"`
+			Kind      string `json:"kind"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Items) == 0 {
+		Error(w, http.StatusBadRequest, "items required")
+		return
+	}
+	var changed []string
+	for _, it := range req.Items {
+		done, err := h.store.FollowChart(r.Context(), it.Component, it.Kind == "orphan")
+		if err != nil {
+			// What was changed so far stays: each edit stands on its own, and the
+			// pending-changes bar shows them.
+			JSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"error": err.Error(), "changed": changed})
+			return
+		}
+		changed = append(changed, done...)
+	}
+	JSON(w, http.StatusOK, map[string]interface{}{"changed": changed})
+}
+
 // POST /api/v1/config/settings — apply form edits (path→value + removals) directly
 // to the owning section files, preserving comments. No commit (UI commits/deploys).
 func (h *ConfigHandler) PutSettings(w http.ResponseWriter, r *http.Request) {

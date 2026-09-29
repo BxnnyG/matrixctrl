@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUpgradeStream, type UpgradeProgress } from "@/lib/ws";
-import { ProgressPanel } from "@/components/RolloutProgress";
-import { Card, Icon, Badge, Button, SectionTitle, Spinner } from "@/components/mc";
+import { ProgressPanel, type Outcome } from "@/components/RolloutProgress";
+import { Card, Icon, Badge, Button, SectionTitle, Spinner, ConfirmDialog } from "@/components/mc";
 import { Markdown } from "@/components/Markdown";
 
 export const Route = createFileRoute("/helm/upgrade")({
@@ -75,6 +75,52 @@ function NotesPanel({ notes, loading, version }: { notes?: ReleaseNotes; loading
   );
 }
 
+/** Mirrors imagepin.Finding. */
+interface PinnedImage { component: string; config: string; chart?: string; kind: "older" | "orphan" }
+
+/** Images the config pins that the target chart does not match — shown before the
+ *  upgrade starts, with the fix one click away (etappe 109). On 2026-09-28 both
+ *  failures of the 26.9.3 upgrade were in this list, as a log line nobody could act on
+ *  while the upgrade was already failing. */
+function PinnedImages({ pinned, note, busy, onFollow, error }: {
+  pinned: PinnedImage[]; note?: string; busy: boolean; onFollow: () => void; error?: string;
+}) {
+  if (note) {
+    return <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Icon name="info" size={13} /> {note}</div>;
+  }
+  if (pinned.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: "var(--radius)", border: "1px solid var(--status-warn)", background: "color-mix(in oklch, var(--status-warn) 8%, var(--surface))" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, lineHeight: 1.55, color: "var(--text)" }}>
+        <Icon name="alert" size={16} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <strong>Die Konfiguration schreibt Images fest, die nicht zu dieser Version passen.</strong>
+          <div style={{ color: "var(--text-dim)" }}>Das Chart ist auf seine eigenen Images abgestimmt — mit älteren scheitert das Upgrade oft erst mittendrin. Das Upgrade ist gesperrt, bis diese Komponenten dem Chart folgen.</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 26 }}>
+        {pinned.map((p) => (
+          <div key={p.component} style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+            <code style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{p.component}</code>{" "}
+            {p.kind === "orphan"
+              ? <>— festgeschrieben <code style={{ fontFamily: "var(--mono)" }}>{p.config}</code>, das Chart hat dafür kein Image mehr</>
+              : <>— festgeschrieben <code style={{ fontFamily: "var(--mono)" }}>{p.config}</code>, das Chart bringt <code style={{ fontFamily: "var(--mono)" }}>{p.chart}</code></>}
+          </div>
+        ))}
+      </div>
+      <div style={{ paddingLeft: 26, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div>
+          <Button variant="primary" size="sm" icon={busy ? undefined : "check"} disabled={busy} onClick={onFollow}>
+            {busy ? <><Spinner size={13} /> Trage ein…</> : "Dem Chart folgen lassen"}
+          </Button>
+        </div>
+        <span style={{ fontSize: 12, color: "var(--text-faint)" }}>Die Zeilen werden in den Einstellungen auskommentiert, nicht gelöscht — der alte Wert bleibt lesbar. Das Upgrade übernimmt sie mit.</span>
+        {error && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{error}</span>}
+      </div>
+    </div>
+  );
+}
+
 function UpgradeWizard() {
   const navigate = useNavigate();
   const logRef = useRef<HTMLDivElement>(null);
@@ -87,6 +133,23 @@ function UpgradeWizard() {
   const [progress, setProgress] = useState<UpgradeProgress | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showLog, setShowLog] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const qc = useQueryClient();
+
+  const check = useQuery({
+    queryKey: ["helm", "upgrade-check", selectedVersion],
+    queryFn: () => api.get<{ pinned: PinnedImage[]; note?: string }>(`/api/v1/helm/upgrade-check?version=${encodeURIComponent(selectedVersion)}`),
+    enabled: !!selectedVersion,
+    refetchOnWindowFocus: false,
+  });
+  const pinned = check.data?.pinned ?? [];
+  const follow = useMutation({
+    mutationFn: () => api.post("/api/v1/config/follow-chart", { items: pinned.map((p) => ({ component: p.component, kind: p.kind })) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["helm", "upgrade-check"] });
+      qc.invalidateQueries({ queryKey: ["config"] });
+    },
+  });
 
   // The elapsed clock runs in the client. It used to arrive as a log line every
   // 30 s, which meant the only evidence that a healthy upgrade was alive appeared
@@ -117,8 +180,8 @@ function UpgradeWizard() {
   });
 
   const upgrade = useMutation({
-    mutationFn: (toVersion: string) =>
-      api.post<UpgradeResponse>("/api/v1/helm/releases/ess/upgrade", { to_version: toVersion }),
+    mutationFn: ({ version, override }: { version: string; override?: boolean }) =>
+      api.post<UpgradeResponse>("/api/v1/helm/releases/ess/upgrade", { to_version: version, override_pinned_images: !!override }),
     onSuccess: (res) => {
       setUpgradeId(res.upgrade_id);
       setLogs([]);
@@ -190,17 +253,31 @@ function UpgradeWizard() {
             <NotesPanel notes={notes} loading={notesLoading} version={essVersion(selectedVersion)} />
           )}
 
-          <div>
-            <Button variant="primary" icon="upload" disabled={!selectedVersion || upgrade.isPending} onClick={() => upgrade.mutate(selectedVersion)}>
-              {upgrade.isPending ? <><Spinner size={14} /> Starte…</> : "Upgrade starten"}
+          {selectedVersion && (
+            <PinnedImages pinned={pinned} note={check.data?.note} busy={follow.isPending} onFollow={() => follow.mutate()}
+              error={follow.isError ? (follow.error as Error).message : undefined} />
+          )}
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Button variant="primary" icon="upload" disabled={!selectedVersion || upgrade.isPending || check.isFetching || pinned.length > 0}
+              onClick={() => upgrade.mutate({ version: selectedVersion })}>
+              {upgrade.isPending ? <><Spinner size={14} /> Starte…</> : check.isFetching ? <><Spinner size={14} /> Prüfe…</> : "Upgrade starten"}
             </Button>
+            {pinned.length > 0 && (
+              <Button variant="dangerGhost" size="sm" disabled={upgrade.isPending} onClick={() => setOverrideOpen(true)}>Trotzdem starten…</Button>
+            )}
           </div>
+          <ConfirmDialog open={overrideOpen} title="Mit festgeschriebenen Images upgraden?" confirmLabel="Trotzdem starten" confirmIcon="alert"
+            busy={upgrade.isPending} onConfirm={() => { setOverrideOpen(false); upgrade.mutate({ version: selectedVersion, override: true }); }}
+            onCancel={() => setOverrideOpen(false)}>
+            Die genannten Komponenten laufen dann weiter mit ihren alten Images unter dem neuen Chart. Beim letzten Upgrade ist genau das zweimal gescheitert. Nur fortfahren, wenn du eine bestimmte Version bewusst behalten willst.
+          </ConfirmDialog>
           {upgrade.isError && <div style={{ fontSize: 13, color: "var(--status-err)" }}>{(upgrade.error as Error).message}</div>}
         </Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {progress ? (
-            <ProgressPanel progress={progress} elapsed={elapsed} />
+            <ProgressPanel progress={progress} elapsed={elapsed} outcome={done ? (finalStatus as Outcome) : undefined} />
           ) : (
             <Card style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-dim)" }}>
               <Spinner size={14} /> Upgrade wird gestartet…

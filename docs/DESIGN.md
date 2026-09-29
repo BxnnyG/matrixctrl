@@ -4282,3 +4282,47 @@ das nächste Übernehmen hätte Postgres wieder auf `Pending` gesetzt. Der Gegen
 jetzt eine Konfiguration, die passt; die Beobachtung steht im Testlog.
 
 **Merksatz:** *Eine Warnung, nach der trotzdem ausgeführt wird, ist ein Protokoll.*
+
+### §4.111 — Was vorher sichtbar war, vorher sagen (2026-09-29, operator, etappe 109)
+
+Das erste Upgrade auf dem neuen Server (26.9.3) brauchte sechs Revisionen. **Jeder der
+Fehler war vorher im Chart, in der Config oder im alten Cluster ablesbar**, und keiner
+wurde vorher gesagt. Plan und Tabelle: `plans/etappe-109-lehren-aus-dem-upgrade.md`.
+
+**Festgeschriebene Images sperren das Upgrade** (Betreiber-Entscheidung, ersetzt E31s
+„nur warnen"). Die Warnzeile hatte zweimal recht — `matrix-tools` 0.7.3 kannte den
+Secret-Typ des neuen Init-Jobs nicht, und `library/redis:7.4` lief als Valkey und bestand
+dessen Bereitschaftsprüfung nie — und beide Male lief das Upgrade weiter. Die Update-Seite
+fragt jetzt *vor* dem Start (`GET /helm/upgrade-check`), zeigt die Liste und bietet „Dem
+Chart folgen lassen". Neu erkannt: Images, für die das Ziel-Chart **gar keins** mehr hat
+(`imagepin.Orphaned`) — der Redis-Fall, den der Tag-Vergleich nie gemeldet hätte.
+Bewusstes Übergehen bleibt, hinter einer zweiten Bestätigung.
+
+**Auskommentieren, nie einen leeren Eltern-Block hinterlassen.** `image:` mit nur noch
+Kommentaren darunter ist `image: null`, und Helm liest null als „Standard entfernen" — das
+Schema lehnte danach `redis.image` ab. `config.CommentOut` kommentiert zeilengenau, lässt
+jede andere Zeile byte-gleich und nimmt einen leer gewordenen Eltern-Block mit.
+
+**Rücksprung nur, wenn etwas angewendet wurde.** Ein Übernehmen, das an der Schema-Prüfung
+scheiterte, bot den vorausgewählten Rücksprung an — der hätte die gerade eingetragene
+Korrektur zurückgenommen. Entschieden wird an der Release-Revision vorher/nachher, nicht an
+der Phase: die Vorprüfung, die ablehnte, läuft schon in „Anwenden". Nicht lesbar → Angebot
+wie bisher; unbekannt ist nicht unverändert.
+
+**Verwaiste ClusterIPs in `hostAliases`.** Die Config zeigte nach dem Umzug auf die
+Traefik-IP des alten Clusters; der Auth-Dienst 0.7 legt Anrufräume über diese Adresse an,
+0.4 tat es nicht — also fiel es erst mit dem Upgrade auf, als `OPEN_ID_ERROR`. Die Vorschau
+meldet jede Alias-IP im Service-Netz, die kein Service hält, mit dem Ingress-Controller als
+Vorschlag. Das Service-Netz wird aus den vorhandenen ClusterIPs abgeleitet, nicht
+angenommen. Warnung, keine Sperre. Braucht Lesen von Services in allen Namespaces
+(Betreiber-Entscheidung; ClusterRole erweitert, nur `get/list`) — ohne sagt die Vorschau
+„nicht geprüft", denn eine Prüfung ohne `kube-system` hielte jeden *richtigen* Alias auf
+Traefik für verwaist.
+
+**Klein, aber einen Tag lang still:** kopierte Zeilen ohne ihre Sequenzen — MatrixCtrl zieht
+beim Start jede eigene Sequenz auf `max(id)` nach, nur vorwärts. Fehlerzeilen eines
+Upgrade-Streams stehen jetzt auch im Server-Log. Der Stepper hakt „Fertig" ab und zeigt ✗
+auf dem Schritt, an dem es scheiterte.
+
+**Merksatz:** *Was die Maschine vorher weiß, darf der Mensch nicht erst hinterher im Log
+finden.*

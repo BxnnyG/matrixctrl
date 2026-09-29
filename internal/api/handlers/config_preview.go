@@ -46,6 +46,13 @@ type configVerdict struct {
 	// a failed release is usually repaired.
 	ReleaseStatus string `json:"release_status,omitempty"`
 	Stuck         bool   `json:"stuck"`
+
+	// StaleAliases are hostAliases into the service network at an address no Service
+	// holds — a warning, never a block: an alias may point somewhere on purpose
+	// (etappe 109). AliasesUnchecked says the Services could not be listed, so silence
+	// is not mistaken for "all fine".
+	StaleAliases     []preview.StaleAlias `json:"stale_aliases"`
+	AliasesUnchecked bool                 `json:"aliases_unchecked,omitempty"`
 }
 
 // pendingValues is the configuration as it stands in the working tree — what an apply
@@ -63,7 +70,7 @@ func (h *HelmHandler) pendingValues(ctx context.Context) (map[string]interface{}
 
 // verdictFor renders the values with the deployed chart and measures the result.
 func (h *HelmHandler) verdictFor(ctx context.Context, release string, values map[string]interface{}) configVerdict {
-	v := configVerdict{Restarts: []preview.Restart{}, Findings: []capacity.Finding{}}
+	v := configVerdict{Restarts: []preview.Restart{}, Findings: []capacity.Finding{}, StaleAliases: []preview.StaleAlias{}}
 	if h.helm == nil {
 		// No cluster at startup: there is no release to render against.
 		v.Note = "Ohne Cluster-Zugriff lässt sich nicht vorhersagen, was das Übernehmen täte."
@@ -87,6 +94,21 @@ func (h *HelmHandler) verdictFor(ctx context.Context, release string, values map
 		v.Note = "Ohne Cluster-Zugriff lässt sich die Kapazität nicht prüfen."
 		return v
 	}
+	if svcs, err := h.k8s.ServiceIPs(ctx); err == nil {
+		ips := make([]preview.ServiceIP, 0, len(svcs))
+		for _, s := range svcs {
+			ips = append(ips, preview.ServiceIP{Namespace: s.Namespace, Name: s.Name, IP: s.IP})
+		}
+		if stale := preview.StaleHostAliases(rendered, ips); stale != nil {
+			v.StaleAliases = stale
+		}
+	} else {
+		// Typically RBAC: listing Services outside the ESS namespace is an optional
+		// permission. Without kube-system the ingress controller is invisible, and a
+		// correct alias to it would be reported as stale — so no verdict at all.
+		v.AliasesUnchecked = true
+	}
+
 	nodes, err := h.k8s.NodeInfo(ctx)
 	if err != nil {
 		v.Note = "Die Kapazität der Nodes war nicht lesbar: " + err.Error()

@@ -18,14 +18,27 @@ import (
 	"strings"
 )
 
-// Finding is one component whose configured tag is behind the chart's.
+// Finding is one component whose configured image the target chart does not match.
 type Finding struct {
 	Component string `json:"component"`
 	Config    string `json:"config"`
 	Chart     string `json:"chart"`
+	// Kind is "older" — the chart ships a newer tag — or "orphan": the chart has no
+	// image for this component any more, so the pinned one is all there is. 26.9 did
+	// that to redis when Valkey replaced it; the config's `library/redis:7.4` became
+	// the Valkey container's image, and it never passed its readiness probe (E109).
+	Kind string `json:"kind"`
 }
 
+const (
+	KindOlder  = "older"
+	KindOrphan = "orphan"
+)
+
 func (f Finding) String() string {
+	if f.Kind == KindOrphan {
+		return fmt.Sprintf("%s: Config %s, Chart hat dafür kein Image mehr", f.Component, f.Config)
+	}
 	return fmt.Sprintf("%s: Config %s, Chart %s", f.Component, f.Config, f.Chart)
 }
 
@@ -45,7 +58,7 @@ func Compare(configTags, chartTags map[string]string) []Finding {
 			continue
 		}
 		if older, comparable := isOlder(cfg, chart); comparable && older {
-			out = append(out, Finding{Component: component, Config: cfg, Chart: chart})
+			out = append(out, Finding{Component: component, Config: cfg, Chart: chart, Kind: KindOlder})
 		}
 	}
 
@@ -140,15 +153,12 @@ func Describe(findings []Finding) string {
 	}
 	list := strings.Join(parts, " · ")
 
+	// Since E109 the list also holds images the chart no longer has, which are not
+	// "older" — so the sentence says what is true of both: they do not match.
 	if len(findings) == 1 {
-		return fmt.Sprintf(
-			"1 Image-Tag in der Config ist älter als im Chart: %s. "+
-				"Diese Komponente wird vom Upgrade nicht mit aktualisiert.", list)
+		return fmt.Sprintf("1 festgeschriebenes Image passt nicht zum Chart: %s.", list)
 	}
-	return fmt.Sprintf(
-		"%d Image-Tags in der Config sind älter als im Chart: %s. "+
-			"Diese Komponenten werden vom Upgrade nicht mit aktualisiert.",
-		len(findings), list)
+	return fmt.Sprintf("%d festgeschriebene Images passen nicht zum Chart: %s.", len(findings), list)
 }
 
 // ExtractTags pulls `<component>.image.tag` out of a merged values map.
@@ -172,5 +182,42 @@ func ExtractTags(values map[string]interface{}) map[string]string {
 			out[component] = tag
 		}
 	}
+	return out
+}
+
+// Orphaned reports components whose image the config pins while the chart's defaults
+// have no image for them at all (etappe 109).
+//
+// Not caught by Compare, which needs a chart tag to compare with. The chart may still
+// accept the values — 26.9 maps the old `redis` section onto Valkey — and then the
+// pinned image is used for something it was never meant for.
+func Orphaned(configValues, chartValues map[string]interface{}) []Finding {
+	var out []Finding
+	for component, raw := range configValues {
+		section, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		image, ok := section["image"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		repo, _ := image["repository"].(string)
+		tag, _ := image["tag"].(string)
+		if repo == "" && tag == "" {
+			continue
+		}
+		if chartSection, ok := chartValues[component].(map[string]interface{}); ok {
+			if _, has := chartSection["image"].(map[string]interface{}); has {
+				continue
+			}
+		}
+		pinned := repo
+		if tag != "" {
+			pinned += ":" + tag
+		}
+		out = append(out, Finding{Component: component, Config: strings.TrimPrefix(pinned, ":"), Kind: KindOrphan})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Component < out[j].Component })
 	return out
 }

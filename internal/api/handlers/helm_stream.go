@@ -6,6 +6,8 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -150,6 +152,11 @@ func (s *upgradeStream) emit(msg interface{}) {
 		line = string(b)
 	}
 	s.logs = append(s.logs, line)
+	// Errors and warnings also go to the server log. The reason an apply failed used to
+	// exist only in the browser tab that started it; closed, it was gone (etappe 109).
+	if strings.HasPrefix(line, "ERROR") || strings.HasPrefix(line, "WARNING") {
+		log.Printf("upgrade stream: %s", line)
+	}
 	for _, sub := range s.subs {
 		select {
 		case sub <- line:

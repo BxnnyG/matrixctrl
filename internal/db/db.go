@@ -59,6 +59,13 @@ func New(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err := migrate(ctx, pool); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	// Not fatal: a start with a sequence behind loses history rows, a start that
+	// refuses loses the whole panel.
+	if moved, err := ResyncSequences(ctx, pool); err != nil {
+		log.Printf("sequences: could not resync: %v", err)
+	} else if len(moved) > 0 {
+		log.Printf("sequences: moved past copied rows: %v", moved)
+	}
 	return pool, nil
 }
 

@@ -18,6 +18,18 @@ export interface ConfigVerdict {
   blocking: boolean;
   release_status?: string;
   stuck: boolean;
+  /** hostAliases into the service network that no Service holds (etappe 109). */
+  stale_aliases?: StaleAlias[];
+  /** The Services could not be listed, so the alias check did not run. */
+  aliases_unchecked?: boolean;
+}
+
+export interface StaleAlias {
+  workload: string;
+  ip: string;
+  hostnames: string[];
+  suggest?: string;
+  message: string;
 }
 
 /** The release prefix is the same on every workload and says nothing. */

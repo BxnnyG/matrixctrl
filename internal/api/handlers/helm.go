@@ -61,30 +61,50 @@ func NewHelmHandler(helmClient *helm.Client, db *pgxpool.Pool, engine *hooks.Eng
 	}
 }
 
-// pinnedTagWarning compares the image tags the config holds against the ones the
-// target chart ships, and returns a line when the config is behind.
+// pinnedImages compares the images the config pins against the target chart's:
+// tags behind the chart's, and images the chart no longer has at all (E31, E109).
 //
-// Silent on every failure. This runs on the path of a live upgrade, and a
-// diagnostic that can stop a deploy — because a chart could not be pulled, or a
-// values map had an unexpected shape — is a worse defect than the one it reports.
-func (h *HelmHandler) pinnedTagWarning(ctx context.Context, toVersion string, values map[string]interface{}) string {
+// An error means "could not check" — typically the chart could not be pulled. The
+// caller decides what that means; the upgrade gate treats it as no finding, because
+// refusing every upgrade while the registry is unreachable would be worse than the
+// defect this looks for.
+func (h *HelmHandler) pinnedImages(toVersion string, values map[string]interface{}) ([]imagepin.Finding, error) {
 	if h.helm == nil || toVersion == "" || len(values) == 0 {
-		return ""
+		return nil, nil
 	}
-
 	raw, err := h.helm.DefaultChartValues(toVersion)
 	if err != nil {
-		return ""
+		return nil, err
 	}
 	var chartValues map[string]interface{}
 	if err := yaml.Unmarshal([]byte(raw), &chartValues); err != nil {
-		return ""
+		return nil, err
 	}
+	out := imagepin.Compare(imagepin.ExtractTags(values), imagepin.ExtractTags(chartValues))
+	return append(out, imagepin.Orphaned(values, chartValues)...), nil
+}
 
-	return imagepin.Describe(imagepin.Compare(
-		imagepin.ExtractTags(values),
-		imagepin.ExtractTags(chartValues),
-	))
+// GET /api/v1/helm/upgrade-check?version=X — what would stop an upgrade to X, asked
+// before it is started (etappe 109). Changes nothing.
+func (h *HelmHandler) UpgradeCheck(w http.ResponseWriter, r *http.Request) {
+	version := r.URL.Query().Get("version")
+	if version == "" {
+		Error(w, http.StatusBadRequest, "version required")
+		return
+	}
+	values, err := h.pendingValues(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := map[string]interface{}{"pinned": []imagepin.Finding{}}
+	found, err := h.pinnedImages(version, values)
+	if err != nil {
+		out["note"] = "Die festgeschriebenen Images ließen sich nicht mit dem Chart vergleichen: " + err.Error()
+	} else if found != nil {
+		out["pinned"] = found
+	}
+	JSON(w, http.StatusOK, out)
 }
 
 // rolloutProbe builds the function the progress ticker calls to describe what the

@@ -102,6 +102,7 @@ func buildRequired() []Permission {
 		{Group: "", Resource: "nodes", Verb: "list", Why: "dashboard capacity; mapping pods to nodes"},
 		{Group: "", Resource: "namespaces", Verb: "get", Why: "greenfield install"},
 		{Group: "", Resource: "namespaces", Verb: "create", Why: "greenfield install creates the ESS namespace"},
+		{Group: "", Resource: "services", Verb: "list", Why: "apply preview: hostAliases pointing at a ClusterIP no Service holds (E109)"},
 
 		// --- Hook patches (internal/k8s/patch.go knownGVRs) ---------------------
 		{Group: "apps", Resource: "daemonsets", Verb: "patch", Namespaced: true, Why: "hook patch target"},

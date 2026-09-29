@@ -15,6 +15,36 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.102] — 2026-09-29
+
+Etappe 109: what the first upgrade on the new server (ESS 26.9.3, six revisions) showed.
+
+### Changed
+
+- **Pinned images block an upgrade.** The upgrade page checks before starting and lists
+  every component whose pinned image the target chart does not match — older tags, and
+  images the chart no longer has at all (26.9 dropped `redis.image` for Valkey). One button
+  lets them follow the chart: the lines are commented out in the settings, not deleted.
+  An explicit override remains. Supersedes E31's warn-only.
+- **MatrixCtrl may read Services in all namespaces** (ClusterRole, `get`/`list` only), for
+  the hostAlias check below.
+
+### Added
+
+- The apply preview reports **hostAliases pointing at a ClusterIP no Service holds** —
+  after a move, the RTC auth service still named the old cluster's Traefik, and Element
+  Call failed with `OPEN_ID_ERROR` until it was found by hand.
+
+### Fixed
+
+- After a failed apply, going back is offered only if the release actually changed. An
+  apply refused by the schema check offered it — and would have reverted the correction
+  that had just been made.
+- „Fertig" is ticked when an operation finishes; a failed step shows ✗ instead of spinning.
+- Sequences of MatrixCtrl's own tables are moved past copied rows on start. After the move
+  the node and RTC history failed with `duplicate key` once a minute.
+- Error and warning lines of an upgrade stream are written to the server log too.
+
 ## [0.1.101] — 2026-09-28
 
 Etappe 108: „Übernehmen" asks before it acts.

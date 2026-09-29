@@ -230,3 +230,20 @@ func IsPrivate(addr string) bool {
 	}
 	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }
+
+// ServiceIPs lists every Service's ClusterIP, in all namespaces (etappe 109: stale
+// hostAliases). Headless services come back as "None".
+func (c *Client) ServiceIPs(ctx context.Context) ([]ServiceIP, error) {
+	list, err := c.Static.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ServiceIP, 0, len(list.Items))
+	for _, s := range list.Items {
+		out = append(out, ServiceIP{Namespace: s.Namespace, Name: s.Name, IP: s.Spec.ClusterIP})
+	}
+	return out, nil
+}
+
+// ServiceIP is one Service and its ClusterIP.
+type ServiceIP struct{ Namespace, Name, IP string }
