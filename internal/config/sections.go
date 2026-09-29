@@ -278,6 +278,7 @@ func (s *Store) SetSectionValues(ctx context.Context, changes map[string]interfa
 		if err != nil {
 			return err
 		}
+		out = keepComments(string(existing), out)
 		if err := os.WriteFile(fpath, []byte(out), 0o644); err != nil {
 			return err
 		}

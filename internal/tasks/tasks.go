@@ -20,7 +20,9 @@ package tasks
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -34,9 +36,15 @@ const Block = "matrixctrl-tasks"
 type Kind string
 
 const (
-	Bool     Kind = "bool"
-	Text     Kind = "text"
-	Quantity Kind = "quantity" // Kubernetes quantity: 1Gi, 500m
+	Bool      Kind = "bool"
+	Text      Kind = "text"     // a host name
+	Quantity  Kind = "quantity" // Kubernetes quantity: 1Gi, 500m
+	Size      Kind = "size"     // Synapse size: 100M, 512K
+	Duration  Kind = "duration" // Synapse duration: 7d, 12h, 1y
+	Port      Kind = "port"
+	Choice    Kind = "choice"
+	AllowList Kind = "allowlist" // nil = everyone, [] = no one, [a, b] = only these
+	Label     Kind = "label"     // free text: a name shown to people
 )
 
 // Source says where a value lives.
@@ -47,6 +55,9 @@ type Source struct {
 	// ("matrixAuthenticationService", "synapse").
 	Component string
 	Key       string // dotted key inside that service's configuration
+	// JSON marks a component whose additional blocks are JSON text directly under the
+	// key (Element Web), rather than YAML under `.config` (MAS, Synapse).
+	JSON bool
 }
 
 // Field is one setting as a person sees it.
@@ -60,7 +71,14 @@ type Field struct {
 	Warn     string      `json:"warn,omitempty"`     // shown when the value is changed
 	Locked   string      `json:"locked,omitempty"`   // why it cannot be changed here
 	Group    string      `json:"group,omitempty"`    // sub-heading inside a card
+	Options  []Option    `json:"options,omitempty"`  // for Choice
 	Source   Source      `json:"-"`
+}
+
+// Option is one choice of a Choice field.
+type Option struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 // Card is one task.
@@ -72,8 +90,10 @@ type Card struct {
 	Fields []Field `json:"fields"`
 }
 
-func mas(key string) Source  { return Source{Component: "matrixAuthenticationService", Key: key} }
-func val(path string) Source { return Source{Values: path} }
+func mas(key string) Source     { return Source{Component: "matrixAuthenticationService", Key: key} }
+func synapse(key string) Source { return Source{Component: "synapse", Key: key} }
+func web(key string) Source     { return Source{Component: "elementWeb", Key: key, JSON: true} }
+func val(path string) Source    { return Source{Values: path} }
 
 func resources(component, name, restarts string) []Field {
 	f := func(suffix, label string) Field {
@@ -90,7 +110,14 @@ func resources(component, name, restarts string) []Field {
 	}
 }
 
-// Cards is the task layer of etappe 113.
+const (
+	synapseRestart = "Synapse startet neu (etwa 30 Sekunden keine Nachrichten)."
+	callsRestart   = "Der Anruf-Server startet neu — laufende Anrufe brechen ab."
+	webRestart     = "Element Web wird neu ausgeliefert; Nutzer sehen es nach dem Neuladen."
+	portWarn       = "Der neue Port muss in der Firewall deines Servers (und beim Hoster) offen sein."
+)
+
+// Cards is the task layer of etappes 113 and 114.
 func Cards() []Card {
 	host := func(id, path, label, help string) Field {
 		return Field{ID: id, Label: label, Help: help, Kind: Text, Source: val(path),
@@ -139,6 +166,69 @@ func Cards() []Card {
 			},
 		},
 		{
+			ID: "messages", Title: "Nachrichten & Medien", Icon: "file",
+			Sub: "Dateien, Link-Vorschauen und wie lange etwas aufbewahrt wird",
+			Fields: []Field{
+				{ID: "synapse.maxUpload", Label: "Größte Datei, die man hochladen kann", Kind: Size, Default: "100M",
+					Help:     "Bilder, Videos und Dateien in Nachrichten. Angabe mit M (Megabyte) oder K (Kilobyte).",
+					Restarts: synapseRestart, Source: val("synapse.media.maxUploadSize"),
+					Warn: "Sehr große Uploads brauchen auch Platz im Zwischenspeicher von Synapse und können von einem Proxy davor begrenzt werden."},
+				{ID: "synapse.urlPreviews", Label: "Link-Vorschauen", Kind: Bool, Default: true,
+					Help:     "Links in Nachrichten zeigen Titel und Bild der Seite. Dein Server ruft die Seite dafür ab — interne Adressen sind gesperrt.",
+					Restarts: synapseRestart, Source: synapse("url_preview_enabled")},
+				{ID: "synapse.remoteMedia", Label: "Medien anderer Server zwischenspeichern für", Kind: Duration,
+					Help:     "Bilder und Dateien aus Räumen anderer Server werden lokal zwischengespeichert. Leer: unbegrenzt. Z. B. 90d — danach werden sie bei Bedarf neu geladen.",
+					Restarts: synapseRestart, Source: synapse("media_retention.remote_media_lifetime")},
+				{ID: "synapse.redactionRetention", Label: "Gelöschte Nachrichten noch aufbewahren für", Kind: Duration, Default: "7d",
+					Help:     "So lange können Moderatoren den Inhalt gelöschter Nachrichten noch einsehen, danach ist er endgültig weg.",
+					Restarts: synapseRestart, Source: synapse("redaction_retention_period")},
+			},
+		},
+		{
+			ID: "federation", Title: "Föderation", Icon: "globe",
+			Sub: "Mit welchen anderen Matrix-Servern dein Server spricht",
+			Fields: []Field{
+				{ID: "synapse.federationAllow", Label: "Verbindung zu anderen Servern", Kind: AllowList,
+					Help:     "Alle: deine Nutzer können mit jedem Matrix-Server schreiben (Standard). Keine: nur untereinander. Oder nur mit bestimmten Servern.",
+					Restarts: synapseRestart, Source: synapse("federation_domain_whitelist"),
+					Warn: "Eingeschränkt verlieren Räume mit Mitgliedern auf anderen Servern die Verbindung zu ihnen."},
+				{ID: "synapse.publicRoomsFederation", Label: "Andere Server dürfen dein öffentliches Raumverzeichnis sehen", Kind: Bool, Default: false,
+					Restarts: synapseRestart, Source: synapse("allow_public_rooms_over_federation")},
+			},
+		},
+		{
+			ID: "calls", Title: "Anrufe", Icon: "phone",
+			Sub: "Sprach- und Videoanrufe mit Element Call",
+			Fields: []Field{
+				{ID: "rtc.enabled", Label: "Anrufe mit Element Call", Kind: Bool, Default: true,
+					Help: "Die Anruf-Dienste (SFU und Anruf-Anmeldung) laufen auf deinem Server.", Source: val("matrixRTC.enabled"),
+					Restarts: "Die Anruf-Dienste werden gestartet oder entfernt."},
+				{ID: "rtc.hostNetwork", Label: "Anruf-Server direkt ans Netz (empfohlen)", Kind: Bool, Default: false,
+					Help:     "Der Anruf-Server lauscht direkt auf den Ports des Servers. Nötig, damit Anrufe zwischen verschiedenen Netzen (Mobilfunk ↔ Glasfaser) zuverlässig klappen.",
+					Restarts: callsRestart, Source: val("matrixRTC.sfu.hostNetwork")},
+				{ID: "rtc.turn", Label: "TURN-Relais", Kind: Bool, Default: false,
+					Help:     "Leitet Anrufe über den Server, wenn ein Netz direkte Verbindungen blockiert (Firmen-WLAN, Hotels).",
+					Restarts: callsRestart, Source: val("matrixRTC.sfu.exposedServices.turn.enabled")},
+				{ID: "rtc.portTcp", Label: "Port für Anrufe (TCP)", Kind: Port, Default: 30001,
+					Restarts: callsRestart, Source: val("matrixRTC.sfu.exposedServices.rtcTcp.port"), Warn: portWarn},
+				{ID: "rtc.portUdp", Label: "Port für Anrufe (UDP)", Kind: Port, Default: 30002,
+					Restarts: callsRestart, Source: val("matrixRTC.sfu.exposedServices.rtcMuxedUdp.port"), Warn: portWarn},
+				{ID: "rtc.portTurn", Label: "Port für TURN (UDP)", Kind: Port, Default: 30004,
+					Restarts: callsRestart, Source: val("matrixRTC.sfu.exposedServices.turn.port"), Warn: portWarn},
+			},
+		},
+		{
+			ID: "appearance", Title: "Aussehen", Icon: "sparkle",
+			Sub: "Wie Element Web für deine Nutzer aussieht",
+			Fields: []Field{
+				{ID: "web.brand", Label: "Name der App", Kind: Label, Default: "Element",
+					Help: "Steht im Browser-Tab und in Element Web statt „Element\".", Restarts: webRestart, Source: web("brand")},
+				{ID: "web.theme", Label: "Farbschema für neue Nutzer", Kind: Choice, Default: "light",
+					Options:  []Option{{"light", "Hell"}, {"dark", "Dunkel"}},
+					Restarts: webRestart, Source: web("default_theme")},
+			},
+		},
+		{
 			ID: "resources", Title: "Ressourcen & Kapazität", Icon: "cpu",
 			Sub:    "Wie viel Speicher und Rechenzeit jeder Dienst bekommt",
 			Fields: res,
@@ -170,7 +260,10 @@ func read(values map[string]interface{}, f Field) Value {
 		if !ok || v == nil {
 			return Value{Value: f.Default, IsDefault: true}
 		}
-		return Value{Value: v}
+		// Installations seeded from the chart's complete values carry nearly every
+		// default written out. A value equal to the default is the default: badge
+		// "Standard", nothing to reset.
+		return Value{Value: v, IsDefault: f.Default != nil && fmt.Sprint(v) == fmt.Sprint(f.Default)}
 	}
 	blocks := additional(values, f.Source.Component)
 	key := strings.Split(f.Source.Key, ".")
@@ -189,15 +282,22 @@ func read(values map[string]interface{}, f Field) Value {
 	return Value{Value: f.Default, IsDefault: true}
 }
 
-// additional parses every inline block under <component>.additional. Blocks that come
-// from a Secret (`configSecret`) cannot be read here and are left out.
+// additional parses every inline block under <component>.additional: YAML under
+// `.config` (MAS, Synapse) or JSON text directly (Element Web — YAML is a superset of
+// JSON, so one parser reads both). Blocks that come from a Secret (`configSecret`)
+// cannot be read here and are left out.
 func additional(values map[string]interface{}, component string) map[string]map[string]interface{} {
 	out := map[string]map[string]interface{}{}
 	raw, _ := get(values, []string{component, "additional"})
 	m, _ := raw.(map[string]interface{})
 	for name, entry := range m {
-		e, _ := entry.(map[string]interface{})
-		text, _ := e["config"].(string)
+		var text string
+		switch e := entry.(type) {
+		case string:
+			text = e
+		case map[string]interface{}:
+			text, _ = e["config"].(string)
+		}
 		if text == "" {
 			continue
 		}
@@ -225,6 +325,7 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 	}
 	plan := Plan{Set: map[string]interface{}{}}
 	blocks := map[string]map[string]interface{}{} // component → our block, edited
+	isJSON := map[string]bool{}
 	for id, v := range changes {
 		f, ok := byID[id]
 		if !ok {
@@ -235,6 +336,9 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 		}
 		if err := validate(f, v); err != nil {
 			return Plan{}, err
+		}
+		if n, ok := v.(float64); ok && f.Kind == Port {
+			v = int(n)
 		}
 		if f.Source.Values != "" {
 			if v == nil {
@@ -247,6 +351,7 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 		if cur := read(values, f); cur.SetElsewhere != "" {
 			return Plan{}, fmt.Errorf("%s wird im Block %q gesetzt — dort ändern oder ihn entfernen", f.Label, cur.SetElsewhere)
 		}
+		isJSON[f.Source.Component] = f.Source.JSON
 		b, ok := blocks[f.Source.Component]
 		if !ok {
 			b = copyMap(additional(values, f.Source.Component)[Block])
@@ -263,6 +368,14 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 		path := component + ".additional." + Block
 		if len(b) == 0 {
 			plan.Remove = append(plan.Remove, path)
+			continue
+		}
+		if isJSON[component] {
+			text, err := json.Marshal(b)
+			if err != nil {
+				return Plan{}, err
+			}
+			plan.Set[path] = string(text)
 			continue
 		}
 		// Two-space indent, like every other line of the section files.
@@ -298,9 +411,53 @@ func validate(f Field, v interface{}) error {
 		if !ok || !quantityRE(s) {
 			return fmt.Errorf("%s: eine Menge wie 1Gi, 512Mi oder 500m erwartet", f.Label)
 		}
+	case Size:
+		if s, ok := v.(string); !ok || !sizeRE.MatchString(s) {
+			return fmt.Errorf("%s: eine Größe wie 100M oder 512K erwartet", f.Label)
+		}
+	case Duration:
+		if s, ok := v.(string); !ok || !durationRE.MatchString(s) {
+			return fmt.Errorf("%s: eine Dauer wie 7d, 12h oder 1y erwartet", f.Label)
+		}
+	case Port:
+		n, ok := v.(float64) // JSON numbers
+		if i, isInt := v.(int); isInt {
+			n, ok = float64(i), true
+		}
+		if !ok || n != float64(int(n)) || n < 1 || n > 65535 {
+			return fmt.Errorf("%s: ein Port zwischen 1 und 65535 erwartet", f.Label)
+		}
+	case Choice:
+		s, _ := v.(string)
+		for _, o := range f.Options {
+			if o.Value == s {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s: unbekannte Auswahl %v", f.Label, v)
+	case Label:
+		if s, ok := v.(string); !ok || strings.TrimSpace(s) == "" || len(s) > 64 {
+			return fmt.Errorf("%s: ein Name mit 1 bis 64 Zeichen erwartet", f.Label)
+		}
+	case AllowList:
+		list, ok := v.([]interface{})
+		if !ok {
+			return fmt.Errorf("%s: eine Liste von Servern erwartet", f.Label)
+		}
+		for _, x := range list {
+			if s, ok := x.(string); !ok || !hostRE.MatchString(s) {
+				return fmt.Errorf("%s: %v ist kein Servername", f.Label, x)
+			}
+		}
 	}
 	return nil
 }
+
+var (
+	sizeRE     = regexp.MustCompile(`^[0-9]+[KMG]$`)
+	durationRE = regexp.MustCompile(`^[0-9]+[smhdwy]$`)
+	hostRE     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?$`)
+)
 
 func quantityRE(s string) bool {
 	s = strings.TrimSpace(s)

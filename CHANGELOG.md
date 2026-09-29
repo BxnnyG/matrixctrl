@@ -15,6 +15,21 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.108] — 2026-09-29
+
+### Added
+
+- **Aufgaben II:** Nachrichten & Medien (upload size, link previews, remote media
+  caching, deleted-message retention), Föderation (everyone / no one / only these servers;
+  public room directory), Anrufe (Element Call, direct networking, TURN, ports), Aussehen
+  (app name, default theme in Element Web).
+
+### Fixed
+
+- Saving a setting no longer re-indents and moves unrelated comments in the section file
+  — the pending diff now shows only the change.
+- A written-out value equal to the default counts as the default.
+
 ## [0.1.107] — 2026-09-29
 
 ### Added

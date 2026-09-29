@@ -11,8 +11,10 @@ import { Badge, Button, Card, Icon, Spinner, Toggle, type IconName } from "@/com
 // other edit — the pending-changes bar at the foot applies it.
 
 interface Field {
-  id: string; label: string; help?: string; kind: "bool" | "text" | "quantity";
+  id: string; label: string; help?: string;
+  kind: "bool" | "text" | "quantity" | "size" | "duration" | "port" | "choice" | "allowlist" | "label";
   default?: unknown; restarts?: string; warn?: string; locked?: string; group?: string;
+  options?: { value: string; label: string }[];
 }
 interface CardDef { id: string; title: string; sub: string; icon: IconName; fields: Field[] }
 interface Value { value: unknown; is_default: boolean; set_elsewhere?: string }
@@ -84,7 +86,8 @@ function FieldRow({ f, v, onSet, busy }: { f: Field; v?: Value; onSet: (id: stri
   // Only fields with a default can be "changed" or reset. An address has none: taking it
   // away would leave the service unreachable, so it offers neither the warning nor the
   // reset — it is simply edited.
-  const hasDefault = f.default !== undefined;
+  // An allow-list's default is "everyone" — no value at all.
+  const hasDefault = f.default !== undefined || f.kind === "allowlist";
   const changed = hasDefault && !v?.is_default && value !== f.default;
   return (
     <div style={{ display: "flex", gap: 16, alignItems: "flex-start", padding: "12px 18px", borderTop: "1px solid var(--border-soft)" }}>
@@ -111,22 +114,75 @@ function FieldRow({ f, v, onSet, busy }: { f: Field; v?: Value; onSet: (id: stri
         )}
       </div>
       <div style={{ flexShrink: 0, paddingTop: 2 }}>
-        {f.kind === "bool" ? (
-          <span style={{ opacity: readOnly ? 0.5 : 1, pointerEvents: readOnly || busy ? "none" : "auto" }}>
-            <Toggle checked={value === true} onChange={(nv) => onSet(f.id, nv)} />
-          </span>
-        ) : (
-          <TextInput value={(value as string) ?? ""} readOnly={readOnly} busy={busy} width={260} onCommit={(nv) => onSet(f.id, nv === "" ? null : nv)} />
-        )}
+        <FieldControl f={f} value={value} readOnly={readOnly} busy={busy} onSet={onSet} />
       </div>
+    </div>
+  );
+}
+
+function FieldControl({ f, value, readOnly, busy, onSet }: {
+  f: Field; value: unknown; readOnly: boolean; busy: boolean; onSet: (id: string, v: unknown) => void;
+}) {
+  const clear = (nv: string) => onSet(f.id, nv === "" ? null : nv);
+  switch (f.kind) {
+    case "bool":
+      return (
+        <span style={{ opacity: readOnly ? 0.5 : 1, pointerEvents: readOnly || busy ? "none" : "auto" }}>
+          <Toggle checked={value === true} onChange={(nv) => onSet(f.id, nv)} />
+        </span>
+      );
+    case "choice":
+      return (
+        <select value={String(value ?? "")} disabled={readOnly || busy} onChange={(e) => onSet(f.id, e.target.value)}
+          style={{ width: 180, padding: "7px 10px", fontSize: 13, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontFamily: "var(--font)" }}>
+          {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    case "port":
+      return <TextInput value={value == null ? "" : String(value)} readOnly={readOnly} busy={busy} width={110}
+        onCommit={(nv) => onSet(f.id, nv === "" ? null : Number(nv))} />;
+    case "size":
+      return <TextInput value={(value as string) ?? ""} readOnly={readOnly} busy={busy} width={110} placeholder="z. B. 100M" onCommit={clear} />;
+    case "duration":
+      return <TextInput value={(value as string) ?? ""} readOnly={readOnly} busy={busy} width={110} placeholder="unbegrenzt" onCommit={clear} />;
+    case "allowlist":
+      return <AllowList value={value as string[] | null | undefined} readOnly={readOnly} busy={busy} onSet={(v) => onSet(f.id, v)} />;
+    default:
+      return <TextInput value={(value as string) ?? ""} readOnly={readOnly} busy={busy} width={260} mono={f.kind !== "label"} onCommit={clear} />;
+  }
+}
+
+/** Everyone (no value) · no one (empty list) · only these servers. */
+function AllowList({ value, readOnly, busy, onSet }: {
+  value: string[] | null | undefined; readOnly: boolean; busy: boolean; onSet: (v: string[] | null) => void;
+}) {
+  const mode = value == null ? "all" : value.length === 0 ? "none" : "some";
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = draft ?? (value ?? []).join("\n");
+  const parse = (t: string) => t.split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const radio = (m: string, label: string, v: string[] | null) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text)", cursor: readOnly ? "default" : "pointer" }}>
+      <input type="radio" checked={mode === m} disabled={readOnly || busy} onChange={() => onSet(v)} /> {label}
+    </label>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, width: 260 }}>
+      {radio("all", "Alle Server", null)}
+      {radio("none", "Keine — nur dieser Server", [])}
+      {radio("some", "Nur diese Server", mode === "some" ? value! : ["matrix.org"])}
+      {mode === "some" && (
+        <textarea value={text} disabled={readOnly || busy} rows={3} onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (draft !== null) { const l = parse(draft); setDraft(null); if (l.length) onSet(l); } }}
+          style={{ padding: "7px 10px", fontSize: 12.5, fontFamily: "var(--mono)", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm)" }} />
+      )}
     </div>
   );
 }
 
 /** Saved on Enter or leaving the field — not on every keystroke, which would write a
  *  half-typed address into the settings. */
-function TextInput({ value, readOnly, busy, width, placeholder, onCommit }: {
-  value: string; readOnly?: boolean; busy?: boolean; width: number; placeholder?: string; onCommit: (v: string) => void;
+function TextInput({ value, readOnly, busy, width, placeholder, mono = true, onCommit }: {
+  value: string; readOnly?: boolean; busy?: boolean; width: number; placeholder?: string; mono?: boolean; onCommit: (v: string) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? value;
@@ -138,7 +194,7 @@ function TextInput({ value, readOnly, busy, width, placeholder, onCommit }: {
     <input value={shown} readOnly={readOnly} disabled={busy} placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setDraft(null); }}
-      style={{ width, padding: "7px 10px", fontSize: 13, fontFamily: "var(--mono)", background: readOnly ? "transparent" : "var(--surface-2)",
+      style={{ width, padding: "7px 10px", fontSize: 13, fontFamily: mono ? "var(--mono)" : "var(--font)", background: readOnly ? "transparent" : "var(--surface-2)",
         border: `1px solid ${readOnly ? "var(--border-soft)" : "var(--border)"}`, color: "var(--text)", borderRadius: "var(--radius-sm)" }} />
   );
 }

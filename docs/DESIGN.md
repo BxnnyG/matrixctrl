@@ -4441,3 +4441,24 @@ die Einbindung der Anmelde-Anbieter (§4.112).
 **Kapazitätsbalken aus derselben Rechnung wie die Sperre** (`capacity.Requests`), nach den
 ausstehenden Änderungen — ein Balken, der „passt" zeigt, während die Sperre ablehnt, darf
 es nicht geben.
+
+### §4.116 — Speichern verschiebt keine Kommentare mehr (2026-09-29, agent, etappe 114)
+
+Aufgaben II (Nachrichten & Medien, Föderation, Anrufe, Aussehen) nutzt denselben
+Mechanismus wie §4.115, mit einer zweiten Block-Form: Element Web liest
+`elementWeb.additional.<name>` als JSON-Text, MAS und Synapse YAML unter `.config`.
+Föderation ist eine Liste mit drei Bedeutungen — Schlüssel fehlt (alle), `[]` (keine),
+Liste (nur diese) —, und genau so wird sie geschrieben.
+
+**Gefunden beim Durchklicken:** eine Föderations-Einstellung erzeugte dreißig Zeilen Diff in
+der Synapse-Datei, fast alle verschobene Kommentare. yaml.v3 hängt Kommentarzeilen zwischen
+dem Ende eines tieferen Blocks und dem nächsten, flacheren Schlüssel an diesen Schlüssel und
+schreibt sie auf dessen Einrückung — bei **jedem** Speichern, seit es den kommentarerhaltenden
+Editor gibt. Nichts ging verloren, aber die Änderungsansicht, die zeigen soll, was eine
+Änderung tut, zeigte vor allem Kommentarumzüge. Jetzt vergleicht `keepComments` alt und neu
+zeilenweise und setzt jeden Änderungsblock, der auf beiden Seiten nur aus Kommentaren und
+Leerzeilen besteht, auf das Original zurück; ein Block mit einer echten Zeile bleibt, wie er
+geschrieben wurde. Gegenprobe im Test: ohne Reparatur verschiebt dieselbe Speicherung.
+
+Außerdem: ein ausgeschriebener Wert, der dem Standard gleicht, zählt als Standard —
+eingerichtete Installationen tragen fast alle Standardwerte ausgeschrieben.
