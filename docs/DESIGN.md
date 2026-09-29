@@ -4326,3 +4326,48 @@ auf dem Schritt, an dem es scheiterte.
 
 **Merksatz:** *Was die Maschine vorher weiß, darf der Mensch nicht erst hinterher im Log
 finden.*
+
+### §4.112 — Ein Login, drei Anbieter, kein Übernahmepfad (2026-09-29, operator, etappe 110)
+
+> „oidc, und wie man das sicher macht — zweimal, einmal MatrixCtrl und einmal Matrix,
+> oder beides in einem?"
+
+**Einmal, in MAS** (Betreiber-Entscheidung). MatrixCtrl hat keinen eigenen Login, es meldet
+sich über MAS an und lässt nur MAS-Admins herein (§4.5). Ein Anbieter, in MAS eingerichtet,
+gilt damit für Element und MatrixCtrl; gesperrt wird an einer Stelle; 2FA kommt vom
+Anbieter; der Notzugang `install.sh recover-login` bleibt.
+
+**Offene Registrierung** über die Anbieter (Betreiber-Entscheidung). Wer sich registriert,
+ist Nutzer, nie Admin — die Seite sagt das neben dem Knopf.
+
+**Der Übernahmepfad ist zu.** MAS kann einen Anbieter-Login automatisch mit einem
+bestehenden Account gleichen Namens verknüpfen (`localpart.on_conflict: add/set/replace`)
+und nennt das selbst ein Übernahme-Risiko: ein GitHub-Konto „bxnny" wäre `@bxnny`. Der
+Name kommt deshalb nie vom Anbieter (`localpart: ignore`, wie in allen MAS-Beispielen),
+`on_conflict` bleibt beim Default `fail`, die Adresse wird nur vorgeschlagen. Bestehende
+Accounts verknüpfen sich selbst, angemeldet, auf der MAS-Kontoseite. Ein Test prüft das für
+jede Anbieter-Art; die Gegenprobe mit `require`/`add` schlägt an.
+
+**Das Client-Secret verlässt das Kubernetes-Secret nie.** Das Chart hängt
+`additional.<key>.configSecret` als Volume in MAS; MatrixCtrl schreibt dorthin
+(`matrixctrl-mas-upstream`) und trägt nur die *Referenz* in die Einstellungen ein. Ein Test
+durchsucht jede API-Antwort und jede Datei im Einstellungs-Repo; das Audit-Log speichert
+ohnehin keine Bodies (Test seit E35).
+
+**Abschalten, nicht löschen.** MAS behält entfernte Anbieter bis `config sync --prune` in
+seiner Datenbank; der Assistent kennt deshalb nur `enabled: false`. Entwürfe (Callback-URL
+erzeugt, Zugangsdaten fehlen) werden gespeichert, aber nie gerendert — MAS startet mit
+leerer Client-ID nicht, und ein halbfertiger Anbieter darf nicht den Login aller kosten.
+
+**Aktiviert wird nur, was MAS liest.** Ist die Referenz noch nicht in den Einstellungen,
+wird sie als ausstehende Änderung eingetragen (Übernehmen). Ist sie deployt, ändert ein
+Speichern nur den Secret-Inhalt — das Pod-Template bleibt gleich, also startet MatrixCtrl
+MAS gezielt neu. Ändert ein Speichern nichts an dem, was MAS liest (Issuer eines Entwurfs),
+passiert gar nichts: erst im Browser gefunden, als „Anbieter prüfen" einen falschen Issuer
+meldete, der sich nirgends korrigieren ließ — und dessen Korrektur MAS neu gestartet hätte.
+
+**Generischer OIDC holt Userinfo.** Zitadel legt standardmäßig nur `sub` ins ID-Token; ohne
+`fetch_userinfo` wären Name und Adresse bei der Registrierung leer.
+
+**Merksatz:** *Ein Login ist so sicher wie die Regel, nach der er einem Account zugeordnet
+wird.*

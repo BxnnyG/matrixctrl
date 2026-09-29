@@ -27,6 +27,8 @@ type Deps struct {
 	Rooms   *handlers.RoomsHandler
 	Reports *handlers.ReportsHandler
 	Version *handlers.VersionHandler
+	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
+	LoginProviders *handlers.LoginProvidersHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -228,6 +230,18 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
 			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
 		})
+
+		// Sign-in through Google, GitHub or OIDC, in MAS (etappe 110). Nil in tests.
+		if deps.LoginProviders != nil {
+			r.Route("/api/v1/login-providers", func(r chi.Router) {
+				r.Get("/", deps.LoginProviders.List)
+				r.Post("/", deps.LoginProviders.Create)
+				r.Get("/verify", deps.LoginProviders.Verify)
+				r.Put("/{id}", deps.LoginProviders.Update)
+				r.Delete("/{id}", deps.LoginProviders.Delete)
+				r.Post("/{id}/check", deps.LoginProviders.Check)
+			})
+		}
 
 		r.Route("/api/v1/setup", func(r chi.Router) {
 			r.Get("/status", deps.Setup.Status)

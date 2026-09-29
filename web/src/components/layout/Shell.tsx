@@ -16,6 +16,7 @@ const NAV: NavGroup[] = [
   // "Änderungen"), which is two names too many for one thing (etappe 107).
   { group: "Konfiguration", items: [
     { id: "config", label: "Einstellungen", icon: "sliders", to: "/config" },
+    { id: "login-providers", label: "Anmeldung", icon: "key", to: "/login-providers" },
   ] },
   { group: "Deployment", items: [
     { id: "helm", label: "Updates", icon: "helm", to: "/helm" },

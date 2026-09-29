@@ -69,3 +69,26 @@ func (c *Client) PutSecret(ctx context.Context, namespace, name string, data map
 	_, err = secrets.Update(ctx, existing, metav1.UpdateOptions{})
 	return err
 }
+
+// SecretVolumes lists the Secrets a Deployment's pods mount, directly or projected
+// (etappe 110: is MAS reading the login-provider Secret yet?).
+func (c *Client) SecretVolumes(ctx context.Context, namespace, deployment string) ([]string, error) {
+	d, err := c.Static.AppsV1().Deployments(namespace).Get(ctx, deployment, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, v := range d.Spec.Template.Spec.Volumes {
+		if v.Secret != nil {
+			out = append(out, v.Secret.SecretName)
+		}
+		if v.Projected != nil {
+			for _, src := range v.Projected.Sources {
+				if src.Secret != nil {
+					out = append(out, src.Secret.Name)
+				}
+			}
+		}
+	}
+	return out, nil
+}

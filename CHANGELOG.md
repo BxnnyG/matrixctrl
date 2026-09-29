@@ -15,6 +15,28 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.103] — 2026-09-29
+
+Etappe 110: sign in with Google, GitHub or your own OIDC provider (Zitadel, Keycloak, …).
+
+### Added
+
+- **Page „Anmeldung"** (Konfiguration): add a provider, copy the callback URL, follow the
+  steps for Google, GitHub or a generic OIDC provider (with Zitadel notes), enter client
+  ID and secret, check the issuer. Configured once in MAS — it applies to Element and to
+  MatrixCtrl alike; MatrixCtrl still admits only MAS admins.
+- Registration through the providers is open (operator decision); new accounts are users,
+  never admins.
+
+### Security
+
+- The Matrix username never comes from the provider and existing accounts are never linked
+  automatically — MAS documents that as an account-takeover path. Existing accounts link
+  themselves, signed in, on MAS's account page.
+- Client secrets are stored only in a Kubernetes Secret mounted into MAS; the settings
+  repository holds a reference. They are never returned by the API.
+- Providers are switched off, not deleted (MAS keeps deleted ones until a prune).
+
 ## [0.1.102] — 2026-09-29
 
 Etappe 109: what the first upgrade on the new server (ESS 26.9.3, six revisions) showed.

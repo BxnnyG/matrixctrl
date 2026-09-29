@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RtcRouteImport } from './routes/rtc'
 import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as LoginProvidersRouteImport } from './routes/login-providers'
 import { Route as BackupRouteImport } from './routes/backup'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
@@ -58,6 +59,11 @@ const RoomsRoute = RoomsRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginProvidersRoute = LoginProvidersRouteImport.update({
+  id: '/login-providers',
+  path: '/login-providers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BackupRoute = BackupRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/login-providers': typeof LoginProvidersRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/login-providers': typeof LoginProvidersRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/login-providers': typeof LoginProvidersRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/login-providers'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -226,6 +236,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/login-providers'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -248,6 +259,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/login-providers'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -271,6 +283,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
   BackupRoute: typeof BackupRoute
+  LoginProvidersRoute: typeof LoginProvidersRoute
   ReportsRoute: typeof ReportsRoute
   RoomsRoute: typeof RoomsRouteWithChildren
   RtcRoute: typeof RtcRoute
@@ -331,6 +344,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login-providers': {
+      id: '/login-providers'
+      path: '/login-providers'
+      fullPath: '/login-providers'
+      preLoaderRoute: typeof LoginProvidersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backup': {
@@ -448,6 +468,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
   BackupRoute: BackupRoute,
+  LoginProvidersRoute: LoginProvidersRoute,
   ReportsRoute: ReportsRoute,
   RoomsRoute: RoomsRouteWithChildren,
   RtcRoute: RtcRoute,

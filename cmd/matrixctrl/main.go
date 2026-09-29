@@ -298,22 +298,29 @@ func main() {
 		log.Printf("update check disabled by MATRIXCTRL_UPDATE_CHECK=0")
 	}
 
+	// Needs the cluster: the providers live in a Secret next to MAS.
+	var loginProviders *handlers.LoginProvidersHandler
+	if k8sClient != nil {
+		loginProviders = handlers.NewLoginProvidersHandler(k8sClient, configStore, essNS, essRelease)
+	}
+
 	router := api.NewRouter(api.Deps{
-		Auth:    authHandler,
-		Status:  statusHandler,
-		Hooks:   hooksHandler,
-		Drift:   driftHandler,
-		Helm:    helmHandler,
-		WS:      wsHandler,
-		Config:  configHandler,
-		Setup:   setupHandler,
-		Audit:   handlers.NewAuditHandler(auditStore),
-		RTC:     rtcHandler,
-		Users:   usersHandler,
-		Rooms:   roomsHandler,
-		Reports: reportsHandler,
-		Version: handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
-		Roles:   roles,
+		Auth:           authHandler,
+		Status:         statusHandler,
+		Hooks:          hooksHandler,
+		Drift:          driftHandler,
+		Helm:           helmHandler,
+		WS:             wsHandler,
+		Config:         configHandler,
+		Setup:          setupHandler,
+		Audit:          handlers.NewAuditHandler(auditStore),
+		RTC:            rtcHandler,
+		Users:          usersHandler,
+		Rooms:          roomsHandler,
+		Reports:        reportsHandler,
+		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
+		LoginProviders: loginProviders,
+		Roles:          roles,
 
 		AuditSink: auditStore,
 	})
