@@ -209,3 +209,18 @@ func TestAWrittenOutDefaultIsTheDefault(t *testing.T) {
 		t.Error("a different value is not the default")
 	}
 }
+
+// On and back off: the block is gone again, not holding the default.
+func TestSwitchingBackToTheDefaultLeavesNothing(t *testing.T) {
+	on, _ := Write(values(t, "{}"), fields, map[string]interface{}{"mas.password_registration": true})
+	after := values(t, "matrixAuthenticationService:\n  additional:\n    matrixctrl-tasks:\n      config: |\n"+
+		"        account:\n          password_registration_enabled: true\n")
+	_ = on
+	off, err := Write(after, fields, map[string]interface{}{"mas.password_registration": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(off.Set) != 0 || len(off.Remove) != 1 || off.Remove[0] != "matrixAuthenticationService.additional."+Block {
+		t.Errorf("switching back must remove the block: %+v", off)
+	}
+}

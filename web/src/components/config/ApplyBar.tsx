@@ -211,7 +211,7 @@ export function ApplyBar({ files, unsaved, diffKey, onSave, onView, redeploy }: 
       {!running && pending && refused && (
         <div style={{ padding: "12px 22px 0", display: "flex", flexDirection: "column", gap: 6 }}>
           <Line tone="err" icon="alert">{refused} Es wurde nichts gespeichert und nichts angewendet.</Line>
-          {verdict?.findings.filter((f) => f.level === "blocked").map((f, i) => (
+          {(verdict?.findings ?? []).filter((f) => f.level === "blocked").map((f, i) => (
             <div key={i} style={{ fontSize: 12.5, color: "var(--text-dim)", paddingLeft: 26 }}>
               {f.workload && <code style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{serviceName(f.workload)}</code>} {f.message}
             </div>

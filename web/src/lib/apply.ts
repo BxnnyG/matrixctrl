@@ -44,8 +44,10 @@ export function serviceName(name: string, release = "ess"): string {
 export function restartSummary(v: ConfigVerdict | undefined): string {
   if (!v) return "";
   if (!v.rendered) return "Auswirkung nicht prüfbar";
-  const restarting = v.restarts.filter((r) => !r.new).map((r) => serviceName(r.name));
-  const starting = v.restarts.filter((r) => r.new).map((r) => serviceName(r.name));
+  // `?? []`: a missing list is "nothing", never a crash of the whole settings page.
+  const restarts = v.restarts ?? [];
+  const restarting = restarts.filter((r) => !r.new).map((r) => serviceName(r.name));
+  const starting = restarts.filter((r) => r.new).map((r) => serviceName(r.name));
   const parts: string[] = [];
   if (restarting.length) parts.push(`startet neu: ${restarting.join(", ")}`);
   if (starting.length) parts.push(`startet erstmals: ${starting.join(", ")}`);

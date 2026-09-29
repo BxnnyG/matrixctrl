@@ -358,6 +358,12 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 			blocks[f.Source.Component] = b
 		}
 		key := strings.Split(f.Source.Key, ".")
+		// Our block holds only what differs from the service's default. Switching a
+		// setting on and back off must leave nothing behind — not a written-out default
+		// that keeps the pending-changes bar up for a change that changes nothing.
+		if v != nil && f.Default != nil && fmt.Sprint(v) == fmt.Sprint(f.Default) {
+			v = nil
+		}
 		if v == nil {
 			del(b, key)
 		} else {

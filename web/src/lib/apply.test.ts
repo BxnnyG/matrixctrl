@@ -38,3 +38,12 @@ describe("serviceName", () => {
     expect(serviceName("essential-thing")).toBe("essential-thing");
   });
 });
+
+describe("a verdict with missing lists", () => {
+  // A switch turned on and back off restarts nothing; the server sent null and the
+  // settings page crashed with "e.restarts is null".
+  it("reads a null restart list as nothing", () => {
+    const v = { ...base, restarts: null as unknown as [] };
+    expect(restartSummary(v)).toBe("kein Dienst startet neu");
+  });
+});

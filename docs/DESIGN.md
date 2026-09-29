@@ -4462,3 +4462,9 @@ geschrieben wurde. Gegenprobe im Test: ohne Reparatur verschiebt dieselbe Speich
 
 Außerdem: ein ausgeschriebener Wert, der dem Standard gleicht, zählt als Standard —
 eingerichtete Installationen tragen fast alle Standardwerte ausgeschrieben.
+
+**Nachtrag 0.1.109 (Betreiber-Meldung):** Schalter an und wieder aus ließ die Seite
+abstürzen. Zwei Fehler hintereinander: der Standardwert wurde in den eigenen Block
+*geschrieben* statt entfernt — also blieb eine Änderung, die nichts ändert —, und deren
+Vorschau schickte „keine Neustarts" als `null`, woran die Leiste zerbrach. Der Block hält
+jetzt nur, was vom Standard abweicht; Listen im Urteil sind nie `null`.

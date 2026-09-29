@@ -15,6 +15,16 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.109] — 2026-09-29
+
+### Fixed
+
+- The settings page crashed ("e.restarts is null") after switching a setting on and back
+  off: the preview sent `null` for "nothing restarts". Lists are always lists now, and the
+  page reads a missing one as empty.
+- Switching a service setting back to its default removes it from MatrixCtrl's block
+  instead of writing the default out — the pending-changes bar disappears again.
+
 ## [0.1.108] — 2026-09-29
 
 ### Added

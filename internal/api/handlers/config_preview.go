@@ -98,7 +98,12 @@ func (h *HelmHandler) verdictFor(ctx context.Context, release string, values map
 		return v
 	}
 	v.Rendered = true
-	v.Restarts = preview.Restarts(current, rendered)
+	// Never null: "nothing restarts" is an empty list. A null here crashed the pending-
+	// changes bar on the one change that restarts nothing — a setting switched on and
+	// back off (etappe 114, reported by the operator).
+	if r := preview.Restarts(current, rendered); r != nil {
+		v.Restarts = r
+	}
 
 	if h.k8s == nil {
 		v.Note = "Ohne Cluster-Zugriff lässt sich die Kapazität nicht prüfen."
@@ -124,7 +129,9 @@ func (h *HelmHandler) verdictFor(ctx context.Context, release string, values map
 		v.Note = "Die Kapazität der Nodes war nicht lesbar: " + err.Error()
 		return v
 	}
-	v.Findings = capacity.Check(rendered, capacity.FromNodeInfo(nodes))
+	if f := capacity.Check(rendered, capacity.FromNodeInfo(nodes)); f != nil {
+		v.Findings = f
+	}
 	v.Requests = capacity.Requests(rendered)
 	for _, n := range nodes {
 		if v.Node == nil || n.MemTotalMi > v.Node.MemMi {
