@@ -4499,3 +4499,29 @@ Prüfung ab und nennt die Alternativen, statt das Passwort im Klartext zu senden
 im Test. Und eine Klartext-Anmeldung zu einem Server außerhalb des Clusters lehnt Go von
 sich aus ab — hier steht dazu ein Satz, weil „unencrypted connection" wie ein Fehler
 aussieht und eine Entscheidung ist.
+
+### §4.118 — Zwei Blickrichtungen auf dasselbe Zertifikat (2026-09-29, operator, etappe 115)
+
+„TLS & DNS" war ein ausgegrauter Eintrag. Die drei Anruf-Ausfälle vom 26.–28.09. lagen
+alle in derselben Lücke: **was das Internet sieht, und was der Server selbst ausliefert,
+sind zwei verschiedene Dinge**, und Cloudflare verdeckt das zweite. Grau geschaltet lieferte
+Traefik sein selbstsigniertes Standardzertifikat aus (Element Call: `OPEN_ID_ERROR`); orange
+geschaltet war von außen alles gültig, während der Auth-Dienst im Cluster in die
+Zeitüberschreitung lief.
+
+Die Seite fragt deshalb beides: den Namen öffentlich, und denselben Namen per SNI gegen die
+ClusterIP des Ingress-Controllers. Der Handshake läuft **bewusst ohne Prüfung** — ein
+ungültiges Zertifikat soll *berichtet* werden, nicht die Verbindung beenden; gesendet wird
+nichts.
+
+**Cloudflare wird am `server`-Header erkannt**, nicht an einer IP-Liste: eine Liste von
+Adressbereichen veraltet, der Header ist eine Beobachtung.
+
+**Ein Satz je Adresse, nicht vier Felder zum Selbstdeuten** — und der lauteste Fehler
+gewinnt. Ohne bekannte eigene Adresse (hinter NAT, wie auf dieser Installation) wird
+*nicht* behauptet, ein Eintrag zeige woandershin: die Prüfung kennt dann kein „hier"
+(§4.80). Mit Proxy heißt „zeigt auf Cloudflare" genau das, statt „zeigt woandershin".
+
+**Beim Bauen gefunden:** ein vor einer Stunde abgelaufenes Zertifikat hatte „0 Tage
+Restlaufzeit" statt „abgelaufen" — die Division rundet ab. Abgelaufen ist jetzt ein eigenes
+Feld aus dem Vergleich mit der Uhr, nicht aus der Tageszahl erschlossen.

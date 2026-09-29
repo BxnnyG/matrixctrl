@@ -30,6 +30,7 @@ type Deps struct {
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
 	Mail           *handlers.MailHandler
+	TLSDNS         *handlers.TLSDNSHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -233,6 +234,11 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
 			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
 		})
+
+		// TLS & DNS per hostname (etappe 115). Nil in tests.
+		if deps.TLSDNS != nil {
+			r.Get("/api/v1/tls-dns", deps.TLSDNS.Get)
+		}
 
 		// E-Mail for MAS (etappe 114b). Nil in tests.
 		if deps.Mail != nil {

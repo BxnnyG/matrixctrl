@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
+import { Route as TlsDnsRouteImport } from './routes/tls-dns'
 import { Route as SystemRouteImport } from './routes/system'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RtcRouteImport } from './routes/rtc'
@@ -35,6 +36,11 @@ import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TlsDnsRoute = TlsDnsRouteImport.update({
+  id: '/tls-dns',
+  path: '/tls-dns',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SystemRoute = SystemRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/rtc': typeof RtcRoute
   '/setup': typeof SetupRoute
   '/system': typeof SystemRoute
+  '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/tls-dns'
     | '/users'
     | '/auth/callback'
     | '/auth/login'
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/tls-dns'
     | '/users'
     | '/auth/callback'
     | '/auth/login'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/rtc'
     | '/setup'
     | '/system'
+    | '/tls-dns'
     | '/users'
     | '/auth/callback'
     | '/auth/login'
@@ -302,6 +314,7 @@ export interface RootRouteChildren {
   RtcRoute: typeof RtcRoute
   SetupRoute: typeof SetupRoute
   SystemRoute: typeof SystemRoute
+  TlsDnsRoute: typeof TlsDnsRoute
   UsersRoute: typeof UsersRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tls-dns': {
+      id: '/tls-dns'
+      path: '/tls-dns'
+      fullPath: '/tls-dns'
+      preLoaderRoute: typeof TlsDnsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/system': {
@@ -495,6 +515,7 @@ const rootRouteChildren: RootRouteChildren = {
   RtcRoute: RtcRoute,
   SetupRoute: SetupRoute,
   SystemRoute: SystemRoute,
+  TlsDnsRoute: TlsDnsRoute,
   UsersRoute: UsersRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,

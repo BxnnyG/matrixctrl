@@ -308,6 +308,7 @@ func main() {
 		loginProviders = handlers.NewLoginProvidersHandler(k8sClient, configStore, essNS, essRelease)
 		mailHandler = handlers.NewMailHandler(k8sClient, configStore, essNS, essRelease)
 	}
+	tlsdnsHandler := handlers.NewTLSDNSHandler(k8sClient, configStore, essNS)
 
 	router := api.NewRouter(api.Deps{
 		Auth:           authHandler,
@@ -326,6 +327,7 @@ func main() {
 		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
 		LoginProviders: loginProviders,
 		Mail:           mailHandler,
+		TLSDNS:         tlsdnsHandler,
 		Roles:          roles,
 
 		AuditSink: auditStore,

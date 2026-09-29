@@ -38,7 +38,7 @@ const NAV: NavGroup[] = [
   ] },
   // Future phases — shown as disabled roadmap entries (no backend yet).
   { group: "Betrieb · Day-2", phase: "3", items: [
-    { id: "tls", label: "TLS & DNS", icon: "lock" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
+    { id: "tls", label: "TLS & DNS", icon: "lock", to: "/tls-dns" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
   ] },
   { group: "Netzwerk", phase: "4", items: [
     { id: "federation", label: "Föderation", icon: "globe" }, { id: "bridges", label: "Bridges", icon: "audit" },

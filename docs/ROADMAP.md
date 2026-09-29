@@ -102,7 +102,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 113 | Aufgaben I als Startansicht der Einstellungen: Server & Adressen, Registrierung & Anmeldung, Ressourcen & Kapazität | ✅ 2026-09-29 · `v0.1.107` · [plan](plans/etappe-113-aufgaben-I.md) |
 | 114 | Aufgaben II: Nachrichten & Medien, Föderation, Anrufe, Aussehen; Speichern verschiebt keine Kommentare mehr | ✅ 2026-09-29 · `v0.1.108` · [plan](plans/etappe-114-aufgaben-II.md) |
 | 114b | E-Mail-Versand: SMTP im Kubernetes-Secret, Verbindungsprüfung und Testnachricht | ✅ 2026-09-29 · `v0.1.110` · [plan](plans/etappe-114b-email.md) |
-| 115 | TLS & DNS je Hostname | 📋 geplant |
+| 115 | TLS & DNS je Hostname: DNS, Cloudflare-Proxy, Zertifikat außen **und am Ursprung** | ✅ 2026-09-29 · `v0.1.111` · [plan](plans/etappe-115-tls-dns.md) |
 | 116 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
 | 117 | Worker-Insights | 📋 geplant |
 | 118 | Bridges (Hookshot, Appservices) | 📋 geplant |

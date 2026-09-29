@@ -15,6 +15,15 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.111] — 2026-09-29
+
+### Added
+
+- **TLS & DNS page** (no longer greyed out): per configured hostname, where the name
+  points, whether Cloudflare's proxy answers, and the certificate **both** from the
+  internet and at the origin — the difference that hid three call outages. One sentence
+  per address, loudest fault first.
+
 ## [0.1.110] — 2026-09-29
 
 ### Added
