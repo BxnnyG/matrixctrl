@@ -99,7 +99,8 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 110 | Anmeldung mit Google, GitHub, eigenem OIDC (Zitadel): einmal in MAS, kein Übernahmepfad, Secret nur im Cluster | ✅ 2026-09-29 · `v0.1.103` · [plan](plans/etappe-110-externe-anmeldung.md) |
 | 111 | Von Hand gesetzt, aber gleich dem Chart: keine Warnung mehr für Felder, die Helm genauso setzt | ✅ 2026-09-29 · `v0.1.105` · [plan](plans/etappe-111-handgesetzt-aber-gleich.md) |
 | 112 | Versionen auf einen Blick (Dashboard): ESS + neueste, MatrixCtrl + Update, jeder Dienst | ✅ 2026-09-29 · `v0.1.106` · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
-| 113–114 | Einstellungen: Aufgaben-Ebene I+II als Startansicht (für Einsteiger) | 📋 geplant · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
+| 113 | Aufgaben I als Startansicht der Einstellungen: Server & Adressen, Registrierung & Anmeldung, Ressourcen & Kapazität | ✅ 2026-09-29 · `v0.1.107` · [plan](plans/etappe-113-aufgaben-I.md) |
+| 114 | Aufgaben II: Nachrichten & Medien, Föderation, Anrufe, Aussehen, E-Mail | 📋 geplant · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
 | 115 | TLS & DNS je Hostname | 📋 geplant |
 | 116 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
 | 117 | Worker-Insights | 📋 geplant |

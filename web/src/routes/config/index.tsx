@@ -6,6 +6,7 @@ import type { OnMount } from "@monaco-editor/react";
 import { YamlEditor } from "@/components/config/YamlEditor";
 import { api } from "@/lib/api";
 import { ApplyBar } from "@/components/config/ApplyBar";
+import { TaskView } from "@/components/config/TaskView";
 import { parseDiff } from "@/components/config/DiffView";
 
 interface ConfigLocation {
@@ -41,7 +42,7 @@ export const Route = createFileRoute("/config/")({
   component: Settings,
   validateSearch: (s: Record<string, unknown>): { section?: string; mode?: Mode } => ({
     section: typeof s.section === "string" ? s.section : undefined,
-    mode: s.mode === "yaml" || s.mode === "diff" || s.mode === "standard" ? s.mode : undefined,
+    mode: s.mode === "yaml" || s.mode === "diff" || s.mode === "standard" || s.mode === "tasks" ? s.mode : undefined,
   }),
 });
 
@@ -55,7 +56,7 @@ interface SettingsResponse {
 }
 interface Slice { name: string; file: string; content: string }
 
-type Mode = "standard" | "yaml" | "diff";
+type Mode = "tasks" | "standard" | "yaml" | "diff";
 
 function Settings() {
   const qc = useQueryClient();
@@ -67,7 +68,9 @@ function Settings() {
   });
 
   const search = Route.useSearch();
-  const [mode, setMode] = useState<Mode>(search.mode ?? "standard");
+  // The task layer is the start (operator decision 2026-09-27, etappe 113). A link to a
+  // section still opens the full form there.
+  const [mode, setMode] = useState<Mode>(search.mode ?? (search.section ? "standard" : "tasks"));
   const [fileSel, setFileSel] = useState<string | null>(search.section ?? null);
   // Cheap and static; asked once so the header can state where the configuration is.
   //
@@ -156,7 +159,8 @@ function Settings() {
         <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Einstellungen</h1>
 
         <div style={{ display: "flex", gap: 2, padding: 3, marginLeft: 6, background: "var(--surface-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-soft)" }}>
-          <button onClick={() => setMode("standard")} style={segBtn(mode === "standard")}><Icon name="sliders" size={13} /> Standard</button>
+          <button onClick={() => setMode("tasks")} style={segBtn(mode === "tasks")}><Icon name="check" size={13} /> Aufgaben</button>
+          <button onClick={() => setMode("standard")} style={segBtn(mode === "standard")}><Icon name="sliders" size={13} /> Alle Einstellungen</button>
           <button onClick={() => setMode("yaml")} style={segBtn(mode === "yaml")}><Icon name="file" size={13} /> YAML</button>
           <button onClick={() => setMode("diff")} style={segBtn(mode === "diff")}><Icon name="diff" size={13} /> Änderungen</button>
         </div>
@@ -213,7 +217,7 @@ function Settings() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* Category nav */}
-        <aside className="mc-scroll" style={{ width: 232, flexShrink: 0, borderRight: "1px solid var(--border)", background: "var(--panel)", overflowY: "auto" }}>
+        {mode !== "tasks" && <aside className="mc-scroll" style={{ width: 232, flexShrink: 0, borderRight: "1px solid var(--border)", background: "var(--panel)", overflowY: "auto" }}>
           <div style={{ padding: 12 }}>
             <div style={{ position: "relative", marginBottom: 10 }}>
               <Icon name="search" size={14} style={{ position: "absolute", left: 10, top: 9, color: "var(--text-faint)" }} />
@@ -248,11 +252,13 @@ function Settings() {
               );
             })}
           </div>
-        </aside>
+        </aside>}
 
         {/* Main panel */}
         <main className="mc-scroll" style={{ flex: 1, overflowY: "auto", background: "var(--bg)" }}>
-          {searchHits ? (
+          {mode === "tasks" ? (
+            <TaskView diffKey={diffData?.diff ?? ""} />
+          ) : searchHits ? (
             <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--text-faint)" }}>{searchHits.length} Treffer für „{query}"</p>
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>

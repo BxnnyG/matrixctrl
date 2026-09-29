@@ -172,3 +172,18 @@ func TestFollowChartThroughTheStore(t *testing.T) {
 		t.Error("a component in no file is an error, not silence")
 	}
 }
+
+// `additional: {}` filled in: a block, and a multi-line config as a literal block —
+// not one line of escaped newlines (etappe 113).
+func TestFillingAnEmptyFlowMapWritesABlock(t *testing.T) {
+	src := "matrixAuthenticationService:\n  ## docs\n  additional: {}\n  labels: {}\n"
+	n, _ := ParseYAMLNode(src)
+	if err := SetNodeValue(n, []string{"matrixAuthenticationService", "additional", "matrixctrl-tasks", "config"}, "account:\n  password_registration_enabled: true\n"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := MarshalNode(n)
+	want := "matrixAuthenticationService:\n  ## docs\n  additional:\n    matrixctrl-tasks:\n      config: |\n        account:\n          password_registration_enabled: true\n  labels: {}\n"
+	if out != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,10 +77,20 @@ func setIn(m *yaml.Node, path []string, value interface{}) error {
 	key := path[0]
 	idx := findKey(m, key)
 
+	// ESS writes empty sections as `additional: {}`. Filled in flow style they became one
+	// line — `{matrixctrl-tasks: {config: "account:\n  …"}}` — which no one can read or
+	// diff (etappe 113). A mapping that gains content is written as a block.
+	m.Style &^= yaml.FlowStyle
+
 	if len(path) == 1 {
 		var vn yaml.Node
 		if err := vn.Encode(value); err != nil {
 			return err
+		}
+		// A multi-line string is a document (a config block), not a value: keep its
+		// lines as lines.
+		if str, ok := value.(string); ok && strings.Contains(str, "\n") && vn.Kind == yaml.ScalarNode {
+			vn.Style = yaml.LiteralStyle
 		}
 		if idx >= 0 {
 			// Preserve the value node's leading comment if it had one.

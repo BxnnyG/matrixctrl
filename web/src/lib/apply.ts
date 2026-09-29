@@ -22,6 +22,9 @@ export interface ConfigVerdict {
   stale_aliases?: StaleAlias[];
   /** The Services could not be listed, so the alias check did not run. */
   aliases_unchecked?: boolean;
+  /** What each workload reserves after the change, and the largest node (etappe 113). */
+  requests?: { workload: string; cpu_millis: number; mem_mi: number }[];
+  node?: { cpu_millis: number; mem_mi: number };
 }
 
 export interface StaleAlias {

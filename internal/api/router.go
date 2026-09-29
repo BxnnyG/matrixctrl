@@ -225,6 +225,8 @@ func NewRouter(deps Deps) http.Handler {
 			r.Post("/discard", deps.Config.Discard)
 			r.Post("/revert-apply", deps.Helm.RevertApply)
 			r.Post("/follow-chart", deps.Config.FollowChart)
+			r.Get("/tasks", deps.Config.GetTasks)
+			r.Post("/tasks", deps.Config.SetTasks)
 			r.Post("/apply", deps.Config.Apply)
 			r.Get("/history", deps.Config.GetHistory)
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)

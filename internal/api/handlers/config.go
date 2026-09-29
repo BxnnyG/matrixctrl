@@ -11,6 +11,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	cfgschema "github.com/bxnnyg/matrixctrl/internal/config/schema"
 	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
+	"github.com/bxnnyg/matrixctrl/internal/tasks"
 )
 
 type ConfigHandler struct {
@@ -312,6 +313,56 @@ func (h *ConfigHandler) FollowChart(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, done...)
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{"changed": changed})
+}
+
+// GET /api/v1/config/tasks — the task layer: cards, fields and their current values
+// (etappe 113).
+func (h *ConfigHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
+	values, err := h.mergedValues(r)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	cards := tasks.Cards()
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"cards":  cards,
+		"values": tasks.Read(values, tasks.AllFields(cards)),
+	})
+}
+
+// POST /api/v1/config/tasks {changes: {id: value|null}} — written to the working tree,
+// comment-preserving; nothing is applied. The pending-changes bar takes it from there.
+func (h *ConfigHandler) SetTasks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Changes map[string]interface{} `json:"changes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Changes) == 0 {
+		Error(w, http.StatusBadRequest, "changes required")
+		return
+	}
+	values, err := h.mergedValues(r)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	plan, err := tasks.Write(values, tasks.AllFields(tasks.Cards()), req.Changes)
+	if err != nil {
+		Error(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := h.store.SetSectionValues(r.Context(), plan.Set, plan.Remove); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+func (h *ConfigHandler) mergedValues(r *http.Request) (map[string]interface{}, error) {
+	contents, err := h.store.MergedContent(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	return config.MergeToMap(contents)
 }
 
 // POST /api/v1/config/settings — apply form edits (path→value + removals) directly

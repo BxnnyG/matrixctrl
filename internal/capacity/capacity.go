@@ -8,6 +8,7 @@ package capacity
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -202,4 +203,24 @@ func Blocking(findings []Finding) bool {
 		}
 	}
 	return false
+}
+
+// Request is what one workload reserves, as the scheduler will count it.
+type Request struct {
+	Workload  string `json:"workload"`
+	CPUMillis int64  `json:"cpu_millis"`
+	MemMi     int64  `json:"mem_mi"`
+}
+
+// Requests lists the effective request of every workload in a manifest — the numbers
+// Check measures, for a bar that shows them (etappe 113). Same arithmetic as the
+// refusal, so the bar and the "does not fit" can never disagree.
+func Requests(manifest string) []Request {
+	var out []Request
+	for name, w := range podSpecs(manifest) {
+		cpu, mem := k8s.EffectiveRequest(w.Spec)
+		out = append(out, Request{Workload: name, CPUMillis: cpu, MemMi: mem})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Workload < out[j].Workload })
+	return out
 }

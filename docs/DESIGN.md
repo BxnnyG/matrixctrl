@@ -4414,3 +4414,30 @@ Cache-Schlüssel mit Seitenleiste und Update-Seite — keine zusätzlichen Reque
 
 Selbstbericht und Reihenfolge für 113–118 (Aufgaben-Ebene, TLS & DNS, Föderation,
 Worker-Insights, Bridges): `plans/etappe-112-uebersicht-was-fehlt.md`.
+
+### §4.115 — Aufgaben statt Chart-Schlüssel (2026-09-29, operator, etappe 113)
+
+Die Einstellungen öffnen jetzt auf **Aufgaben** (Betreiber-Entscheidung 2026-09-27): drei
+Karten — Server & Adressen, Registrierung & Anmeldung, Ressourcen & Kapazität — deutsch,
+jede Einstellung mit einer Zeile Erklärung und dem Satz, was beim Übernehmen passiert.
+„Alle Einstellungen" und YAML bleiben als Umschalter daneben; ein Link auf einen Abschnitt
+öffnet weiterhin das volle Formular.
+
+**Die Felder sind Daten** (`internal/tasks`), das Frontend rendert, was die API liefert.
+
+**Dienst-Einstellungen nur in einem eigenen Block.** Was MAS oder Synapse selbst lesen
+(Registrierung, Passwort-Login …), nimmt das Chart nur als Text unter
+`additional.<name>.config`. MatrixCtrl schreibt ausschließlich in
+`additional.matrixctrl-tasks`; setzt ein anderer Block denselben Schlüssel, ist das Feld
+gesperrt und nennt den Block — sonst gäbe es zwei Stellen für einen Wert, und eine würde
+still gewinnen. Gegenprobe im Test. „Zurück auf Standard" entfernt den Wert, statt den
+Standard hineinzuschreiben; der letzte entfernt den Block.
+
+**Nebenbei behoben:** ein befülltes `additional: {}` blieb in Flow-Schreibweise und machte
+aus einem mehrzeiligen Konfigurationstext eine Zeile mit `\n`. Eine Map, die Inhalt
+bekommt, wird jetzt als Block geschrieben, mehrzeiliger Text als `|`. Das betrifft auch
+die Einbindung der Anmelde-Anbieter (§4.112).
+
+**Kapazitätsbalken aus derselben Rechnung wie die Sperre** (`capacity.Requests`), nach den
+ausstehenden Änderungen — ein Balken, der „passt" zeigt, während die Sperre ablehnt, darf
+es nicht geben.

@@ -15,6 +15,23 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.107] — 2026-09-29
+
+### Added
+
+- **Settings open on „Aufgaben"**: Server & Adressen, Registrierung & Anmeldung,
+  Ressourcen & Kapazität — in German, each setting explained, each saying what applying it
+  restarts. Resource usage shown as bars after the pending changes. „Alle Einstellungen"
+  and YAML stay one click away.
+- Service settings (MAS registration, password login, …) are written only to MatrixCtrl's
+  own `additional.matrixctrl-tasks` block; a key set in another block is shown read-only
+  with that block's name.
+
+### Fixed
+
+- Filling an empty `additional: {}` wrote a one-line flow map with escaped newlines; it is
+  now a block, and multi-line text a `|` literal.
+
 ## [0.1.106] — 2026-09-29
 
 ### Added

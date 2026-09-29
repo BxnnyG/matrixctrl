@@ -53,6 +53,16 @@ type configVerdict struct {
 	// is not mistaken for "all fine".
 	StaleAliases     []preview.StaleAlias `json:"stale_aliases"`
 	AliasesUnchecked bool                 `json:"aliases_unchecked,omitempty"`
+
+	// Requests and the largest node, for the capacity bar of the task layer (etappe
+	// 113): what everything reserves after this change, against what there is.
+	Requests []capacity.Request `json:"requests,omitempty"`
+	Node     *nodeSize          `json:"node,omitempty"`
+}
+
+type nodeSize struct {
+	CPUMillis int64 `json:"cpu_millis"`
+	MemMi     int64 `json:"mem_mi"`
 }
 
 // pendingValues is the configuration as it stands in the working tree — what an apply
@@ -115,6 +125,12 @@ func (h *HelmHandler) verdictFor(ctx context.Context, release string, values map
 		return v
 	}
 	v.Findings = capacity.Check(rendered, capacity.FromNodeInfo(nodes))
+	v.Requests = capacity.Requests(rendered)
+	for _, n := range nodes {
+		if v.Node == nil || n.MemTotalMi > v.Node.MemMi {
+			v.Node = &nodeSize{CPUMillis: n.CPUTotalMillis, MemMi: n.MemTotalMi}
+		}
+	}
 	v.Blocking = capacity.Blocking(v.Findings)
 	return v
 }
