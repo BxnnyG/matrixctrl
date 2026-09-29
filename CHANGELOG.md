@@ -15,6 +15,17 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.110] — 2026-09-29
+
+### Added
+
+- **E-Mail page:** SMTP for registration confirmations and forgotten passwords. The
+  password is stored in a Kubernetes Secret and never returned by the API. Two checks:
+  „Verbindung prüfen" connects, encrypts and logs in without sending, „Testnachricht"
+  sends a real message.
+- STARTTLS is never silently skipped — if the server does not offer it, the check says so
+  and names the alternatives instead of sending the password in the clear.
+
 ## [0.1.109] — 2026-09-29
 
 ### Fixed

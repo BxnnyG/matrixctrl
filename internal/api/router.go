@@ -29,6 +29,7 @@ type Deps struct {
 	Version *handlers.VersionHandler
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
+	Mail           *handlers.MailHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -232,6 +233,16 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
 			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
 		})
+
+		// E-Mail for MAS (etappe 114b). Nil in tests.
+		if deps.Mail != nil {
+			r.Route("/api/v1/mail", func(r chi.Router) {
+				r.Get("/", deps.Mail.Get)
+				r.Put("/", deps.Mail.Put)
+				r.Post("/probe", deps.Mail.Probe)
+				r.Post("/test", deps.Mail.Test)
+			})
+		}
 
 		// Sign-in through Google, GitHub or OIDC, in MAS (etappe 110). Nil in tests.
 		if deps.LoginProviders != nil {

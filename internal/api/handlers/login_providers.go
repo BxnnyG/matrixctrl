@@ -109,16 +109,22 @@ func (h *LoginProvidersHandler) save(ctx context.Context, ps []masupstream.Provi
 	})
 }
 
+// block is the Secret-backed MAS configuration this handler owns (see mas_block.go).
+func (h *LoginProvidersHandler) block() masBlock {
+	return masBlock{k8s: h.k8s, store: h.store, essNS: h.essNS, deployment: h.masDeployment(),
+		secret: upstreamSecret, name: upstreamAdditional, key: upstreamConfigKey}
+}
+
 func (h *LoginProvidersHandler) values(ctx context.Context) map[string]interface{} {
-	contents, err := h.store.MergedContent(ctx)
-	if err != nil {
-		return nil
-	}
-	merged, err := config.MergeToMap(contents)
-	if err != nil {
-		return nil
-	}
-	return merged
+	return h.block().values(ctx)
+}
+
+func (h *LoginProvidersHandler) wiring(ctx context.Context, values map[string]interface{}) wiring {
+	return h.block().wiring(ctx, values)
+}
+
+func (h *LoginProvidersHandler) activate(ctx context.Context) (string, error) {
+	return h.block().activate(ctx)
 }
 
 func (h *LoginProvidersHandler) masHost(values map[string]interface{}) string {
@@ -128,29 +134,6 @@ func (h *LoginProvidersHandler) masHost(values map[string]interface{}) string {
 
 func (h *LoginProvidersHandler) masDeployment() string {
 	return h.essRelease + "-matrix-authentication-service"
-}
-
-// wiring says whether MAS reads the Secret: in the settings, and on the cluster.
-type wiring struct {
-	InConfig bool `json:"in_config"`
-	Deployed bool `json:"deployed"`
-}
-
-func (h *LoginProvidersHandler) wiring(ctx context.Context, values map[string]interface{}) wiring {
-	var w wiring
-	if s, _ := nestedGet(values, "matrixAuthenticationService", "additional", upstreamAdditional, "configSecret").(string); s == upstreamSecret {
-		w.InConfig = true
-	}
-	mounted, err := h.k8s.SecretVolumes(ctx, h.essNS, h.masDeployment())
-	if err != nil {
-		return w
-	}
-	for _, name := range mounted {
-		if name == upstreamSecret {
-			w.Deployed = true
-		}
-	}
-	return w
 }
 
 // GET /api/v1/login-providers
@@ -319,35 +302,6 @@ func (h *LoginProvidersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// activate makes MAS read what was just saved, and says what happens next:
-//
-//   - "apply": the settings do not mount the Secret yet. The entry is written as a
-//     pending change; "Übernehmen" deploys it and restarts MAS.
-//   - "apply-pending": mounted in the settings, not yet deployed — same next step.
-//   - "restarting": deployed; only the Secret's content changed, which does not change
-//     the pod template, so nothing would restart MAS on its own. Restarted here.
-func (h *LoginProvidersHandler) activate(ctx context.Context) (string, error) {
-	values := h.values(ctx)
-	wr := h.wiring(ctx, values)
-	if !wr.InConfig {
-		base := "matrixAuthenticationService.additional." + upstreamAdditional + "."
-		if err := h.store.SetSectionValues(ctx, map[string]interface{}{
-			base + "configSecret":    upstreamSecret,
-			base + "configSecretKey": upstreamConfigKey,
-		}, nil); err != nil {
-			return "", err
-		}
-		return "apply", nil
-	}
-	if !wr.Deployed {
-		return "apply-pending", nil
-	}
-	if err := h.k8s.RolloutRestart(ctx, h.essNS, "deployment", h.masDeployment()); err != nil {
-		return "", err
-	}
-	return "restarting", nil
 }
 
 // POST /api/v1/login-providers/{id}/check — asks the provider's discovery document,

@@ -303,8 +303,10 @@ func main() {
 
 	// Needs the cluster: the providers live in a Secret next to MAS.
 	var loginProviders *handlers.LoginProvidersHandler
+	var mailHandler *handlers.MailHandler
 	if k8sClient != nil {
 		loginProviders = handlers.NewLoginProvidersHandler(k8sClient, configStore, essNS, essRelease)
+		mailHandler = handlers.NewMailHandler(k8sClient, configStore, essNS, essRelease)
 	}
 
 	router := api.NewRouter(api.Deps{
@@ -323,6 +325,7 @@ func main() {
 		Reports:        reportsHandler,
 		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
 		LoginProviders: loginProviders,
+		Mail:           mailHandler,
 		Roles:          roles,
 
 		AuditSink: auditStore,

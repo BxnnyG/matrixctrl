@@ -17,6 +17,7 @@ const NAV: NavGroup[] = [
   { group: "Konfiguration", items: [
     { id: "config", label: "Einstellungen", icon: "sliders", to: "/config" },
     { id: "login-providers", label: "Anmeldung", icon: "key", to: "/login-providers" },
+    { id: "mail", label: "E-Mail", icon: "globe", to: "/mail" },
   ] },
   { group: "Deployment", items: [
     { id: "helm", label: "Updates", icon: "helm", to: "/helm" },

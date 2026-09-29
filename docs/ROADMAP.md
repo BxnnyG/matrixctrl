@@ -101,7 +101,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 112 | Versionen auf einen Blick (Dashboard): ESS + neueste, MatrixCtrl + Update, jeder Dienst | ✅ 2026-09-29 · `v0.1.106` · [plan](plans/etappe-112-uebersicht-was-fehlt.md) |
 | 113 | Aufgaben I als Startansicht der Einstellungen: Server & Adressen, Registrierung & Anmeldung, Ressourcen & Kapazität | ✅ 2026-09-29 · `v0.1.107` · [plan](plans/etappe-113-aufgaben-I.md) |
 | 114 | Aufgaben II: Nachrichten & Medien, Föderation, Anrufe, Aussehen; Speichern verschiebt keine Kommentare mehr | ✅ 2026-09-29 · `v0.1.108` · [plan](plans/etappe-114-aufgaben-II.md) |
-| 114b | E-Mail-Versand (SMTP, Passwort im Kubernetes-Secret) | 📋 geplant · [plan](plans/etappe-114-aufgaben-II.md) |
+| 114b | E-Mail-Versand: SMTP im Kubernetes-Secret, Verbindungsprüfung und Testnachricht | ✅ 2026-09-29 · `v0.1.110` · [plan](plans/etappe-114b-email.md) |
 | 115 | TLS & DNS je Hostname | 📋 geplant |
 | 116 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
 | 117 | Worker-Insights | 📋 geplant |

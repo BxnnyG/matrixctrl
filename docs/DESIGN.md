@@ -4468,3 +4468,34 @@ abstürzen. Zwei Fehler hintereinander: der Standardwert wurde in den eigenen Bl
 *geschrieben* statt entfernt — also blieb eine Änderung, die nichts ändert —, und deren
 Vorschau schickte „keine Neustarts" als `null`, woran die Leiste zerbrach. Der Block hält
 jetzt nur, was vom Standard abweicht; Listen im Urteil sind nie `null`.
+
+### §4.117 — E-Mail, und der Beweis, dass sie ankommt (2026-09-29, agent, etappe 114b)
+
+Ohne E-Mail sind zwei Einstellungen aus 113 wirkungslos: „E-Mail-Adresse bei der
+Registrierung verlangen" und das Zurücksetzen vergessener Passwörter. MAS nimmt SMTP-
+Zugangsdaten in seiner eigenen Konfiguration, Passwort im Klartext — also derselbe Weg wie
+bei den Anmelde-Anbietern: Kubernetes-Secret, eingehängt über `configSecret`, Referenz in
+den Einstellungen.
+
+**Der Mechanismus ist jetzt einer** (`masBlock`): Secret schreiben, Referenz eintragen
+(ausstehende Änderung) oder MAS gezielt neu starten, wenn schon eingehängt. Zweimal von
+Hand hieße zwei Stellen, an denen die Aktivierung stimmen muss — und die Aktivierung ist
+der Teil mit den Randfällen.
+
+**Was MAS liest und was der Assistent liest, sind zwei Einträge im Secret.** Erst
+schrieben sie in einen: beim Abschalten fielen Host, Benutzer und Passwort aus dem
+`email:`-Block heraus (`transport: blackhole` steht dort neben keinen SMTP-Feldern — MAS
+liest das als Variante, nicht als Sammlung), und Wiedereinschalten hätte alles neu
+verlangt. Der Test hat das gezeigt, bevor es jemand ausprobieren musste.
+
+**Zwei Prüfungen, weil sie verschiedene Fragen beantworten.** „Verbindung prüfen" spricht
+die Begrüßung, verschlüsselt, meldet sich an und legt auf — ohne zu senden; das beantwortet
+„stimmen die Zugangsdaten?". „Testnachricht senden" schickt eine echte Mail; nur die
+beantwortet „kommt sie an?". Der Test dafür läuft gegen einen eigenen kleinen SMTP-Server
+im Test, inklusive abgelehnter Anmeldung.
+
+**STARTTLS wird nicht still übersprungen.** Bietet der Server es nicht an, bricht die
+Prüfung ab und nennt die Alternativen, statt das Passwort im Klartext zu senden; Gegenprobe
+im Test. Und eine Klartext-Anmeldung zu einem Server außerhalb des Clusters lehnt Go von
+sich aus ab — hier steht dazu ein Satz, weil „unencrypted connection" wie ein Fehler
+aussieht und eine Entscheidung ist.
