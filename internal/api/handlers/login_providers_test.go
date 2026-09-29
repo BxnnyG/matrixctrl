@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -65,6 +66,11 @@ func loginFixture(t *testing.T) (*LoginProvidersHandler, *fakeCluster, string) {
 	must(err)
 	_, err = repo.CommitAll("init", "t", "t@example.org")
 	must(err)
+	// No network in tests: discovery "fails", so entered issuers are kept as typed.
+	// Tests about discovery replace this themselves.
+	old := discover
+	discover = func(context.Context, string) (string, int, error) { return "", 0, errors.New("offline") }
+	t.Cleanup(func() { discover = old })
 	fc := &fakeCluster{secrets: map[string]map[string][]byte{}}
 	return NewLoginProvidersHandler(fc, config.NewStore(dir, repo), "ess", "ess"), fc, dir
 }
@@ -181,5 +187,27 @@ func TestEditingADraftActivatesNothing(t *testing.T) {
 	}
 	if mas, _ := os.ReadFile(filepath.Join(dir, "matrixAuthenticationService.yaml")); strings.Contains(string(mas), "configSecret") {
 		t.Error("a draft edit must not add the mount")
+	}
+}
+
+// The first real Zitadel: entered with a trailing slash, named without one — MAS refused
+// with "issuer URLs don't match". The provider's own spelling is adopted when that is the
+// only difference, and a genuinely different issuer is left alone.
+func TestTheProvidersSpellingOfTheIssuerWins(t *testing.T) {
+	h, fc, _ := loginFixture(t)
+	discover = func(context.Context, string) (string, int, error) { return "https://auth.example.org", 200, nil }
+	var created publicProvider
+	_ = json.Unmarshal(call(t, h.Create, "POST", "/", `{"kind":"oidc","issuer":"https://auth.example.org/"}`, nil).Body.Bytes(), &created)
+	if created.Issuer != "https://auth.example.org" {
+		t.Errorf("create kept %q", created.Issuer)
+	}
+	call(t, h.Update, "PUT", "/", `{"issuer":"https://auth.example.org/","client_id":"a","client_secret":"b"}`, map[string]string{"id": created.ID})
+	if !strings.Contains(string(fc.secrets["ess/"+upstreamSecret][upstreamConfigKey]), "issuer: https://auth.example.org\n") {
+		t.Errorf("rendered issuer: %s", fc.secrets["ess/"+upstreamSecret][upstreamConfigKey])
+	}
+	// Counter-probe: a different issuer is not "corrected" into the discovered one.
+	call(t, h.Update, "PUT", "/", `{"issuer":"https://other.example.org"}`, map[string]string{"id": created.ID})
+	if !strings.Contains(string(fc.secrets["ess/"+upstreamSecret][upstreamConfigKey]), "issuer: https://other.example.org\n") {
+		t.Error("a different issuer must be kept as typed")
 	}
 }

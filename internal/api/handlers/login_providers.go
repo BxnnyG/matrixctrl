@@ -208,7 +208,7 @@ func (h *LoginProvidersHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	p := masupstream.Provider{
 		ID: id, Kind: req.Kind, Name: strings.TrimSpace(req.Name),
-		Issuer: strings.TrimSpace(req.Issuer), Enabled: true, Created: time.Now().UTC(),
+		Issuer: canonicalIssuer(r.Context(), strings.TrimSpace(req.Issuer)), Enabled: true, Created: time.Now().UTC(),
 	}
 	ps = append(ps, p)
 	if err := h.save(r.Context(), ps); err != nil {
@@ -263,7 +263,7 @@ func (h *LoginProvidersHandler) Update(w http.ResponseWriter, r *http.Request) {
 		p.Name = strings.TrimSpace(*req.Name)
 	}
 	if req.Issuer != nil {
-		p.Issuer = strings.TrimSpace(*req.Issuer)
+		p.Issuer = canonicalIssuer(r.Context(), strings.TrimSpace(*req.Issuer))
 	}
 	if req.Enabled != nil {
 		p.Enabled = *req.Enabled
@@ -344,7 +344,7 @@ func (h *LoginProvidersHandler) activate(ctx context.Context) (string, error) {
 	if !wr.Deployed {
 		return "apply-pending", nil
 	}
-	if err := h.k8s.RolloutRestart(ctx, h.essNS, "Deployment", h.masDeployment()); err != nil {
+	if err := h.k8s.RolloutRestart(ctx, h.essNS, "deployment", h.masDeployment()); err != nil {
 		return "", err
 	}
 	return "restarting", nil
@@ -372,27 +372,19 @@ func (h *LoginProvidersHandler) Check(w http.ResponseWriter, r *http.Request) {
 	case masupstream.Google:
 		issuer = "https://accounts.google.com"
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(issuer, "/")+"/.well-known/openid-configuration", nil)
-	resp, err := http.DefaultClient.Do(req)
+	got, status, err := discover(r.Context(), issuer)
 	if err != nil {
-		JSON(w, http.StatusOK, map[string]interface{}{"checked": false, "ok": false, "note": "Nicht erreichbar: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-	var d struct {
-		Issuer string `json:"issuer"`
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &d) != nil {
-		JSON(w, http.StatusOK, map[string]interface{}{"checked": true, "ok": false, "note": fmt.Sprintf("Kein gültiges Discovery-Dokument (HTTP %d).", resp.StatusCode)})
+		note := "Nicht erreichbar: " + err.Error()
+		if status != 0 {
+			note = err.Error()
+		}
+		JSON(w, http.StatusOK, map[string]interface{}{"checked": status != 0, "ok": false, "note": note})
 		return
 	}
 	// MAS validates strictly: the issuer must match exactly, trailing slash included.
-	if d.Issuer != issuer {
+	if got != issuer {
 		JSON(w, http.StatusOK, map[string]interface{}{"checked": true, "ok": false,
-			"note": fmt.Sprintf("Der Anbieter nennt sich %q, eingetragen ist %q — MAS verlangt exakt dieselbe Schreibweise.", d.Issuer, issuer)})
+			"note": fmt.Sprintf("Der Anbieter nennt sich %q, eingetragen ist %q — MAS verlangt exakt dieselbe Schreibweise.", got, issuer)})
 		return
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{"checked": true, "ok": true})
@@ -432,6 +424,53 @@ func (h *LoginProvidersHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		shown[p.ID] = strings.Contains(string(page), "/upstream/authorize/"+p.ID)
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{"reachable": true, "status": resp.StatusCode, "shown": shown})
+}
+
+// discoverIssuer reads the issuer a provider names in its discovery document.
+func discoverIssuer(ctx context.Context, issuer string) (string, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(issuer, "/")+"/.well-known/openid-configuration", nil)
+	if err != nil {
+		return "", 0, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	var d struct {
+		Issuer string `json:"issuer"`
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &d) != nil || d.Issuer == "" {
+		return "", resp.StatusCode, fmt.Errorf("kein gültiges Discovery-Dokument (HTTP %d)", resp.StatusCode)
+	}
+	return d.Issuer, resp.StatusCode, nil
+}
+
+// canonicalIssuer adopts the provider's own spelling when the entered one differs
+// only by a trailing slash (etappe 110).
+//
+// MAS compares the two byte for byte, and the difference is invisible to a person:
+// the first Zitadel entered as "https://auth.example.org/" took the login page down
+// with "issuer URLs don't match" while the check that would have said so sat one button
+// away. Anything else that differs is left as typed — that is a different provider, and
+// guessing would be worse than the error.
+var discover = discoverIssuer
+
+func canonicalIssuer(ctx context.Context, entered string) string {
+	if entered == "" {
+		return entered
+	}
+	got, _, err := discover(ctx, entered)
+	if err != nil {
+		return entered
+	}
+	if strings.TrimRight(got, "/") == strings.TrimRight(entered, "/") {
+		return got
+	}
+	return entered
 }
 
 func indexOf(ps []masupstream.Provider, id string) int {

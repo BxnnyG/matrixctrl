@@ -4369,5 +4369,13 @@ meldete, der sich nirgends korrigieren ließ — und dessen Korrektur MAS neu ge
 **Generischer OIDC holt Userinfo.** Zitadel legt standardmäßig nur `sub` ins ID-Token; ohne
 `fetch_userinfo` wären Name und Adresse bei der Registrierung leer.
 
+**Nachtrag 0.1.104, erster echter Anbieter (Zitadel):** Zwei Fehler auf dem ersten Versuch.
+Der gezielte MAS-Neustart scheiterte an `unknown resource type: Deployment` — die
+Typ-Tabelle kannte nur Kleinbuchstaben; sie löst jetzt jede Schreibweise auf. Und der
+Issuer war mit Schrägstrich eingetragen, Zitadel nennt sich ohne; MAS vergleicht
+byte-genau und die Anmeldeseite brach ab, während „Anbieter prüfen" einen Knopf daneben
+lag. Beim Speichern übernimmt MatrixCtrl jetzt die Schreibweise des Anbieters, wenn sie sich
+*nur* um den Schrägstrich unterscheidet; jeder andere Unterschied bleibt, wie getippt.
+
 **Merksatz:** *Ein Login ist so sicher wie die Regel, nach der er einem Account zugeordnet
 wird.*

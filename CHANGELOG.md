@@ -15,6 +15,16 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.104] — 2026-09-29
+
+### Fixed
+
+- Saving a login provider restarted MAS with `unknown resource type: Deployment` — resource
+  types now resolve in any case.
+- An OIDC issuer entered with a trailing slash the provider does not use (Zitadel) broke
+  the login page with "issuer URLs don't match". Saving now adopts the provider's own
+  spelling when that is the only difference.
+
 ## [0.1.103] — 2026-09-29
 
 Etappe 110: sign in with Google, GitHub or your own OIDC provider (Zitadel, Keycloak, …).

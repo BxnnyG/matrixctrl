@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,8 +22,17 @@ var knownGVRs = map[string]schema.GroupVersionResource{
 	"ingress": {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
 }
 
+// gvrFor resolves a resource type name, whatever its case: "Deployment" is what a
+// manifest says and what a caller naturally writes. Until etappe 110 only the lower-case
+// key matched, and restarting MAS after a login-provider change failed with "unknown
+// resource type: Deployment" — on the operator's first try.
+func gvrFor(resourceType string) (schema.GroupVersionResource, bool) {
+	gvr, ok := knownGVRs[strings.ToLower(resourceType)]
+	return gvr, ok
+}
+
 func (c *Client) Patch(ctx context.Context, resourceType, namespace, name string, patchType types.PatchType, data []byte) error {
-	gvr, ok := knownGVRs[resourceType]
+	gvr, ok := gvrFor(resourceType)
 	if !ok {
 		return fmt.Errorf("unknown resource type: %s", resourceType)
 	}
@@ -41,7 +51,7 @@ func (c *Client) Patch(ctx context.Context, resourceType, namespace, name string
 // hook patches to what this returns, and if the two disagreed about what
 // "deployment" means, the check would report drift nobody could act on.
 func (c *Client) GetObjectJSON(ctx context.Context, resourceType, namespace, name string) ([]byte, error) {
-	gvr, ok := knownGVRs[resourceType]
+	gvr, ok := gvrFor(resourceType)
 	if !ok {
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
