@@ -15,6 +15,29 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.116] — 2026-09-30
+
+### Fixed
+
+- **Setup hid its own connect.** Connecting the Matrix login runs an ESS upgrade; the next
+  status poll saw the release `pending-upgrade` and replaced the connect card — log and
+  result — with „ESS wird gerade installiert … another operation is in progress". The
+  connect had worked. Setup now keeps the card that started an operation until it ends
+  (the deploy and move wizards had the same exposure through `pending-install`).
+- **Setup did not notice a connected login until restart.** `oidc_configured` was taken at
+  startup; after the runtime switch it kept offering „Verbinden". It is now asked per
+  request.
+- **„Verbinden" showed nothing when there was nothing to run.** „Bereits vollständig
+  registriert" is now displayed.
+- **Signing out did not end the session on the server**; it only forgot the token in the
+  tab. It now revokes it first.
+
+### Changed
+
+- The sidebar shows who this session is — the Matrix user, or „Notzugang" — instead of
+  what the instance offers. A tab still on the emergency login after connecting gets a
+  „Abmelden und über Matrix anmelden" button in Setup.
+
 ## [0.1.115] — 2026-09-30
 
 ### Fixed

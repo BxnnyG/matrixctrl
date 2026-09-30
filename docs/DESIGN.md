@@ -75,7 +75,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21) |
 | S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
-| S6 Setup & onboarding | ⏳ ⅞ (E15) | Greenfield deploy proven on an empty cluster after fixing 4 defects; only connect-OIDC untested (needs public DNS). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
+| S6 Setup & onboarding | ✅ (E15, E116a, E116b) | Greenfield deploy proven on an empty cluster after fixing 4 defects. **Connect-OIDC proven 2026-09-30** on a real server after a move — which took three fixes to the path around it (a reader that could never read the registration, Setup evicting its own upgrade, a login state frozen at startup; §4.119, §4.121). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
 | S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
 | S9 Verification & CI | ✅ (E13, E14, E18, E20, E49, E53) | CI on push/PR; **411 Go test functions across 23 packages, 40 frontend tests** (counted 2026-09-25); headless-browser route check that now *fails* on a skipped route rather than passing (E49); gofmt gate in `make check` as well as CI (E53). **E105:** `make check` also rejects `auth can-i <verb> <type>/<subresource>`, and the two live checks that matter most carry a counter-check that must come back denied — a check that cannot fail proves nothing (§4.105) |
@@ -83,7 +83,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
-| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS is still only an editable config slice.** (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
+| S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS & DNS has its own page since E115** — each certificate seen from the visitor and from the origin (§4.118). (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
 | S15 Federation & bridges | ⏳ not started | Phase 4 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
@@ -4614,3 +4614,26 @@ Der Dialog fragt weiter, bis die Zielversion antwortet, und lädt dann neu — d
 Tab gehört zur alten. Fehlt einer Installation noch das Recht (Chart älter als 116), sagt der
 Dialog das vor dem Klick, per Rechte-Abfrage, und zeigt den Befehl: das erste Update auf diese
 Version geht einmalig per `install.sh`.
+
+### §4.121 — Eine Seite darf ihre eigene Operation nicht verdrängen (2026-09-30, operator, etappe 116b)
+
+Nach 0.1.115 hat „Matrix-Login verbinden" auf dem neuen Server funktioniert — Upgrade durch,
+Login umgeschaltet — und der Betreiber sah: Laden, dann „another operation is in progress",
+dann wieder den Verbinden-Knopf, der auf Klicks nicht mehr reagierte. Drei Fehler, keiner
+davon im Verbinden selbst:
+
+- **„busy" traf die eigene Operation.** Setup zeigt bei einem Release in `pending-*` eine
+  Warteansicht (§4.88) — richtig für Operationen anderer, falsch für die eigene: Die
+  Verbinden-Karte, die das Upgrade gestartet hatte und sein Log zeigte, wurde beim nächsten
+  Status-Abruf durch die Warteansicht ersetzt. Jetzt hält Setup die Ansicht fest, die etwas
+  gestartet hat, bis es endet, und gibt sie erst frei, wenn der neue Status da ist.
+  Misslingt die Operation, bleibt die Ansicht mit ihrem Log stehen.
+- **Ein beim Start gemerkter Zustand.** `oidc_configured` war ein bool aus `main`. Das
+  Umschalten zur Laufzeit (§4.88) hat ihn nie erreicht. Zustand, der sich zur Laufzeit
+  ändern kann, wird gefragt, nicht übergeben.
+- **Eine Antwort ohne Lauf wurde als Lauf gelesen** und darum nicht angezeigt.
+
+Dazu: Wer eine Sitzung ist, und was die Instanz anbietet, sind zwei Fragen. Die
+Seitenleiste zeigt jetzt die Sitzung (Matrix-Nutzer oder „Notzugang"). Abmelden widerruft
+die Sitzung auf dem Server; vorher vergaß nur der Tab das Token.
+

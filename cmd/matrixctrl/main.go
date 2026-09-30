@@ -286,7 +286,7 @@ func main() {
 	if helmClient != nil {
 		configHandler.SetDeployedSchema(func() ([]byte, string, error) { return helmClient.DeployedSchema(essRelease) })
 	}
-	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, oidcSvc != nil && oidcSvc.Enabled())
+	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, authHandler.OIDCConfigured)
 
 	// Whether MatrixCtrl may ask GHCR for newer releases. On by default: the cluster
 	// already pulls its own image from that registry, so this adds no dependency on

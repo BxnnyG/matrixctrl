@@ -13,24 +13,34 @@ import (
 // SetupHandler powers the Phase 1.5 onboarding/health view: is ESS deployed, is
 // the config seeded, is admin login wired up.
 type SetupHandler struct {
-	helm           *helm.Client
-	store          *config.Store
-	essRelease     string
-	essNamespace   string
-	oidcConfigured bool
+	helm         *helm.Client
+	store        *config.Store
+	essRelease   string
+	essNamespace string
+	// oidcConfigured is asked on every request, never remembered.
+	//
+	// It used to be a bool taken at startup. Connecting the Matrix login switches over
+	// at runtime (hot reload), so from that moment Setup reported "not connected" for
+	// as long as the process lived and offered the connect card again — whose button
+	// then answered "already registered" to nobody (etappe 116b).
+	oidcConfigured func() bool
 }
 
-func NewSetupHandler(h *helm.Client, store *config.Store, essRelease, essNamespace string, oidcConfigured bool) *SetupHandler {
+func NewSetupHandler(h *helm.Client, store *config.Store, essRelease, essNamespace string, oidcConfigured func() bool) *SetupHandler {
+	if oidcConfigured == nil {
+		oidcConfigured = func() bool { return false }
+	}
 	return &SetupHandler{helm: h, store: store, essRelease: essRelease, essNamespace: essNamespace, oidcConfigured: oidcConfigured}
 }
 
 // GET /api/v1/setup/status — onboarding checklist state.
 func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
+	oidc := h.oidcConfigured()
 	resp := map[string]interface{}{
 		"ess_namespace":    h.essNamespace,
 		"ess_release":      h.essRelease,
-		"oidc_configured":  h.oidcConfigured,
-		"bootstrap_active": !h.oidcConfigured,
+		"oidc_configured":  oidc,
+		"bootstrap_active": !oidc,
 		"ess_installed":    false,
 	}
 

@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { essVersion, type ArchiveManifest } from "@/lib/archive";
 import { ArchivePicker } from "@/components/ArchivePicker";
 import { useUpgradeStream } from "@/lib/ws";
+import { shownView, type SetupView as SetupViewName } from "@/lib/setupView";
+import { signOut, useSession } from "@/lib/session";
 import { Card, Icon, Button, Spinner, StatusDot, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/setup")({
@@ -32,6 +34,8 @@ interface SetupStatus {
 }
 interface ESSVersion { version: string }
 interface DeployResponse { upgrade_id: string }
+/** Connect either starts a run or answers straight away (already registered, repaired). */
+interface ConnectResponse { upgrade_id?: string; message?: string; changed?: string[] }
 
 const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", borderRadius: "var(--radius-sm)", fontSize: 13.5, fontFamily: "var(--font)" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 };
@@ -77,14 +81,22 @@ function Setup() {
     refetchInterval: 30_000,
   });
 
+  // The view that started an operation, held until that operation ends (etappe 116b).
+  const [held, setHeld] = useState<SetupViewName | null>(null);
+
   if (isLoading) return <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-faint)" }}><Spinner size={14} /> Lade…</div>;
   if (!data) return null;
   const invalidate = () => qc.invalidateQueries({ queryKey: ["setup", "status"] });
+  const view = shownView(data, held);
+  const hold = () => setHeld(view);
+  // Released only after the fresh status is in: releasing first would render one
+  // frame of the stale one — "busy", mid-upgrade — before the answer arrives.
+  const settle = async () => { await invalidate(); setHeld(null); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
       <MatrixLoginHealth />
-      {data.ess_state === "busy" ? (
+      {view === "busy" ? (
         <WizardCard>
           <WizardHeader icon="clock" title="ESS wird gerade installiert"
             sub={`Helm ist noch dabei (${data.ess_status ?? "läuft"}) — der nächste Schritt wartet darauf`} />
@@ -96,7 +108,7 @@ function Setup() {
             <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}><Spinner size={13} /> warte…</span>
           </div>
         </WizardCard>
-      ) : data.ess_state === "failed" ? (
+      ) : view === "failed" ? (
         <WizardCard>
           <WizardHeader icon="alert" title="Die ESS-Installation steht nicht sauber da"
             sub={`Zustand: ${data.ess_status ?? "unbekannt"}`} />
@@ -110,20 +122,20 @@ function Setup() {
             </pre>
           </div>
         </WizardCard>
-      ) : !data.ess_installed ? (
+      ) : view === "install" ? (
         mode === null ? (
           <StartChoice onPick={setMode} />
         ) : mode === "migrate" ? (
-          <MigrateWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} onBack={() => setMode("fresh")} />
+          <MigrateWizard release={data.ess_release} namespace={data.ess_namespace} onStart={hold} onDone={settle} onBack={() => setMode("fresh")} />
         ) : (
-          <DeployWizard release={data.ess_release} namespace={data.ess_namespace} onDone={invalidate} onMigrate={() => setMode("migrate")} />
+          <DeployWizard release={data.ess_release} namespace={data.ess_namespace} onStart={hold} onDone={settle} onMigrate={() => setMode("migrate")} />
         )
-      ) : data.config_sections === 0 ? (
+      ) : view === "adopt" ? (
         <AdoptCard release={data.ess_release} version={data.ess_version} onDone={invalidate} />
-      ) : !data.oidc_configured ? (
+      ) : view === "connect" ? (
         <>
           <MatrixAccountCard onDone={invalidate} />
-          <ConnectCard masHost={data.mas_host} onDone={invalidate} />
+          <ConnectCard masHost={data.mas_host} onStart={hold} onDone={settle} />
         </>
       ) : (
         <ConnectedCard
@@ -179,20 +191,33 @@ function ConnectedCard({ missing, masHost, onDone }: { missing: string[]; masHos
   const [message, setMessage] = useState<string | null>(null);
 
   const repair = useMutation({
-    mutationFn: () => api.post<{ changed: string[]; message: string }>("/api/v1/setup/connect-oidc", {
+    mutationFn: () => api.post<ConnectResponse>("/api/v1/setup/connect-oidc", {
       issuer: masHost ? `https://${masHost}` : window.location.origin,
       public_url: window.location.origin,
     }),
-    onSuccess: (res) => { setMessage(res.message); onDone(); },
+    onSuccess: (res) => {
+      setMessage(res.message ?? (res.upgrade_id ? "Die Registrierung wird ergänzt — ESS wird dafür deployt." : null));
+      onDone();
+    },
   });
+  const session = useSession();
 
   if (missing.length === 0) {
     return (
-      <Card style={{ display: "flex", alignItems: "center", gap: 12, background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
+      <Card style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "color-mix(in oklch, var(--status-ok) 10%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-ok) 30%, var(--border))" }}>
         <Icon name="check" size={20} style={{ color: "var(--status-ok)" }} />
-        <span style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
+        <span style={{ flex: 1, minWidth: 220, fontSize: 13, color: "var(--text)" }}>
           {message ?? "Alles verbunden — MatrixCtrl verwaltet dein ESS-Deployment."}
+          {/* Connected is a fact about the instance. This tab can still be signed in
+              with the emergency login — the one that did the connecting — and rooms,
+              moderation and users stay empty for it (etappe 116b). */}
+          {session.bootstrap && (
+            <span style={{ display: "block", marginTop: 4, fontSize: 12.5, color: "var(--text-dim)" }}>
+              Du bist noch mit dem Notzugang angemeldet. Räume, Moderation und Benutzer brauchen den Matrix-Login.
+            </span>
+          )}
         </span>
+        {session.bootstrap && <SignInWithMatrix />}
       </Card>
     );
   }
@@ -335,7 +360,7 @@ function StartChoice({ onPick }: { onPick: (m: "fresh" | "migrate") => void }) {
   );
 }
 
-function MigrateWizard({ release, namespace, onDone, onBack }: { release: string; namespace?: string; onDone: () => void; onBack: () => void }) {
+function MigrateWizard({ release, namespace, onStart, onDone, onBack }: { release: string; namespace?: string; onStart?: () => void; onDone: () => void; onBack: () => void }) {
   const [archive, setArchive] = useState<File | null>(null);
   const [manifest, setManifest] = useState<ArchiveManifest | null>(null);
   const [readErr, setReadErr] = useState<string | null>(null);
@@ -384,7 +409,7 @@ function MigrateWizard({ release, namespace, onDone, onBack }: { release: string
 
   const deploy = useMutation({
     mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName }),
-    onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDeployDone(false); setDeployStatus(null); },
+    onSuccess: (res) => { onStart?.(); setDeployId(res.upgrade_id); setLogs([]); setDeployDone(false); setDeployStatus(null); },
   });
 
   // The restore runs by itself once the deploy succeeds — that is the whole point of
@@ -778,7 +803,16 @@ function MatrixAccountCard({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void }) {
+/** The step after connecting, as a button instead of a sentence. */
+function SignInWithMatrix() {
+  return (
+    <Button variant="primary" size="sm" icon="logout" onClick={() => void signOut()}>
+      Abmelden und über Matrix anmelden
+    </Button>
+  );
+}
+
+export function ConnectCard({ masHost, onStart, onDone }: { masHost?: string; onStart?: () => void; onDone: () => void }) {
   // Derived, not initial state.
   //
   // These used to be useState(masHost ? … : "") — which reads the prop once, on the
@@ -802,9 +836,23 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
   const [status, setStatus] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
+  // What the server said when it had nothing to run. The card used to take every answer
+  // as a run: "already registered" arrived without one, runId became undefined, and the
+  // button stood there as if unpressed — five clicks, five answers, nothing on screen
+  // (etappe 116b).
+  const [note, setNote] = useState<string | null>(null);
+
   const connect = useMutation({
-    mutationFn: () => api.post<DeployResponse>("/api/v1/setup/connect-oidc", { issuer, public_url: publicUrl }),
-    onSuccess: (res) => { setRunId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
+    mutationFn: () => api.post<ConnectResponse>("/api/v1/setup/connect-oidc", { issuer, public_url: publicUrl }),
+    onSuccess: (res) => {
+      if (!res.upgrade_id) {
+        setNote(res.message ?? "Nichts zu tun.");
+        onDone();
+        return;
+      }
+      onStart?.();
+      setNote(null); setRunId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null);
+    },
   });
   useUpgradeStream(runId, {
     onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
@@ -850,6 +898,7 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
             <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Schreibt den Client in die MAS-Config + helm upgrade ess + schaltet auf OIDC um</span>
             {connect.isError && <span style={{ fontSize: 12, color: "var(--status-err)" }}>{(connect.error as Error).message}</span>}
           </div>
+          {note && <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{note}</span>}
         </div>
       ) : (
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -858,7 +907,7 @@ function ConnectCard({ masHost, onDone }: { masHost?: string; onDone: () => void
             <StatusInline done={done} status={status} map={{ success: ["Verbunden", "ok"], "hooks-failed": ["Teilweise", "warn"], "needs-account": ["Kein Matrix-Konto", "warn"], failed: ["Fehlgeschlagen", "err"] }} />
           </div>
           <LogTerm logs={logs} done={done} logRef={logRef} />
-          {done && status === "success" && <p style={{ margin: 0, fontSize: 12, color: "var(--status-ok)" }}>Abmelden und über Matrix neu anmelden.</p>}
+          {done && status === "success" && <SignInWithMatrix />}
         </div>
       )}
     </WizardCard>
@@ -1028,7 +1077,7 @@ function DnsStep({ serverName, overrides, onReady, onOverride }: {
 
 const dnsCell: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid var(--border-soft)", verticalAlign: "top", fontFamily: "var(--mono)", color: "var(--text-dim)" };
 
-function DeployWizard({ release, namespace, onDone, onMigrate }: { release: string; namespace?: string; onDone: () => void; onMigrate?: () => void }) {
+function DeployWizard({ release, namespace, onStart, onDone, onMigrate }: { release: string; namespace?: string; onStart?: () => void; onDone: () => void; onMigrate?: () => void }) {
   const [serverName, setServerName] = useState("");
   const [version, setVersion] = useState("");
   // Whether every record already points here. It never blocks the deploy — DNS
@@ -1048,7 +1097,7 @@ function DeployWizard({ release, namespace, onDone, onMigrate }: { release: stri
   const { data: versions } = useQuery({ queryKey: ["helm", "versions"], queryFn: () => api.get<ESSVersion[]>("/api/v1/helm/versions") });
   const deploy = useMutation({
     mutationFn: () => api.post<DeployResponse>("/api/v1/setup/deploy-ess", { version, server_name: serverName, hostnames: hostOverrides }),
-    onSuccess: (res) => { setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
+    onSuccess: (res) => { onStart?.(); setDeployId(res.upgrade_id); setLogs([]); setDone(false); setStatus(null); },
   });
   useUpgradeStream(deployId, {
     onLog: (line) => { setLogs((p) => [...p, line]); setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30); },
