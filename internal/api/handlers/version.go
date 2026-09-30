@@ -48,7 +48,14 @@ func (h *VersionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		out.MayWrite = h.mayWrite(authmw.UserIDFromContext(r.Context()))
 	}
 	if h.checker != nil {
-		res := h.checker.Check(r.Context())
+		// ?refresh=1 is the "check now" button. The checker keeps it from reaching
+		// the registry more than twice a minute however often it is pressed.
+		var res updatecheck.Result
+		if r.URL.Query().Get("refresh") == "1" {
+			res = h.checker.Refresh(r.Context())
+		} else {
+			res = h.checker.Check(r.Context())
+		}
 		out.Update = &res
 	}
 	JSON(w, http.StatusOK, out)

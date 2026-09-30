@@ -5,7 +5,7 @@ import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useMatrixLogin } from "@/components/MatrixLoginMissing";
 import { signOut, useSession } from "@/lib/session";
-import { SelfUpdateDialog } from "@/components/SelfUpdate";
+import { SelfUpdateDialog, UPDATE_COMMAND } from "@/components/SelfUpdate";
 import { Icon, StatusDot, Avatar, Kbd, useIsMobile, type IconName } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
@@ -55,7 +55,7 @@ const TITLES: Record<string, [string, string]> = {
   "/": ["Dashboard", "Komponenten-Status & Cluster-Health"],
   "/config": ["Einstellungen", "Was dein Server tut — versioniert, jede Änderung rückgängig machbar"],
   "/config/history": ["Verlauf", "Jede gespeicherte Version der Einstellungen · Zurückspringen"],
-  "/helm": ["Updates", "Helm-Upgrades mit Patch-erhaltenden Hooks"],
+  "/helm": ["Updates", "MatrixCtrl und ESS aktualisieren — mit Patch-erhaltenden Hooks"],
   "/helm/history": ["Upgrade-Verlauf", "Vergangene Upgrades · Revision & Hook-Ergebnis"],
   "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
@@ -168,10 +168,6 @@ interface VersionResp {
   update?: { current: string; latest?: string; available: boolean; checked_at?: string; error?: string };
 }
 
-/** The documented upgrade path, verbatim. A command shown to be run must be one that
- *  can be pasted — a README line with a "…" in it cost an operator an evening (§4.76). */
-const UPDATE_COMMAND = "bash <(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh)";
-
 interface StatusResp { release?: { chart_version?: string }; components?: { status: string }[] }
 
 // Backend reports healthy | degraded | down | scaled-zero — anything that is
@@ -190,6 +186,7 @@ const isDegraded = (s: string) => s === "degraded" || s === "down";
  *  or not this endpoint answers, and a hook belongs somewhere it cannot end up behind
  *  an early return (§4.79). */
 function VersionFooter() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const { data } = useQuery({
     queryKey: ["version"],
@@ -206,9 +203,13 @@ function VersionFooter() {
     <>
       <div style={{ padding: "8px 16px 10px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {/* Leads to the updates page, where MatrixCtrl's own version has a card with
+              "check now" and the one-click update — the pill on the right only appears
+              once an update is known (etappe 116c). */}
+          <button onClick={() => navigate({ to: "/helm" })} title="Updates"
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             MatrixCtrl {data?.version ?? "…"}
-          </span>
+          </button>
           {/* Said before something is tried, not after it is refused. A button that
               fails with 403 teaches the same thing, one frustration later. */}
           {data && data.may_write === false && (

@@ -162,3 +162,51 @@ func TestAgainstRealRegistry(t *testing.T) {
 	}
 	t.Logf("ghcr.io says the newest published chart is %s", got.Latest)
 }
+
+// "Check now" has to reach the registry although the cached answer is still fresh —
+// that is the case it exists for: a release published after the last check, which
+// the cache would hide for up to its whole lifetime (etappe 116c).
+func TestRefreshSeesAReleaseTheCacheWouldHide(t *testing.T) {
+	var calls int
+	tags := `"0.1.115"`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/token") {
+			fmt.Fprint(w, `{"token":"anonymous"}`)
+			return
+		}
+		calls++
+		fmt.Fprintf(w, `{"tags":[%s]}`, tags)
+	}))
+	defer srv.Close()
+
+	now := time.Now()
+	c := New("0.1.115")
+	c.registry = srv.URL
+	c.now = func() time.Time { return now }
+
+	if got := c.Check(context.Background()); got.Available {
+		t.Fatalf("nothing newer yet: %+v", got)
+	}
+
+	// Published ten minutes later; the hourly cache is still fresh.
+	tags = `"0.1.115","0.1.116"`
+	now = now.Add(10 * time.Minute)
+	if got := c.Check(context.Background()); got.Available {
+		t.Fatalf("the plain check is expected to answer from cache here: %+v", got)
+	}
+	got := c.Refresh(context.Background())
+	if !got.Available || got.Latest != "0.1.116" {
+		t.Fatalf("refresh answered from the cache: %+v", got)
+	}
+
+	// Pressed again at once: the registry is not asked a third time.
+	c.Refresh(context.Background())
+	if calls != 2 {
+		t.Errorf("tag list fetched %d times, want 2 — a button pressed in a loop must not reach the registry each time", calls)
+	}
+	now = now.Add(31 * time.Second)
+	c.Refresh(context.Background())
+	if calls != 3 {
+		t.Errorf("tag list fetched %d times after the floor, want 3", calls)
+	}
+}

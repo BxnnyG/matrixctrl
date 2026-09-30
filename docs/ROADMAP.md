@@ -106,6 +106,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 116a | Matrix-Login nach einem Umzug verbinden; kein toter Verbinden-Knopf | ✅ 2026-09-30 · `v0.1.113` · [plan](plans/etappe-116a-verbinden-nach-umzug.md) |
 | 116 | MatrixCtrl aus dem Panel aktualisieren: Job neben dem Panel, `--atomic`, benannte Rechte (Betreiber-Entscheidung) | ✅ 2026-09-30 · `v0.1.114` · [plan](plans/etappe-116-update-aus-dem-panel.md) |
 | 116b | Verbunden, aber Setup weiß es nicht: eigene Operation festhalten, Login-Zustand live, jede Antwort anzeigen, echtes Abmelden | ✅ 2026-09-30 · `v0.1.116` · [plan](plans/etappe-116b-verbunden-aber-unsichtbar.md) |
+| 116c | Das MatrixCtrl-Update finden: eigene Karte auf „Updates", „Jetzt prüfen", Cache 1 h statt 6 h | ✅ 2026-09-30 · `v0.1.117` · [plan](plans/etappe-116c-update-sichtbar.md) |
 | 117 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
 | 118 | Worker-Insights | 📋 geplant |
 | 119 | Bridges (Hookshot, Appservices) | 📋 geplant |

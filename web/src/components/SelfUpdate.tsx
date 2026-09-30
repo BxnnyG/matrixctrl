@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Button, Icon, Spinner } from "@/components/mc";
+import { Badge, Button, Card, Icon, Spinner } from "@/components/mc";
 
 // Updating MatrixCtrl from its own panel (etappe 116).
 //
@@ -12,6 +12,13 @@ import { Button, Icon, Spinner } from "@/components/mc";
 
 interface Job { name: string; version: string; state: "running" | "succeeded" | "failed"; log?: string }
 interface Status { current: string; ready: boolean; missing?: string[]; job?: Job }
+/** Mirrors internal/updatecheck.Result. */
+interface UpdateResult { current: string; latest?: string; available: boolean; checked_at?: string; error?: string }
+export interface VersionInfo { version: string; commit: string; update?: UpdateResult; may_write: boolean }
+
+/** The documented upgrade path, verbatim. A command shown to be run must be one that
+ *  can be pasted — a README line with a "…" in it cost an operator an evening (§4.76). */
+export const UPDATE_COMMAND = "bash <(curl -fsSL https://raw.githubusercontent.com/bxnnyg/matrixctrl/master/scripts/install.sh)";
 
 const norm = (v?: string) => (v ?? "").replace(/^v/, "").replace(/-dirty$/, "");
 
@@ -20,7 +27,10 @@ export function SelfUpdateDialog({ latest, command, onClose }: { latest: string;
     queryKey: ["self-update"],
     queryFn: () => api.get<Status>("/api/v1/self-update"),
   });
-  const [phase, setPhase] = useState<"ask" | "running" | "done" | "failed">("ask");
+  const [chosen, setPhase] = useState<"ask" | "running" | "done" | "failed">("ask");
+  // Opened while an update is already under way — from another tab, or this one before
+  // a reload: follow it rather than offer to start a second one the server refuses.
+  const phase = chosen === "ask" && status.data?.job?.state === "running" ? "running" : chosen;
   const [log, setLog] = useState<string>("");
   const [elapsed, setElapsed] = useState(0);
 
@@ -131,3 +141,111 @@ function LogBox({ text }: { text: string }) {
     <pre className="mc-scroll" style={{ margin: 0, maxHeight: 180, overflowY: "auto", padding: 10, fontSize: 11.5, fontFamily: "var(--mono)", lineHeight: 1.55, background: "oklch(0.13 0.005 256)", color: "oklch(0.82 0.13 150)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", whiteSpace: "pre-wrap" }}>{text}</pre>
   );
 }
+
+function since(iso?: string): string {
+  if (!iso) return "noch nie";
+  const secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (!Number.isFinite(secs)) return "unbekannt";
+  if (secs < 60) return "gerade eben";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `vor ${mins} Min.`;
+  return `vor ${Math.round(mins / 60)} Std.`;
+}
+
+/** MatrixCtrl's own version, always on the updates page — not only when there is news.
+ *
+ *  Etappe 116 built the one-click update and put it behind a pill in the sidebar
+ *  footer that appears only once an update is known, which the check learned at most
+ *  every six hours. An operator who had just been told "updates go from the panel now"
+ *  found nothing that said so, and no way to ask (etappe 116c). */
+export function MatrixCtrlUpdateCard() {
+  const qc = useQueryClient();
+  const version = useQuery({
+    queryKey: ["version"],
+    queryFn: () => api.get<VersionInfo>("/api/v1/version"),
+    staleTime: 10 * 60_000,
+  });
+  const self = useQuery({
+    queryKey: ["self-update"],
+    queryFn: () => api.get<Status>("/api/v1/self-update"),
+  });
+  // Writes into the same cache entry the sidebar reads, so its pill agrees at once.
+  const recheck = useMutation({
+    mutationFn: () => api.get<VersionInfo>("/api/v1/version?refresh=1"),
+    onSuccess: (v) => qc.setQueryData(["version"], v),
+  });
+  const [open, setOpen] = useState(false);
+
+  const v = version.data;
+  const u = v?.update;
+  const s = self.data;
+  const latest = u?.latest ? norm(u.latest) : "";
+  const running = s?.job?.state === "running";
+  const mayWrite = v?.may_write !== false;
+
+  let line: React.ReactNode;
+  if (running) {
+    line = <>Ein Update auf {norm(s!.job!.version)} läuft gerade.</>;
+  } else if (u?.available && s?.ready) {
+    line = <>Version <strong>{latest}</strong> ist da. Ein Klick installiert sie: Das Update läuft neben dem Panel,
+      MatrixCtrl ist dabei etwa eine Minute weg, und startet die neue Version nicht, geht es von selbst zurück.
+      Matrix läuft die ganze Zeit weiter.</>;
+  } else if (u?.available) {
+    line = <>Version <strong>{latest}</strong> ist da. Diese Installation darf sich noch nicht selbst aktualisieren —
+      einmalig per Befehl auf dem Server, danach geht es hier mit einem Klick.</>;
+  } else if (u && !u.error) {
+    line = s && !s.ready
+      ? <>Aktuell. Damit künftige Updates hier mit einem Klick gehen, einmalig per Befehl aktualisieren — die Rechte dafür kommen mit dem Update.</>
+      : <>Aktuell. Kommt eine neue Version, installierst du sie hier mit einem Klick.</>;
+  } else if (u?.error) {
+    line = <>Ob es eine neuere Version gibt, ließ sich nicht prüfen: {u.error}</>;
+  } else {
+    line = <>Prüfe…</>;
+  }
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name="upload" size={19} /></div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 650 }}>MatrixCtrl</span>
+              {running ? <Badge tone="accent" icon="clock">Update läuft</Badge>
+                : u?.available ? <Badge tone="warn" icon="upload">Update verfügbar</Badge>
+                : u && !u.error ? <Badge tone="ok" icon="check">Aktuell</Badge> : null}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-faint)", marginTop: 2 }}>
+              <span style={{ fontFamily: "var(--mono)" }}>installiert {v?.version ?? "…"}</span>
+              {latest && <><span>·</span><span style={{ fontFamily: "var(--mono)" }}>neueste {latest}</span></>}
+              <span>·</span><span>geprüft {since(u?.checked_at)}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="ghost" size="sm" icon={recheck.isPending ? undefined : "refresh"} disabled={recheck.isPending} onClick={() => recheck.mutate()}>
+            {recheck.isPending ? <><Spinner size={13} /> Prüfe…</> : "Jetzt prüfen"}
+          </Button>
+          {mayWrite && (running || (u?.available && s?.ready)) && (
+            <Button variant="primary" size="sm" icon="upload" onClick={() => setOpen(true)}>
+              {running ? "Fortschritt" : `Auf ${latest} aktualisieren`}
+            </Button>
+          )}
+        </div>
+      </div>
+      <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>{line}</p>
+      {recheck.isError && <span style={{ fontSize: 12.5, color: "var(--status-err)" }}>{(recheck.error as Error).message}</span>}
+      {latest && u?.available && (
+        <a href={`https://github.com/bxnnyg/matrixctrl/releases/tag/v${latest}`} target="_blank" rel="noreferrer"
+          style={{ fontSize: 12.5, color: "var(--accent)", alignSelf: "flex-start" }}>Was ist neu in {latest}?</a>
+      )}
+      {s && !s.ready && mayWrite && (
+        <pre style={{ margin: 0, padding: 11, fontSize: 11.5, fontFamily: "var(--mono)", lineHeight: 1.6, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "all" }}>{UPDATE_COMMAND}</pre>
+      )}
+      {open && (latest || running) && (
+        <SelfUpdateDialog latest={running ? s!.job!.version : latest} command={UPDATE_COMMAND} onClose={() => setOpen(false)} />
+      )}
+    </Card>
+  );
+}
+

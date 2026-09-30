@@ -60,15 +60,36 @@ func New(current string) *Checker {
 		repo:     "bxnnyg/charts/matrixctrl",
 		current:  current,
 		client:   &http.Client{Timeout: 8 * time.Second},
-		ttl:      6 * time.Hour,
-		now:      time.Now,
+		// One hour, was six. With six, a release published an hour after the panel
+		// started stayed invisible for the rest of the afternoon, and nothing on
+		// screen said an answer that old was being shown (etappe 116c).
+		ttl: time.Hour,
+		now: time.Now,
 	}
 }
 
+// refreshFloor is how fresh "check now" makes the answer. A button can be pressed
+// in a loop; the registry should not hear every press.
+const refreshFloor = 30 * time.Second
+
 // Check returns the newest published version, from cache when it is fresh.
 func (c *Checker) Check(ctx context.Context) Result {
+	return c.within(ctx, c.ttl)
+}
+
+// Refresh asks the registry now — unless it was asked in the last 30 seconds, in
+// which case that answer is current enough.
+//
+// Without it the only way to see a release published after the last check was to
+// wait out the cache (etappe 116c).
+func (c *Checker) Refresh(ctx context.Context) Result {
+	return c.within(ctx, refreshFloor)
+}
+
+// within answers from cache when the cached answer is younger than maxAge.
+func (c *Checker) within(ctx context.Context, maxAge time.Duration) Result {
 	c.mu.Lock()
-	if c.hasValue && c.now().Sub(c.fetched) < c.ttl {
+	if c.hasValue && c.now().Sub(c.fetched) < maxAge {
 		r := c.cached
 		c.mu.Unlock()
 		return r

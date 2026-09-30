@@ -4615,6 +4615,14 @@ Tab gehört zur alten. Fehlt einer Installation noch das Recht (Chart älter als
 Dialog das vor dem Klick, per Rechte-Abfrage, und zeigt den Befehl: das erste Update auf diese
 Version geht einmalig per `install.sh`.
 
+**Nachtrag 0.1.117: gebaut, aber nicht auffindbar.** Das Update aus dem Panel lag hinter
+einem Kästchen unten links, das erst erscheint, wenn ein Update bekannt ist — und bekannt
+wurde es höchstens alle sechs Stunden. Die erste Frage nach dem Bau war „wo ist der
+Knopf?". Eine Funktion, von der die Oberfläche nur spricht, wenn sie gerade gebraucht
+wird, existiert für den Betreiber nicht: MatrixCtrl hat jetzt eine eigene Karte auf
+„Updates", die immer sagt, was dort geht, mit „Jetzt prüfen" (höchstens zweimal pro
+Minute an die Registry) und einer Stunde Cache statt sechs.
+
 ### §4.121 — Eine Seite darf ihre eigene Operation nicht verdrängen (2026-09-30, operator, etappe 116b)
 
 Nach 0.1.115 hat „Matrix-Login verbinden" auf dem neuen Server funktioniert — Upgrade durch,

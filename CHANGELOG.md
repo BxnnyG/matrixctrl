@@ -15,6 +15,24 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.117] — 2026-09-30
+
+### Added
+
+- **MatrixCtrl has its own card on „Updates"**, always, not only when an update is known:
+  installed and newest version, when it was checked, **„Jetzt prüfen"**, and one sentence
+  on what is possible here — the one-click update with what happens during it, the
+  command once when the rights are still missing, or „Kommt eine neue Version, installierst
+  du sie hier mit einem Klick." Links to the release notes. The version in the sidebar
+  footer leads there.
+
+### Changed
+
+- The update check remembers its answer for one hour instead of six; „Jetzt prüfen" asks
+  the registry at once (at most twice a minute).
+- The update dialog follows an update that is already running instead of offering a
+  second one.
+
 ## [0.1.116] — 2026-09-30
 
 ### Fixed

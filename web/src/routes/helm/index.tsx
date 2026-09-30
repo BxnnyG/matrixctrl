@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, Icon, Badge, Button, SectionTitle, StatusDot, EmptyState, Spinner, type IconName } from "@/components/mc";
 import { Markdown } from "@/components/Markdown";
+import { MatrixCtrlUpdateCard } from "@/components/SelfUpdate";
 import { cmpVersion, essVersion } from "@/lib/version";
 
 export const Route = createFileRoute("/helm/")({
@@ -162,6 +163,7 @@ function HelmPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      <MatrixCtrlUpdateCard />
       {/* Release hero */}
       <Card style={{ padding: 0, overflow: "hidden", position: "relative" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 55%)", pointerEvents: "none" }} />
