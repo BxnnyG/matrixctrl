@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
+	"github.com/bxnnyg/matrixctrl/internal/auth"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
 )
 
@@ -45,7 +46,16 @@ type roomsState struct {
 	// one-click fix, not an error.
 	Connected bool   `json:"connected"`
 	Reason    string `json:"reason,omitempty"`
+	// Session is "bootstrap" when the caller is signed in with the emergency login.
+	// Connecting cannot help that session: the Matrix authority is filed under the
+	// Matrix account that granted it, and this session is not one (etappe 116d).
+	Session string `json:"session,omitempty"`
 }
+
+// bootstrapNeedsMatrix is said to an emergency-login session on the screens that act
+// with a Matrix account.
+const bootstrapNeedsMatrix = "Räume und Moderation handeln mit deinem Matrix-Konto. " +
+	"Du bist mit dem Notzugang angemeldet — abmelden und über Matrix anmelden."
 
 // GET /api/v1/rooms/state — can this operator read rooms, and if not, why not.
 //
@@ -53,6 +63,10 @@ type roomsState struct {
 // instead of showing a table that then fails.
 func (h *RoomsHandler) State(w http.ResponseWriter, r *http.Request) {
 	userID := authmw.UserIDFromContext(r.Context())
+	if userID == auth.BootstrapUserID {
+		JSON(w, http.StatusOK, roomsState{Connected: false, Session: "bootstrap", Reason: bootstrapNeedsMatrix})
+		return
+	}
 	if h.connected == nil || !h.connected(userID) {
 		JSON(w, http.StatusOK, roomsState{
 			Connected: false,
@@ -70,6 +84,14 @@ func (h *RoomsHandler) State(w http.ResponseWriter, r *http.Request) {
 func (h *RoomsHandler) Connect(w http.ResponseWriter, r *http.Request) {
 	if h.authURL == nil {
 		Error(w, http.StatusNotImplemented, "Matrix-Login ist nicht konfiguriert")
+		return
+	}
+	// Refused rather than started. The round trip through MAS succeeds and files the
+	// token under the Matrix account, which this session never asks for — so the
+	// operator came back to the same button, pressed it again, and went round a loop
+	// with nothing on screen to explain it (etappe 116d).
+	if authmw.UserIDFromContext(r.Context()) == auth.BootstrapUserID {
+		Error(w, http.StatusConflict, bootstrapNeedsMatrix)
 		return
 	}
 	// Which screen asked. Sent by the caller and never trusted: the callback maps it

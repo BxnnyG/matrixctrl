@@ -15,6 +15,16 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.118] — 2026-09-30
+
+### Fixed
+
+- **Rooms and moderation looped for a tab still on the emergency login.** „Verbinden" went
+  through MAS successfully and filed the access under the Matrix account, which the
+  emergency session never asks for — back to the same button. Both screens now say „Du
+  bist mit dem Notzugang angemeldet" with „Abmelden und über Matrix anmelden", and the
+  server refuses the connect for that session instead of starting it.
+
 ## [0.1.117] — 2026-09-30
 
 ### Added

@@ -18,6 +18,7 @@ export function useSession() {
   const userId = q.data?.user_id;
   return {
     userId,
+    loading: q.isLoading,
     bootstrap: userId === BOOTSTRAP_USER,
     /** "@alice:example.com" → "alice"; the emergency login → "Admin". */
     name: !userId || userId === BOOTSTRAP_USER ? "Admin" : userId.replace(/^@/, "").split(":")[0],

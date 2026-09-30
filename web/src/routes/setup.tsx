@@ -6,7 +6,8 @@ import { essVersion, type ArchiveManifest } from "@/lib/archive";
 import { ArchivePicker } from "@/components/ArchivePicker";
 import { useUpgradeStream } from "@/lib/ws";
 import { shownView, type SetupView as SetupViewName } from "@/lib/setupView";
-import { signOut, useSession } from "@/lib/session";
+import { useSession } from "@/lib/session";
+import { SignInWithMatrix } from "@/components/MatrixLoginMissing";
 import { Card, Icon, Button, Spinner, StatusDot, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/setup")({
@@ -800,15 +801,6 @@ function MatrixAccountCard({ onDone }: { onDone: () => void }) {
         {msg && <span style={{ fontSize: 12.5, color: "var(--status-ok)" }}>{msg}</span>}
       </div>
     </WizardCard>
-  );
-}
-
-/** The step after connecting, as a button instead of a sentence. */
-function SignInWithMatrix() {
-  return (
-    <Button variant="primary" size="sm" icon="logout" onClick={() => void signOut()}>
-      Abmelden und über Matrix anmelden
-    </Button>
   );
 }
 

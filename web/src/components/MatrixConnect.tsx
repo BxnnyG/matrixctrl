@@ -2,7 +2,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { Card, Icon, Button, Spinner } from "@/components/mc";
-import { MatrixLoginMissing, useMatrixLogin } from "@/components/MatrixLoginMissing";
+import { EmergencySessionNeedsMatrix, MatrixLoginMissing, useMatrixLogin } from "@/components/MatrixLoginMissing";
+import { useSession } from "@/lib/session";
 
 /** Synapse's admin API is read with the operator's own authority, granted in a
  *  separate authorization (E36). This is the screen for "that has not happened yet",
@@ -79,6 +80,10 @@ export function MatrixConnect({
   // Asked before offering it, so the screen says what is missing instead (etappe 116a).
   const login = useMatrixLogin();
   const unavailable = login.data?.enabled === false && !login.data?.retrying;
+  // The emergency login is not a Matrix account, so no authorization can make these
+  // screens work for it (etappe 116d). Asked before anything starts on its own.
+  const session = useSession();
+  const emergency = session.bootstrap && !unavailable;
 
   // Only ever fired once per mount, on top of the session-wide timer: React can run
   // an effect twice in development, and two authorizations would consume two states
@@ -88,7 +93,7 @@ export function MatrixConnect({
   // Auto-connect is suppressed when the previous attempt failed. `error` is set by the
   // callback's failure redirect, so its presence means "the last round trip did not
   // work" — retrying it silently would hide the reason behind an endless bounce.
-  const mayAuto = auto && !unavailable && !login.isLoading && !error && !started.current && !recentlyAttempted();
+  const mayAuto = auto && !unavailable && !emergency && !session.loading && !login.isLoading && !error && !started.current && !recentlyAttempted();
 
   useEffect(() => {
     if (!mayAuto) return;
@@ -102,6 +107,9 @@ export function MatrixConnect({
 
   if (unavailable) {
     return <MatrixLoginMissing what="Dieser Bereich" />;
+  }
+  if (emergency) {
+    return <EmergencySessionNeedsMatrix what="Dieser Bereich" />;
   }
 
   // While the silent path is running there is nothing to decide, so the panel would

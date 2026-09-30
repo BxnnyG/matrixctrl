@@ -4645,3 +4645,10 @@ Dazu: Wer eine Sitzung ist, und was die Instanz anbietet, sind zwei Fragen. Die
 Seitenleiste zeigt jetzt die Sitzung (Matrix-Nutzer oder „Notzugang"). Abmelden widerruft
 die Sitzung auf dem Server; vorher vergaß nur der Tab das Token.
 
+**Nachtrag 0.1.118: dieselbe Verwechslung, eine Seite weiter.** Räume und Moderation
+fragten nur „ist ein Matrix-Zugriff für diese Sitzung da?" und boten sonst „Verbinden" an.
+Für eine Notzugang-Sitzung ist die Antwort immer nein, und Verbinden kann das nicht ändern:
+Der Zugriff gehört dem Matrix-Konto, das ihn erteilt hat. Der Server sagt das jetzt
+(`session: "bootstrap"`, Verbinden 409), die Seiten zeigen den Weg — abmelden, über Matrix
+anmelden.
+
