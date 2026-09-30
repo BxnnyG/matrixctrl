@@ -92,3 +92,21 @@ func (c *Client) SecretVolumes(ctx context.Context, namespace, deployment string
 	}
 	return out, nil
 }
+
+// IngressTLSSecrets maps each hostname of the Ingresses in a namespace to the Secret its
+// TLS certificate is expected in (etappe 115: why the origin serves Traefik's default).
+func (c *Client) IngressTLSSecrets(ctx context.Context, namespace string) (map[string]string, error) {
+	list, err := c.Static.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, ing := range list.Items {
+		for _, t := range ing.Spec.TLS {
+			for _, h := range t.Hosts {
+				out[h] = t.SecretName
+			}
+		}
+	}
+	return out, nil
+}

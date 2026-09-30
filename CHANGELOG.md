@@ -15,6 +15,18 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.115] — 2026-09-30
+
+### Fixed
+
+- **Connecting the Matrix login failed with „die registrierte MAS-Client-Konfiguration ist
+  nicht lesbar".** The reader expected a bare list; the registration is written as a
+  mapping with `clients:`. It had never worked and had no test.
+- TLS & DNS: a name that is fine for visitors (valid certificate via Cloudflare) but serves
+  the ingress controller's default certificate at the origin is now a blue note instead of
+  a yellow warning — with the cause (the certificate Secret that was never issued) and the
+  condition under which it would break.
+
 ## [0.1.114] — 2026-09-30
 
 ### Added

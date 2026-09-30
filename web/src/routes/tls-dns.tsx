@@ -14,11 +14,14 @@ interface HostReport {
   dns: { status: "ok" | "elsewhere" | "missing" | "unknown"; resolved?: string[]; detail?: string };
   proxied: boolean; served?: string;
   public: Cert; origin?: Cert;
-  summary: string; level: "ok" | "warn" | "err";
+  summary: string; level: "ok" | "info" | "warn" | "err";
+  origin_secret?: string; origin_secret_missing?: boolean;
 }
 interface Response { hosts: HostReport[]; node_addresses?: string[]; origin_note?: string; note?: string }
 
-const TONE = { ok: "var(--status-ok)", warn: "var(--status-warn)", err: "var(--status-err)" } as const;
+// "info" is a working setup with a condition attached — blue, not yellow. Yellow on a
+// site that works read as an outage (operator, 2026-09-30).
+const TONE = { ok: "var(--status-ok)", info: "var(--accent)", warn: "var(--status-warn)", err: "var(--status-err)" } as const;
 const DNS_TEXT: Record<string, string> = {
   ok: "zeigt auf diesen Server",
   elsewhere: "zeigt woandershin",
@@ -71,7 +74,9 @@ function TLSDNSPage() {
             <Detail label="DNS" value={`${h.proxied && h.dns.status === "elsewhere" ? "zeigt auf Cloudflare" : DNS_TEXT[h.dns.status] ?? h.dns.status}${h.dns.resolved?.length ? ` (${h.dns.resolved.join(", ")})` : ""}`} />
             <Detail label="Ausgeliefert von" value={h.proxied ? "Cloudflare (Proxy an)" : h.served || "direkt vom Server"} />
             <Detail label="Zertifikat von außen" value={certText(h.public)} tone={h.public.self_signed || h.public.expired || !h.public.name_matches ? "err" : undefined} />
-            {h.origin && <Detail label="Zertifikat am Server" value={certText(h.origin)} tone={h.origin.self_signed ? "warn" : undefined} />}
+            {h.origin && <Detail label="Zertifikat am Server"
+              value={certText(h.origin) + (h.origin_secret_missing ? ` — ${h.origin_secret} fehlt` : "")}
+              tone={h.origin.self_signed && !h.proxied ? "warn" : undefined} />}
           </div>
         </Card>
       ))}
@@ -87,7 +92,7 @@ function certText(c: Cert): string {
   return `${c.issuer}, noch ${c.days_left} Tage`;
 }
 
-function Detail({ label, value, tone }: { label: string; value: string; tone?: "warn" | "err" }) {
+function Detail({ label, value, tone }: { label: string; value: string; tone?: "info" | "warn" | "err" }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
       <span style={{ fontSize: 11, color: "var(--text-faint)" }}>{label}</span>

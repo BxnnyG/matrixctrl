@@ -4534,6 +4534,15 @@ gewinnt. Ohne bekannte eigene Adresse (hinter NAT, wie auf dieser Installation) 
 Restlaufzeit" statt „abgelaufen" — die Division rundet ab. Abgelaufen ist jetzt ein eigenes
 Feld aus dem Vergleich mit der Uhr, nicht aus der Tageszahl erschlossen.
 
+**Nachtrag 0.1.115 (Betreiber):** „bei TLS wird es gelb angezeigt, obwohl es ein gültiges
+Zertifikat ist". Auf dem neuen Server liefert jeder Name am Ursprung Traefiks
+Standardzertifikat — die cert-manager-Secrets wurden dort nie ausgestellt —, und Cloudflare
+im Modus „Full" nimmt das an. Die Beobachtung war richtig, die Farbe und der Satz nicht:
+„Dienste im Cluster scheitern daran" klang nach Ausfall, und die Ursache stand nirgends.
+Jetzt ein blauer **Hinweis** mit Ursache (welches Secret fehlt, gelesen aus dem Ingress) und
+Bedingung („hält, solange Cloudflare auf ‚Full' steht; mit ‚Full (strict)' oder ohne Proxy
+fällt der Name aus"). Gelb bleibt, was heute stört.
+
 ### §4.119 — Nach dem Umzug: „bereits registriert" ist nicht „verbunden" (2026-09-30, operator, etappe 116a)
 
 > Benutzerverwaltung braucht MAS-Zugang … wenn man auf Räume oder Moderation klickt,
@@ -4562,8 +4571,16 @@ Notzugang eine Erklärung mit Weg ins Setup statt eines Knopfs, der nicht funkti
 der Knopf selbst zeigt jeden Fehler an. Unten links steht „Notzugang" statt eines festen
 „Matrix-Login".
 
+**Nachtrag 0.1.115 (Betreiber-Meldung):** Der korrigierte Weg scheiterte beim ersten echten
+Klick mit „die registrierte MAS-Client-Konfiguration ist nicht lesbar". Die Funktion, die
+MatrixCtrls eigene Registrierung liest, stammt aus E85–87, hatte keinen Test und las das
+Fragment als nackte Liste — `buildMASClientConfig` schreibt aber eine Abbildung mit
+`clients:` neben `policy:`. Sie ist also nie gelungen; aufgefallen ist es erst, als ein Weg
+sie wirklich brauchte. Jetzt gibt es einen Test, der zurückliest, was der Generator
+schreibt, und eine Gegenprobe, dass der alte Weg daran scheitert.
+
 **Merksatz:** *Eine Registrierung, die umgezogen ist, ist eine Registrierung für den alten
-Ort.*
+Ort — und Code, der schreibt, braucht einen Test, der zurückliest.*
 
 ### §4.120 — Sich selbst aktualisieren, ohne sich dabei abzuschießen (2026-09-30, operator, etappe 116)
 

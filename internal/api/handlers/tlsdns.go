@@ -55,6 +55,13 @@ type hostReport struct {
 	Public tlscheck.Cert  `json:"public"`
 	Origin *tlscheck.Cert `json:"origin,omitempty"`
 
+	// OriginSecret is the Secret the Ingress expects this host's certificate in, and
+	// OriginSecretMissing says it does not exist — the reason the origin falls back to
+	// the ingress controller's default. Named, because "self-signed at the origin"
+	// alone sends the operator looking in the wrong place.
+	OriginSecret        string `json:"origin_secret,omitempty"`
+	OriginSecretMissing bool   `json:"origin_secret_missing,omitempty"`
+
 	Summary string `json:"summary"`
 	Level   string `json:"level"`
 }
@@ -94,6 +101,12 @@ func (h *TLSDNSHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Where this server actually is, and where its ingress answers inside the cluster.
 	nodeIPs := h.nodeAddresses(ctx)
 	originAddr := h.ingressAddress(ctx)
+	tlsSecrets := map[string]string{}
+	if h.k8s != nil {
+		if m, err := h.k8s.IngressTLSSecrets(ctx, h.essNS); err == nil {
+			tlsSecrets = m
+		}
+	}
 
 	dnsResults := dnscheck.Check(ctx, nil, records, nodeIPs)
 	byKey := map[string]dnscheck.Result{}
@@ -113,6 +126,12 @@ func (h *TLSDNSHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if originAddr != "" {
 				c := tlscheck.Probe(ctx, rep.Host, originAddr)
 				rep.Origin = &c
+			}
+			if name := tlsSecrets[rep.Host]; name != "" {
+				rep.OriginSecret = name
+				if data, err := h.k8s.GetSecret(ctx, h.essNS, name); err == nil && len(data) == 0 {
+					rep.OriginSecretMissing = true
+				}
 			}
 			rep.Summary, rep.Level = verdict(*rep, len(nodeIPs) > 0)
 		}(i)
@@ -141,8 +160,16 @@ func verdict(r hostReport, knowAddresses bool) (string, string) {
 	case !r.Public.NameMatches, r.Public.Expired:
 		return "Zertifikat von außen: " + r.Public.Summary(), "err"
 	case r.Origin != nil && r.Proxied && r.Origin.SelfSigned:
-		return "Von außen gültig (über Cloudflare). Der Server selbst liefert ein selbstsigniertes Zertifikat aus — " +
-			"für Besucher unsichtbar, aber Dienste im Cluster, die diesen Namen aufrufen, scheitern daran.", "warn"
+		// Not a fault today, and said so: Cloudflare serves a valid certificate and
+		// accepts the origin's in "Full" mode. Yellow for a site that works read as an
+		// outage (operator, 2026-09-30). It is a note with a cause and a condition.
+		why := "Am Server selbst liegt nur das Standardzertifikat des Ingress-Controllers."
+		if r.OriginSecretMissing {
+			why = fmt.Sprintf("Am Server selbst liegt nur das Standardzertifikat des Ingress-Controllers, weil das eigentliche "+
+				"Zertifikat (Secret %s) nie ausgestellt wurde — meist fehlt cert-manager oder kann nicht ausstellen.", r.OriginSecret)
+		}
+		return "In Ordnung für Besucher: Cloudflare liefert ein gültiges Zertifikat. " + why +
+			" Das hält, solange Cloudflare auf SSL/TLS „Full“ steht — mit „Full (strict)“ oder ohne Proxy fällt der Name aus.", "info"
 	case r.Origin != nil && !r.Origin.Reachable && r.Proxied:
 		return "Von außen gültig (über Cloudflare). Im Cluster ist der Name nicht erreichbar — " +
 			"Dienste, die ihn intern aufrufen, laufen in eine Zeitüberschreitung.", "warn"

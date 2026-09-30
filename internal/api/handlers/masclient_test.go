@@ -235,3 +235,39 @@ func TestAPresentRedirectChangesNothing(t *testing.T) {
 		t.Errorf("added=%v err=%v changed=%v", added, err, out != cfg)
 	}
 }
+
+// What the generator writes must be readable by the code that reads it back. It was not:
+// the fragment is a mapping and was parsed as a list, so every read failed with
+// "nicht lesbar" (etappe 116a) — on the operator's first attempt to connect after a move.
+func TestTheGeneratedFragmentCanBeReadBack(t *testing.T) {
+	frag := buildMASClientConfig("01KSPV9ZMR7NB4B2BBWMPYSD1P", "s3cret", "https://panel.example.org/api/v1/auth/oidc/callback")
+	id, secret, err := parseMASClientFragment(frag)
+	if err != nil || id != "01KSPV9ZMR7NB4B2BBWMPYSD1P" || secret != "s3cret" {
+		t.Fatalf("id=%q secret=%q err=%v", id, secret, err)
+	}
+	// And after the redirect of a moved panel was added.
+	moved, _, _ := ensureRedirect(frag, "https://new.example.org/api/v1/auth/oidc/callback")
+	if id, _, err := parseMASClientFragment(moved); err != nil || id != "01KSPV9ZMR7NB4B2BBWMPYSD1P" {
+		t.Errorf("after ensureRedirect: id=%q err=%v", id, err)
+	}
+}
+
+// Counter-probe for the fix: the old reading — a bare list — fails on the real fragment.
+func TestTheOldReadingFailsOnTheRealFragment(t *testing.T) {
+	frag := buildMASClientConfig("id", "secret", "https://p.example.org/cb")
+	var list []struct {
+		ClientID string `yaml:"client_id"`
+	}
+	if err := yaml.Unmarshal([]byte(frag), &list); err == nil && len(list) > 0 {
+		t.Fatal("the fixture no longer reproduces the bug")
+	}
+}
+
+func TestAnUnreadableFragmentIsStillAnError(t *testing.T) {
+	if _, _, err := parseMASClientFragment("policy: {}\n"); err == nil {
+		t.Error("no clients must be an error")
+	}
+	if _, _, err := parseMASClientFragment("clients:\n  - client_id: x\n"); err == nil {
+		t.Error("a client without secret must be an error")
+	}
+}

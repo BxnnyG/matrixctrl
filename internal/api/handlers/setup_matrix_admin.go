@@ -43,16 +43,9 @@ func (h *HelmHandler) registeredMASClient(ctx context.Context) (*mas.Client, str
 	if strings.TrimSpace(fragment) == "" {
 		return nil, "", "", "", fmt.Errorf("MatrixCtrl ist bei MAS noch nicht registriert")
 	}
-	var clients []struct {
-		ClientID     string `yaml:"client_id"`
-		ClientSecret string `yaml:"client_secret"`
-	}
-	if err := yaml.Unmarshal([]byte(fragment), &clients); err != nil || len(clients) == 0 {
-		return nil, "", "", "", fmt.Errorf("die registrierte MAS-Client-Konfiguration ist nicht lesbar")
-	}
-	id, secret := clients[0].ClientID, clients[0].ClientSecret
-	if id == "" || secret == "" {
-		return nil, "", "", "", fmt.Errorf("die registrierte MAS-Client-Konfiguration ist unvollständig")
+	id, secret, err := parseMASClientFragment(fragment)
+	if err != nil {
+		return nil, "", "", "", err
 	}
 
 	host, _ := nestedGet(merged, "matrixAuthenticationService", "ingress", "host").(string)
@@ -170,4 +163,36 @@ func writeMASError(w http.ResponseWriter, err error) {
 		return
 	}
 	Error(w, http.StatusBadGateway, err.Error())
+}
+
+// parseMASClientFragment reads MatrixCtrl's client credentials out of the registration
+// fragment.
+//
+// The fragment is a mapping — `clients:` beside `policy:` — because that is what
+// buildMASClientConfig writes. It was read as a bare list, which a mapping can never be,
+// so every call failed with "nicht lesbar": the setup step that should confirm the
+// client with MAS could not, and connecting after a move ended in "MAS ist nicht
+// erreichbar" (etappe 116a). Nothing tested it. A bare list is still accepted, in case a
+// fragment was ever written by hand in that shape.
+func parseMASClientFragment(fragment string) (id, secret string, err error) {
+	type client struct {
+		ClientID     string `yaml:"client_id"`
+		ClientSecret string `yaml:"client_secret"`
+	}
+	var doc struct {
+		Clients []client `yaml:"clients"`
+	}
+	var list []client
+	var clients []client
+	if yerr := yaml.Unmarshal([]byte(fragment), &doc); yerr == nil && len(doc.Clients) > 0 {
+		clients = doc.Clients
+	} else if yerr := yaml.Unmarshal([]byte(fragment), &list); yerr == nil && len(list) > 0 {
+		clients = list
+	} else {
+		return "", "", fmt.Errorf("die registrierte MAS-Client-Konfiguration ist nicht lesbar")
+	}
+	if clients[0].ClientID == "" || clients[0].ClientSecret == "" {
+		return "", "", fmt.Errorf("die registrierte MAS-Client-Konfiguration ist unvollständig")
+	}
+	return clients[0].ClientID, clients[0].ClientSecret, nil
 }
