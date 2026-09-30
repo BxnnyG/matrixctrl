@@ -63,6 +63,9 @@ type publicProvider struct {
 	Enabled   bool             `json:"enabled"`
 	Complete  bool             `json:"complete"`
 	Callback  string           `json:"callback,omitempty"`
+	// Link is where an operator sends themselves to connect an existing account
+	// (§4.112, Nachtrag). Only for a provider MAS can actually use.
+	Link string `json:"link,omitempty"`
 }
 
 func (h *LoginProvidersHandler) public(p masupstream.Provider, masHost string) publicProvider {
@@ -76,6 +79,9 @@ func (h *LoginProvidersHandler) public(p masupstream.Provider, masHost string) p
 	}
 	if masHost != "" {
 		out.Callback = masupstream.Callback(masHost, p.ID)
+		if out.Complete && p.Enabled {
+			out.Link = masupstream.LinkURL(masHost, p.ID)
+		}
 	}
 	return out
 }
@@ -150,7 +156,13 @@ func (h *LoginProvidersHandler) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, h.public(p, host))
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{
-		"mas_host":  host,
+		"mas_host": host,
+		"account_url": func() string {
+			if host == "" {
+				return ""
+			}
+			return masupstream.AccountURL(host)
+		}(),
 		"providers": out,
 		"wiring":    h.wiring(r.Context(), values),
 	})

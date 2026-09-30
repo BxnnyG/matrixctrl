@@ -129,6 +129,16 @@ func TestULID(t *testing.T) {
 	}
 }
 
+// The address that had to be handed over by hand before it was shown in the product.
+func TestLinkURL(t *testing.T) {
+	if got := LinkURL("auth.example.org", "01HFS6S2SVAR7Y7QYMZJ53ZAGZ"); got != "https://auth.example.org/upstream/authorize/01HFS6S2SVAR7Y7QYMZJ53ZAGZ" {
+		t.Error(got)
+	}
+	if got := AccountURL("auth.example.org/"); got != "https://auth.example.org/account/" {
+		t.Error(got)
+	}
+}
+
 func TestCallback(t *testing.T) {
 	if got := Callback("auth.example.org", "01HFS6S2SVAR7Y7QYMZJ53ZAGZ"); got != "https://auth.example.org/upstream/callback/01HFS6S2SVAR7Y7QYMZJ53ZAGZ" {
 		t.Error(got)

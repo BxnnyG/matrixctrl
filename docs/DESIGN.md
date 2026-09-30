@@ -4377,8 +4377,16 @@ byte-genau und die Anmeldeseite brach ab, während „Anbieter prüfen" einen Kn
 lag. Beim Speichern übernimmt MatrixCtrl jetzt die Schreibweise des Anbieters, wenn sie sich
 *nur* um den Schrägstrich unterscheidet; jeder andere Unterschied bleibt, wie getippt.
 
+**Nachtrag 0.1.112: der Verknüpfungs-Link stand nirgends.** „Bestehende Accounts verknüpfen
+sich selbst" war richtig und unbrauchbar — die Adresse dafür
+(`/upstream/authorize/<id>`, dieselbe, auf die der Knopf der MAS-Anmeldeseite zeigt) gab es
+im Produkt nicht, sie musste dem Betreiber von Hand gegeben werden. Jeder eingerichtete
+Anbieter zeigt sie jetzt mit den drei Schritten: auf der Kontoseite anmelden, diese Adresse
+öffnen, bestätigen. Dazu der Satz, was ohne vorherige Anmeldung passiert (ein neuer Account)
+und warum nichts automatisch verknüpft wird.
+
 **Merksatz:** *Ein Login ist so sicher wie die Regel, nach der er einem Account zugeordnet
-wird.*
+wird — und so brauchbar wie der Weg, den sie offen lässt.*
 
 ### §4.113 — Wer ein Feld schrieb, sagt nicht, ob es abweicht (2026-09-29, agent, etappe 111)
 

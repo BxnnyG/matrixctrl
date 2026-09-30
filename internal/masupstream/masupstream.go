@@ -67,6 +67,22 @@ func Callback(masHost, id string) string {
 	return "https://" + strings.TrimSuffix(masHost, "/") + "/upstream/callback/" + id
 }
 
+// LinkURL starts a login with this provider — the same address the button on MAS's login
+// page points at (`/upstream/authorize/<id>`).
+//
+// Opened while already signed in, MAS offers to link the provider identity to that
+// account instead of creating a new one. That is the only safe way to connect an existing
+// account, since nothing is linked automatically (§4.112) — and until this was added the
+// address existed nowhere in the product and had to be handed over by hand (§4.112).
+func LinkURL(masHost, id string) string {
+	return "https://" + strings.TrimSuffix(masHost, "/") + "/upstream/authorize/" + id
+}
+
+// AccountURL is MAS's account page, where one signs in before linking.
+func AccountURL(masHost string) string {
+	return "https://" + strings.TrimSuffix(masHost, "/") + "/account/"
+}
+
 // NewULID returns a fresh ULID: 48 bits of milliseconds, 80 random bits, Crockford
 // base32. MAS requires the provider id to be one.
 func NewULID(now time.Time) (string, error) {

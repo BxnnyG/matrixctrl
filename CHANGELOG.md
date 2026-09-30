@@ -15,6 +15,15 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.112] — 2026-09-30
+
+### Added
+
+- **The link that connects an existing account** is now shown for every configured login
+  provider, with the three steps around it. Nothing links automatically (that would be an
+  account-takeover path), so this address is the only way — and it existed nowhere in the
+  product before.
+
 ## [0.1.111] — 2026-09-29
 
 ### Added

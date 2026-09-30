@@ -10,10 +10,11 @@ type Kind = "google" | "github" | "oidc";
 
 interface Provider {
   id: string; kind: Kind; name: string; issuer?: string; client_id?: string;
-  has_secret: boolean; enabled: boolean; complete: boolean; callback?: string;
+  has_secret: boolean; enabled: boolean; complete: boolean; callback?: string; link?: string;
 }
 interface ListResponse {
   mas_host: string;
+  account_url?: string;
   providers: Provider[];
   wiring: { in_config: boolean; deployed: boolean };
 }
@@ -89,7 +90,7 @@ function LoginProvidersPage() {
       {d.providers.length === 0 && !adding ? (
         <Card><EmptyState icon="key" title="Noch kein Anbieter" sub="Füge Google, GitHub oder einen eigenen OIDC-Anbieter hinzu." /></Card>
       ) : d.providers.map((p) => (
-        <ProviderCard key={p.id} p={p} masHost={d.mas_host}
+        <ProviderCard key={p.id} p={p} masHost={d.mas_host} accountUrl={d.account_url}
           shown={verify.data?.shown?.[p.id]}
           editing={editing === p.id} onEdit={() => setEditing(editing === p.id ? null : p.id)}
           onSaved={(n) => { setEditing(null); setNext(n); refresh(); }} onChanged={refresh} />
@@ -137,8 +138,8 @@ function AddProvider({ onDone }: { onDone: (id?: string) => void }) {
   );
 }
 
-function ProviderCard({ p, masHost, shown, editing, onEdit, onSaved, onChanged }: {
-  p: Provider; masHost: string; shown?: boolean; editing: boolean;
+function ProviderCard({ p, masHost, accountUrl, shown, editing, onEdit, onSaved, onChanged }: {
+  p: Provider; masHost: string; accountUrl?: string; shown?: boolean; editing: boolean;
   onEdit: () => void; onSaved: (n: Next) => void; onChanged: () => void;
 }) {
   const [clientId, setClientId] = useState(p.client_id ?? "");
@@ -186,6 +187,30 @@ function ProviderCard({ p, masHost, shown, editing, onEdit, onSaved, onChanged }
         )}
         <Button variant="ghost" size="sm" onClick={onEdit}>{editing ? "Schließen" : p.complete ? "Ändern" : "Einrichten"}</Button>
       </div>
+
+      {/* The address that connects an existing account. Nothing links automatically —
+          that would be an account-takeover path (§4.112) — so this is the only way, and
+          until this was added it existed nowhere in the product. */}
+      {p.link && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", marginLeft: 28, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", border: "1px solid var(--border-soft)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Bestehenden Account mit {p.name} verknüpfen</div>
+          <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 5, fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>
+            <li>
+              Im selben Browser {accountUrl
+                ? <a href={accountUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>auf der Kontoseite</a>
+                : "auf der Kontoseite"} mit Benutzername und Passwort anmelden.
+            </li>
+            <li style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+              Dann diese Adresse öffnen: <Copyable text={p.link} />
+              <a href={p.link} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>öffnen</a>
+            </li>
+            <li>{p.name} fragt nach der Anmeldung, ob verknüpft werden soll — bestätigen.</li>
+          </ol>
+          <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+            Ohne vorherige Anmeldung legt {p.name} stattdessen einen neuen Account an. Automatisch verknüpft wird nichts — sonst könnte ein fremdes Konto mit gleichem Namen einen Account übernehmen.
+          </span>
+        </div>
+      )}
 
       {(editing || !p.complete) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 28 }}>
