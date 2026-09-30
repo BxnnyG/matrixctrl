@@ -104,7 +104,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 114b | E-Mail-Versand: SMTP im Kubernetes-Secret, Verbindungsprüfung und Testnachricht | ✅ 2026-09-29 · `v0.1.110` · [plan](plans/etappe-114b-email.md) |
 | 115 | TLS & DNS je Hostname: DNS, Cloudflare-Proxy, Zertifikat außen **und am Ursprung** | ✅ 2026-09-29 · `v0.1.111` · [plan](plans/etappe-115-tls-dns.md) |
 | 116a | Matrix-Login nach einem Umzug verbinden; kein toter Verbinden-Knopf | ✅ 2026-09-30 · `v0.1.113` · [plan](plans/etappe-116a-verbinden-nach-umzug.md) |
-| 116 | MatrixCtrl aus dem Panel aktualisieren (komplettes Helm-Upgrade, Betreiber-Entscheidung) | 🔨 in Arbeit · [plan](plans/etappe-116-update-aus-dem-panel.md) |
+| 116 | MatrixCtrl aus dem Panel aktualisieren: Job neben dem Panel, `--atomic`, benannte Rechte (Betreiber-Entscheidung) | ✅ 2026-09-30 · `v0.1.114` · [plan](plans/etappe-116-update-aus-dem-panel.md) |
 | 117 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
 | 118 | Worker-Insights | 📋 geplant |
 | 119 | Bridges (Hookshot, Appservices) | 📋 geplant |

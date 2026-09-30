@@ -32,6 +32,11 @@ import (
 )
 
 func main() {
+	// `matrixctrl self-update` is the update Job's entry point (etappe 116): the same
+	// binary, run beside the panel instead of as it.
+	if len(os.Args) > 1 && os.Args[1] == "self-update" {
+		os.Exit(runSelfUpdate(os.Args[2:]))
+	}
 	log.Printf("MatrixCtrl %s (%s) starting", version.Version, version.Commit)
 	// Said once, at startup, rather than left for whoever opens the browser: a
 	// binary with no UI is a build mistake, and the log is where a build mistake is
@@ -309,6 +314,7 @@ func main() {
 		mailHandler = handlers.NewMailHandler(k8sClient, configStore, essNS, essRelease)
 	}
 	tlsdnsHandler := handlers.NewTLSDNSHandler(k8sClient, configStore, essNS)
+	selfUpdateHandler := handlers.NewSelfUpdateHandler(k8sClient, essNS, env("MATRIXCTRL_RELEASE", "matrixctrl"))
 
 	router := api.NewRouter(api.Deps{
 		Auth:           authHandler,
@@ -328,6 +334,7 @@ func main() {
 		LoginProviders: loginProviders,
 		Mail:           mailHandler,
 		TLSDNS:         tlsdnsHandler,
+		SelfUpdate:     selfUpdateHandler,
 		Roles:          roles,
 
 		AuditSink: auditStore,

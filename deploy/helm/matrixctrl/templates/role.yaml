@@ -109,6 +109,14 @@ rules:
     resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Its own Role here, for the update from the panel (etappe 116): an upgrade of this
+  # chart rewrites it, and a new version may add a right — which needs `escalate`, named
+  # to this one role. The unnamed `escalate` stays denied (ForbiddenAlways).
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles"]
+    resourceNames: ["matrixctrl"]
+    verbs: ["escalate", "bind"]
+
   # Conditional kinds, rendered only when the cluster has the matching operator.
   # Granted unconditionally: a missing CRD makes the rule inert, while a missing
   # rule makes an upgrade fail halfway, and a half-applied release is a state this
@@ -138,9 +146,9 @@ subjects:
 {{- if ne $essNS .Release.Namespace }}
 ---
 {{/*
-MatrixCtrl's own namespace: the pod count on the diagnostics page, and nothing
-else. The panel does not administer itself, so it does not need write access to
-its own Postgres secret through the Kubernetes API.
+MatrixCtrl's own namespace: the pod count on the diagnostics page, and — since
+etappe 116 — everything a Helm upgrade of this chart writes, for the update from
+the panel. See the rules below for what that costs.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -153,6 +161,48 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "persistentvolumeclaims"]
     verbs: ["get", "list"]
+
+  # --- Update from the panel (etappe 116, operator decision 2026-09-30) ---------------
+  # Until 116 this Role held a pod list and nothing else: "the panel does not administer
+  # itself". It does now — the operator chose a complete Helm upgrade from the panel —
+  # and an upgrade of this chart is Helm writing every object in this namespace. That
+  # includes the panel's own Postgres secret, which the old comment kept deliberately
+  # out of reach. The update itself runs in a Job (Recreate would kill it otherwise),
+  # under this same ServiceAccount.
+  - apiGroups: [""]
+    resources: ["secrets"]           # Helm's release storage, and the chart's own Secret
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    # No delete: a version that drops a volume claim fails and rolls back, instead of
+    # taking the panel's database with it.
+    resources: ["persistentvolumeclaims"]
+    verbs: ["watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]       # `helm --wait` follows the rollout through them
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    resourceNames: ["matrixctrl-self"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles"]
+    resourceNames: ["matrixctrl-self"]
+    verbs: ["escalate", "bind"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

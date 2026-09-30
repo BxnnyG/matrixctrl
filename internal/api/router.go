@@ -31,6 +31,7 @@ type Deps struct {
 	LoginProviders *handlers.LoginProvidersHandler
 	Mail           *handlers.MailHandler
 	TLSDNS         *handlers.TLSDNSHandler
+	SelfUpdate     *handlers.SelfUpdateHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -234,6 +235,12 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/history/{sha}/diff", deps.Config.GetCommitDiff)
 			r.Post("/history/{sha}/rollback", deps.Config.RollbackToCommit)
 		})
+
+		// Updating MatrixCtrl from the panel (etappe 116). Nil in tests.
+		if deps.SelfUpdate != nil {
+			r.Get("/api/v1/self-update", deps.SelfUpdate.Get)
+			r.Post("/api/v1/self-update", deps.SelfUpdate.Start)
+		}
 
 		// TLS & DNS per hostname (etappe 115). Nil in tests.
 		if deps.TLSDNS != nil {

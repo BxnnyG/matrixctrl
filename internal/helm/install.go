@@ -16,6 +16,13 @@ import (
 // pullChart pulls + unpacks the ESS chart at the given version into a temp dir and
 // loads it. The returned cleanup removes the temp dir.
 func (c *Client) pullChart(version string) (*chart.Chart, func(), error) {
+	return c.pullChartFrom(essChartOCI, version)
+}
+
+// pullChartFrom pulls any OCI chart — the ESS chart, and since etappe 116 MatrixCtrl's
+// own for the update from the panel. One pull path, so registry handling and cleanup do
+// not diverge between the two.
+func (c *Client) pullChartFrom(ref, version string) (*chart.Chart, func(), error) {
 	regClient, err := registry.NewClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("registry client: %w", err)
@@ -33,9 +40,9 @@ func (c *Client) pullChart(version string) (*chart.Chart, func(), error) {
 	pull.Version = version
 	pull.DestDir = destDir
 	pull.Untar = true
-	if _, err := pull.Run(essChartOCI); err != nil {
+	if _, err := pull.Run(ref); err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("pull chart %s@%s: %w", essChartOCI, version, err)
+		return nil, nil, fmt.Errorf("pull chart %s@%s: %w", ref, version, err)
 	}
 
 	entries, err := os.ReadDir(destDir)

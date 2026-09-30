@@ -59,3 +59,22 @@ rules:
   # arbitrary non-resource paths.
   - nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/version", "/openapi", "/openapi/*"]
     verbs: ["get"]
+
+  # Update from the panel (etappe 116, operator decision 2026-09-30: "komplettes
+  # Helm-Upgrade"). An upgrade of this chart rewrites this ClusterRole and its binding,
+  # so MatrixCtrl may change exactly these two objects — and `escalate` on its own role,
+  # because a new version may need a right this one does not hold yet.
+  #
+  # Said plainly, because it is the cost of the decision: a role whose holder may extend
+  # it is, in effect, as strong as whatever the holder chooses to write into it. A
+  # compromised panel could make itself cluster-admin. What stays out: `create` on
+  # ClusterRoles — a version that brings a *new* one fails in the update Job, rolls back,
+  # and asks for install.sh; and every object not named here.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: ["matrixctrl"]
+    verbs: ["get", "update", "patch", "escalate", "bind"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    resourceNames: ["matrixctrl"]
+    verbs: ["get", "update", "patch"]

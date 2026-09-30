@@ -4,7 +4,8 @@ import { useState, useEffect, type ReactNode } from "react";
 import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useMatrixLogin } from "@/components/MatrixLoginMissing";
-import { Icon, StatusDot, Avatar, Kbd, useIsMobile, ConfirmDialog, type IconName } from "@/components/mc";
+import { SelfUpdateDialog } from "@/components/SelfUpdate";
+import { Icon, StatusDot, Avatar, Kbd, useIsMobile, type IconName } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
 interface NavItem { id: string; label: string; icon: IconName; to?: string; phase?: string }
@@ -186,7 +187,6 @@ const isDegraded = (s: string) => s === "degraded" || s === "down";
  *  an early return (§4.79). */
 function VersionFooter() {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const { data } = useQuery({
     queryKey: ["version"],
     queryFn: () => api.get<VersionResp>("/api/v1/version"),
@@ -197,16 +197,6 @@ function VersionFooter() {
   const update = data?.update;
   const available = !!update?.available && !!update.latest;
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(UPDATE_COMMAND);
-      setCopied(true);
-    } catch {
-      // No clipboard without a secure context, and an install reachable over plain
-      // HTTP is a supported setup. The command stays selectable either way.
-      setCopied(false);
-    }
-  };
 
   return (
     <>
@@ -225,7 +215,7 @@ function VersionFooter() {
           )}
         </span>
         {available && (
-          <button onClick={() => { setCopied(false); setOpen(true); }}
+          <button onClick={() => setOpen(true)}
             title={`Version ${update!.latest} ist verfügbar`}
             style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, padding: "2px 7px", fontSize: 10.5, fontWeight: 600, fontFamily: "var(--mono)", color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 999, cursor: "pointer" }}>
             <StatusDot status="accent" size={5} /> {update!.latest}
@@ -233,26 +223,11 @@ function VersionFooter() {
         )}
       </div>
 
-      <ConfirmDialog
-        open={open}
-        tone="primary"
-        title={`MatrixCtrl ${update?.latest} ist verfügbar`}
-        confirmLabel={copied ? "Kopiert" : "Befehl kopieren"}
-        confirmIcon={copied ? "check" : "copy"}
-        onConfirm={() => void copy()}
-        onCancel={() => setOpen(false)}
-      >
-        <p style={{ margin: "0 0 10px" }}>
-          Installiert ist <strong>{data?.version}</strong>. Der Installer erkennt die
-          laufende Installation, aktualisiert sie und behält Daten und Passwort.
-        </p>
-        <pre style={{ margin: 0, padding: 11, fontSize: 11.5, fontFamily: "var(--mono)", lineHeight: 1.6, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "all" }}>{UPDATE_COMMAND}</pre>
-        {update?.checked_at && (
-          <p style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--text-faint)" }}>
-            Zuletzt geprüft: {new Date(update.checked_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
-          </p>
-        )}
-      </ConfirmDialog>
+      {/* Since etappe 116 the update can start here. The dialog checks the rights
+          first; an installation whose chart predates them keeps the command. */}
+      {open && update?.latest && (
+        <SelfUpdateDialog latest={update.latest} command={UPDATE_COMMAND} onClose={() => setOpen(false)} />
+      )}
     </>
   );
 }

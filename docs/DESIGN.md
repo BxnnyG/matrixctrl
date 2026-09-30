@@ -4564,3 +4564,36 @@ der Knopf selbst zeigt jeden Fehler an. Unten links steht „Notzugang" statt ei
 
 **Merksatz:** *Eine Registrierung, die umgezogen ist, ist eine Registrierung für den alten
 Ort.*
+
+### §4.120 — Sich selbst aktualisieren, ohne sich dabei abzuschießen (2026-09-30, operator, etappe 116)
+
+> „sowie maybe Update vom Webpanel aus" — Entscheidung: **komplettes Helm-Upgrade**, auch
+> Updates, die Berechtigungen ändern.
+
+**Der Preis, ausgesprochen.** Ein Helm-Upgrade dieses Charts schreibt seine eigenen Rollen
+neu; ein neues Recht einzutragen verlangt `escalate`. Eine Rolle, die ihr Inhaber erweitern
+darf, ist so stark wie das, was er hineinschreibt: ein übernommenes Panel könnte sich zum
+Cluster-Admin machen. §4.38 (E40) hatte genau das entfernt. Die Alternative — nur das Image
+tauschen, Updates mit Rechte-Änderungen per `install.sh` — stand zur Wahl und wurde nicht
+genommen. Begrenzt bleibt: `escalate`/`bind` nur auf die **benannten** eigenen Rollen
+(`matrixctrl`, `matrixctrl-self`), kein `create` auf ClusterRoles, kein `delete` auf PVCs.
+Das unbenannte `escalate` in `ForbiddenAlways` bleibt verweigert und wahr.
+
+**Die Falle, die das Design bestimmt: `Recreate`.** Der Pod, der das Upgrade anstößt, ist
+das Erste, was das Upgrade entfernt — bevor der neue startet. Helm im Panel würde mitten im
+Warten sterben und das Release auf `pending-upgrade` zurücklassen, ohne jemanden, der
+zurückrollt. Das Upgrade läuft deshalb in einem **Job** neben dem Panel: gleiches Binary
+(`matrixctrl self-update`), laufendes Image (sicher vorhanden; die Zielversion kommt als
+Chart), eigener ServiceAccount, `--atomic` mit fünf Minuten — wird die neue Version nicht
+bereit, rollt derselbe Prozess zurück. Nie wiederholt (`backoffLimit: 0`), einer zur Zeit,
+und mindestens so gehärtet wie das Panel selbst, weil er der Pod mit den meisten Rechten ist.
+
+**Werte wie `install.sh`.** `image.tag` fällt heraus, sonst hielte das Update die alte
+Version fest (§4.103); ein leer gewordener `image`-Block fällt ganz heraus. Die Fälle sind
+dieselben wie im Shell-Test, damit ein Update nicht davon abhängt, wo es gestartet wurde.
+
+**Die Oberfläche überlebt ihren Server.** Nach dem Start ist das Panel etwa eine Minute weg.
+Der Dialog fragt weiter, bis die Zielversion antwortet, und lädt dann neu — das JavaScript im
+Tab gehört zur alten. Fehlt einer Installation noch das Recht (Chart älter als 116), sagt der
+Dialog das vor dem Klick, per Rechte-Abfrage, und zeigt den Befehl: das erste Update auf diese
+Version geht einmalig per `install.sh`.

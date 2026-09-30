@@ -33,6 +33,9 @@ type Permission struct {
 	Resource    string
 	Subresource string
 	Verb        string
+	// Name restricts the question to one object — `escalate` on the role called
+	// matrixctrl, not on roles in general (etappe 116). Empty asks about all of them.
+	Name string
 	// Namespaced marks the permission as needed in the managed namespace. When
 	// false it is checked cluster-wide, which is a strictly stronger question.
 	Namespaced bool
@@ -226,6 +229,7 @@ func (c *Client) Check(ctx context.Context, ns string, perms []Permission) ([]Pe
 			Resource:    p.Resource,
 			Subresource: p.Subresource,
 			Verb:        p.Verb,
+			Name:        p.Name,
 		}
 		if p.Namespaced {
 			attrs.Namespace = ns
@@ -284,4 +288,26 @@ func Describe(checks []PermissionCheck) string {
 		}
 	}
 	return b.String()
+}
+
+// SelfUpdatePermissions are what the update from the panel needs (etappe 116, operator
+// decision 2026-09-30), split by where they apply. The powerful ones are named: MatrixCtrl
+// may escalate and bind its own roles, not roles in general — which is why the unnamed
+// `escalate` in ForbiddenAlways stays denied. Checked before an update starts, so an
+// installation whose chart predates these rights hears "install.sh once" in a second,
+// not from a Job that fails minutes later.
+var SelfUpdatePermissions = struct{ Cluster, ESS, Own []Permission }{
+	Cluster: []Permission{
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Verb: "escalate", Name: "matrixctrl", Why: "update from the panel: its own ClusterRole"},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Verb: "bind", Name: "matrixctrl", Why: "update from the panel: its own ClusterRoleBinding"},
+	},
+	ESS: []Permission{
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Verb: "escalate", Name: "matrixctrl", Namespaced: true, Why: "update from the panel: its Role in the ESS namespace"},
+	},
+	Own: []Permission{
+		{Group: "rbac.authorization.k8s.io", Resource: "roles", Verb: "escalate", Name: "matrixctrl-self", Namespaced: true, Why: "update from the panel: its own-namespace Role"},
+		{Group: "batch", Resource: "jobs", Verb: "create", Namespaced: true, Why: "update from the panel: the Job that runs it"},
+		{Group: "", Resource: "secrets", Verb: "update", Namespaced: true, Why: "update from the panel: Helm's release storage"},
+		{Group: "apps", Resource: "deployments", Verb: "patch", Namespaced: true, Name: "matrixctrl", Why: "update from the panel: its own Deployment"},
+	},
 }

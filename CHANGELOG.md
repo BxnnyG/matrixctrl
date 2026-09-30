@@ -15,6 +15,25 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.114] — 2026-09-30
+
+### Added
+
+- **Update MatrixCtrl from the panel.** „Jetzt aktualisieren" in the version indicator runs
+  a complete Helm upgrade in a Job beside the panel (the panel's own pod is replaced first,
+  so it cannot run the upgrade itself), atomic with a five-minute limit: a version that does
+  not become ready is rolled back. The page waits out the restart and reloads.
+- The first update to this version still goes through `install.sh` once — the rights come
+  with it.
+
+### Security
+
+- Operator decision: MatrixCtrl may now update its own RBAC — `escalate`/`bind` on its own,
+  named roles only (`matrixctrl`, `matrixctrl-self`), plus write access to its own
+  namespace (including its own secrets). A compromised panel could use this to extend its
+  rights. Unnamed `escalate`, `create` on ClusterRoles and `delete` on volume claims stay
+  denied.
+
 ## [0.1.113] — 2026-09-30
 
 ### Fixed
