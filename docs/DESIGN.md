@@ -84,7 +84,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
 | S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
 | S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS & DNS has its own page since E115** — each certificate seen from the visitor and from the origin (§4.118). (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
-| S15 Federation & bridges | ⏳ not started | Phase 4 |
+| S15 Federation & bridges | ⏳ ½ (E117) | **Federation since E117:** reachability walked as a remote server walks it (delegation, target, TLS for the delegated name, signing key naming this server, client delegation + CORS), from this server — live-checked against production, matrix.org and a name without Matrix; destinations from Synapse with failing-first and backoff reset (tested against a stub only — no admin token on the playground). Bridges: E119 |
 | S16 Compliance & scale insights | ⏳ not started | Phase 5 |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
 
@@ -4651,4 +4651,36 @@ Für eine Notzugang-Sitzung ist die Antwort immer nein, und Verbinden kann das n
 Der Zugriff gehört dem Matrix-Konto, das ihn erteilt hat. Der Server sagt das jetzt
 (`session: "bootstrap"`, Verbinden 409), die Seiten zeigen den Weg — abmelden, über Matrix
 anmelden.
+
+### §4.122 — Föderation: den Weg eines fremden Servers gehen (2026-09-30, agent, etappe 117)
+
+**Warum Schritte statt eines Urteils.** Jeder kaputte Schritt hat dasselbe Symptom:
+Einladungen von woanders kommen nie an. Nur der Schritt sagt, was zu tun ist. Also geht
+`internal/federation` den Weg der Spezifikation nach und bewertet jeden Schritt einzeln:
+Wegweiser → Ziel (Wegweiser, SRV, sonst 8448) → TLS, gültig für den *delegierten* Namen,
+nicht für das SRV-Ziel → Schlüssel, der *diesen* Server-Namen nennen muss → Software →
+Client-Wegweiser mit CORS. Die Fälle, die ein Blick „antwortet der Server?" nicht findet,
+haben je einen Test gegen einen echten TLS-Listener: eine Startseite, die als Wegweiser
+antwortet (200, aber HTML), ein Wegweiser auf einen fremden Homeserver (TLS gültig, Schlüssel
+nennt den falschen Namen), ein Zertifikat für den falschen Namen, Port 8448 hinter
+Cloudflare. Jeder mit Gegenprobe.
+
+**Von hier, nicht von außen — und das gesagt.** Die Prüfung läuft vom Server aus über das
+öffentliche Netz. Eine Firewall, die hinaus lässt, lässt nicht unbedingt herein. Für den
+Blick von außen verlinkt die Seite den Federation Tester von matrix.org; der Klick ist
+der des Betreibers, MatrixCtrl schickt nichts dorthin.
+
+**Gegenstellen: alle holen, selbst sortieren.** Synapse kann nicht nach „scheitert"
+filtern, und `ORDER BY failure_ts DESC` stellt unter Postgres die NULL-Zeilen (nie
+gescheitert) nach vorn. Also holt der Handler alle (bis 10 000, darüber sagt er, dass die
+Liste endet) und sortiert: scheiternde zuerst, am längsten scheiternde oben.
+
+**Nebenbei gefunden: Tag-Listen haben Seiten.** Beim Ausliefern von 0.1.118 meldete die
+Pipeline das Chart als fehlend, obwohl es da war: Das Repository hatte 101 Tags, GHCR liefert
+ohne `n` 100 pro Seite in Push-Reihenfolge, und der neueste steht damit auf Seite 2. Die
+Update-Prüfung las genauso — jede installierte Version hätte ab 0.1.118 für immer „aktuell"
+gesagt. Die ESS-Versionsliste blätterte längst richtig (E42); die Lektion war nur nicht
+geteilt worden. Jetzt liest `internal/ociregistry` für alle, mit `n=1000` **und**
+`rel="next"`; der Live-Test verlangt mindestens 0.1.118 und fällt, wenn man den alten
+Zustand nachstellt. Installationen vor 0.1.119 brauchen einmal den Befehl.
 

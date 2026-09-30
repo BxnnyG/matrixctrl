@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 // A registry that answers the two calls the real one does, so the test exercises the
@@ -159,6 +161,11 @@ func TestAgainstRealRegistry(t *testing.T) {
 	}
 	if !got.Available {
 		t.Errorf("latest=%s is not newer than 0.0.1 — the comparison is wrong", got.Latest)
+	}
+	// 0.1.118 was the first release past GHCR's first page of 100 tags. A checker
+	// that reads one page answers 0.1.117 here for ever (etappe 117).
+	if v, err := semver.NewVersion(got.Latest); err != nil || v.LessThan(semver.MustParse("0.1.118")) {
+		t.Errorf("latest = %s — the check stopped at the first page of tags", got.Latest)
 	}
 	t.Logf("ghcr.io says the newest published chart is %s", got.Latest)
 }

@@ -431,11 +431,11 @@ func (h *AuthHandler) finishSynapseAdmin(w http.ResponseWriter, r *http.Request,
 // An allowlist rather than a validation rule. A redirect target that originates with
 // the client is the classic open redirect, and "starts with a slash" is not enough —
 // `//evil.example.com` is a protocol-relative URL that browsers follow off-site. The
-// set of screens that use this flow is two, so enumerating them costs nothing and
+// set of screens that use this flow is three, so enumerating them costs nothing and
 // cannot be got subtly wrong later.
 func connectReturnTo(requested string) string {
 	switch requested {
-	case "/rooms", "/reports":
+	case "/rooms", "/reports", "/federation":
 		return requested
 	default:
 		return "/rooms"

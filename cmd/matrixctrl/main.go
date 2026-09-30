@@ -18,6 +18,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/auth"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/db"
+	"github.com/bxnnyg/matrixctrl/internal/federation"
 	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
@@ -245,6 +246,9 @@ func main() {
 		synapse.NewDispositions(pool, synapse.KindEvent),
 		synapse.NewDispositions(pool, synapse.KindUser))
 
+	fedChecker := federation.New()
+	federationHandler := handlers.NewFederationHandler(configStore, fedChecker.Check, synapseFor)
+
 	roomsHandler := handlers.NewRoomsHandler(
 		func(userID string) *synapse.Client {
 			return synapse.New(synapseURL, func(ctx context.Context) (string, error) {
@@ -325,6 +329,7 @@ func main() {
 		WS:             wsHandler,
 		Config:         configHandler,
 		Setup:          setupHandler,
+		Federation:     federationHandler,
 		Audit:          handlers.NewAuditHandler(auditStore),
 		RTC:            rtcHandler,
 		Users:          usersHandler,

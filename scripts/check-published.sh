@@ -36,9 +36,27 @@ echo
 
 # ── the chart ────────────────────────────────────────────────────────────────
 echo "Chart $CHART_REPO"
-if curl -fsSL -H "Authorization: Bearer $(token "$CHART_REPO")" \
-     "$REGISTRY/v2/$CHART_REPO/tags/list" \
-   | grep -q "\"$VERSION\""; then
+# Every page of the tag list. GHCR answers 100 tags by default, in push order; from the
+# 101st release on, a first-page read declared every new chart missing — 0.1.118 was
+# published and this said it was not (etappe 117). n=1000 plus following rel="next".
+chart_tags() {
+  local tok url hdr
+  tok=$(token "$CHART_REPO")
+  url="$REGISTRY/v2/$CHART_REPO/tags/list?n=1000"
+  hdr=$(mktemp)
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    curl -fsSL -D "$hdr" -H "Authorization: Bearer $tok" "$url" || break
+    echo
+    url=$(sed -n 's/^[Ll]ink: *<\([^>]*\)>; *rel="next".*/\1/p' "$hdr" | tr -d '\r')
+    [ -n "$url" ] || break
+    case "$url" in http*) ;; *) url="$REGISTRY$url" ;; esac
+  done
+  rm -f "$hdr"
+}
+# Read whole, then searched: `chart_tags | grep -q` under pipefail fails on a match,
+# because grep exits at the first hit and the writer dies of SIGPIPE.
+all_chart_tags=$(chart_tags)
+if grep -q "\"$VERSION\"" <<<"$all_chart_tags"; then
   echo "  ✓ tag $VERSION is published"
 else
   echo "  ✗ tag $VERSION is NOT in the tag list — helm install will resolve an older chart"

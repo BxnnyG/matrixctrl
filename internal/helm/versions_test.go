@@ -73,15 +73,3 @@ func TestParseReleaseTag(t *testing.T) {
 		}
 	}
 }
-
-func TestNextPageURL(t *testing.T) {
-	link := `</v2/element-hq/ess-helm/matrix-stack/tags/list?last=0.10.1-shac00c&n=1000>; rel="next"`
-	got := nextPageURL(link)
-	want := "https://ghcr.io/v2/element-hq/ess-helm/matrix-stack/tags/list?last=0.10.1-shac00c&n=1000"
-	if got != want {
-		t.Errorf("nextPageURL() = %q, want %q", got, want)
-	}
-	if got := nextPageURL(""); got != "" {
-		t.Errorf("nextPageURL(\"\") = %q, want empty", got)
-	}
-}

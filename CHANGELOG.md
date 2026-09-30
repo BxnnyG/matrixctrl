@@ -15,6 +15,32 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.119] — 2026-09-30
+
+### Added
+
+- **Föderation** (was greyed out since phase 1). *Erreichbarkeit* walks the path a remote
+  server takes — delegation file, target (well-known, SRV or port 8448), a TLS connection
+  whose certificate must fit the delegated name, the signing key that must name this
+  server, the software that answers, and the client delegation with its CORS header —
+  and says at which step it breaks and why (a start page served as the delegation file,
+  a delegation to another homeserver, port 8448 behind Cloudflare). Checked from this
+  server over the public network; the outside view is a link to matrix.org's federation
+  tester. *Gegenstellen* lists every server Synapse federates with, failing first
+  („scheitert seit …, nächster Versuch in …"), with the rooms shared with each and
+  „Jetzt neu versuchen" to cut Synapse's backoff short.
+
+### Fixed
+
+- **New releases were invisible to the update check.** It read only the first page of
+  the registry's tag list — 100 tags, in push order — and MatrixCtrl's chart passed 100
+  tags with 0.1.118. Tag lists are now read in full by one shared reader, which the ESS
+  version list uses as well. **Installations older than 0.1.119 do not see this or any
+  later release in the panel**; update them once with the install command.
+- `scripts/check-published.sh` had the same one-page reading and reported the published
+  0.1.118 chart as missing; it also failed on a match under `pipefail`.
+- The sidebar now highlights users, rooms, moderation, TLS & DNS and federation when open.
+
 ## [0.1.118] — 2026-09-30
 
 ### Fixed

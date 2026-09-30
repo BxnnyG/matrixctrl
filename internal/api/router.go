@@ -13,20 +13,23 @@ import (
 )
 
 type Deps struct {
-	Auth    *handlers.AuthHandler
-	Status  *handlers.StatusHandler
-	Hooks   *handlers.HooksHandler
-	Helm    *handlers.HelmHandler
-	WS      *handlers.WSHandler
-	Config  *handlers.ConfigHandler
-	Setup   *handlers.SetupHandler
-	Audit   *handlers.AuditHandler
-	RTC     *handlers.RTCHandler
-	Drift   *handlers.DriftHandler
-	Users   *handlers.UsersHandler
-	Rooms   *handlers.RoomsHandler
-	Reports *handlers.ReportsHandler
-	Version *handlers.VersionHandler
+	Auth   *handlers.AuthHandler
+	Status *handlers.StatusHandler
+	Hooks  *handlers.HooksHandler
+	Helm   *handlers.HelmHandler
+	WS     *handlers.WSHandler
+	Config *handlers.ConfigHandler
+	Setup  *handlers.SetupHandler
+	Audit  *handlers.AuditHandler
+	RTC    *handlers.RTCHandler
+	Drift  *handlers.DriftHandler
+	Users  *handlers.UsersHandler
+	Rooms  *handlers.RoomsHandler
+	// Federation reach needs nothing but the config; the destination list uses the
+	// operator's Matrix access like rooms (etappe 117).
+	Federation *handlers.FederationHandler
+	Reports    *handlers.ReportsHandler
+	Version    *handlers.VersionHandler
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
 	Mail           *handlers.MailHandler
@@ -120,6 +123,13 @@ func NewRouter(deps Deps) http.Handler {
 			// Media quarantine lives on the reports handler because that is the
 			// screen it serves, and it shares the same Synapse client.
 			r.Put("/api/v1/media/{server}/{id}/quarantine", deps.Reports.Quarantine)
+		}
+
+		if deps.Federation != nil {
+			r.Get("/api/v1/federation/reach", deps.Federation.Reach)
+			r.Get("/api/v1/federation/destinations", deps.Federation.Destinations)
+			r.Get("/api/v1/federation/destinations/{destination}/rooms", deps.Federation.Rooms)
+			r.Post("/api/v1/federation/destinations/{destination}/reset", deps.Federation.Reset)
 		}
 
 		if deps.Audit != nil {

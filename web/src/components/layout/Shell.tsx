@@ -44,7 +44,7 @@ const NAV: NavGroup[] = [
     { id: "tls", label: "TLS & DNS", icon: "lock", to: "/tls-dns" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
   ] },
   { group: "Netzwerk", phase: "4", items: [
-    { id: "federation", label: "Föderation", icon: "globe" }, { id: "bridges", label: "Bridges", icon: "audit" },
+    { id: "federation", label: "Föderation", icon: "globe", to: "/federation" }, { id: "bridges", label: "Bridges", icon: "audit" },
   ] },
   { group: "Compliance", phase: "5", items: [
     { id: "workers", label: "Worker-Insights", icon: "activity" },
@@ -64,6 +64,7 @@ const TITLES: Record<string, [string, string]> = {
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
+  "/federation": ["Föderation", "Erreichen dich andere Server, und mit wem redet deiner?"],
   "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 
@@ -110,6 +111,9 @@ function activeId(path: string): string {
   if (path.startsWith("/backup")) return "backup";
   if (path.startsWith("/audit")) return "audit";
   if (path.startsWith("/rtc")) return "rtc";
+  // Everything else by its own address. Users, rooms, moderation and TLS were never
+  // highlighted: this list was written by hand and not kept up.
+  for (const g of NAV) for (const it of g.items) if (it.to && it.to !== "/" && path.startsWith(it.to)) return it.id;
   return "";
 }
 

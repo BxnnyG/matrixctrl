@@ -2,7 +2,6 @@ package helm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -10,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bxnnyg/matrixctrl/internal/ociregistry"
 )
 
 type VersionInfo struct {
@@ -19,13 +20,12 @@ type VersionInfo struct {
 }
 
 const (
-	tagsListURL = "https://ghcr.io/v2/element-hq/ess-helm/matrix-stack/tags/list"
+	essChartRepo = "element-hq/ess-helm/matrix-stack"
 	// GHCR paginates tags. ESS publishes a per-commit "<version>-sha<40 hex>" tag
 	// for every build, so the release tags we actually want sit far beyond the
 	// first page — without following pagination the UI only ever showed ancient
 	// 0.2.x dev builds.
-	tagsPageSize = 1000
-	maxTagPages  = 25
+	maxTagPages = 25
 )
 
 // releaseTagRe matches semver-shaped tags ("26.5.1", "v26.5.1", "26.5.1-rc.1").
@@ -56,29 +56,20 @@ var devTagRe = regexp.MustCompile(`^dev$`)
 // ListVersions queries the GHCR OCI registry for available ESS chart versions,
 // newest first.
 func ListVersions(ctx context.Context) ([]VersionInfo, error) {
-	token, err := getGHCRToken(ctx)
+	tags, err := ociregistry.Tags(ctx, http.DefaultClient, "https://ghcr.io", essChartRepo, maxTagPages)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list tags: %w", err)
 	}
 
 	var versions []VersionInfo
 	seen := map[string]bool{}
-	next := fmt.Sprintf("%s?n=%d", tagsListURL, tagsPageSize)
-
-	for page := 0; page < maxTagPages && next != ""; page++ {
-		tags, link, err := fetchTagPage(ctx, next, token)
-		if err != nil {
-			return nil, err
+	for _, tag := range tags {
+		v, ok := parseReleaseTag(tag)
+		if !ok || seen[v.Version] {
+			continue
 		}
-		for _, tag := range tags {
-			v, ok := parseReleaseTag(tag)
-			if !ok || seen[v.Version] {
-				continue
-			}
-			seen[v.Version] = true
-			versions = append(versions, v)
-		}
-		next = link
+		seen[v.Version] = true
+		versions = append(versions, v)
 	}
 
 	sort.Slice(versions, func(i, j int) bool {
@@ -87,56 +78,6 @@ func ListVersions(ctx context.Context) ([]VersionInfo, error) {
 	// Dates come from a second source and are allowed to be missing — see
 	// releaseindex.go. The list is correct and complete without them.
 	return withDates(ctx, versions), nil
-}
-
-func fetchTagPage(ctx context.Context, url, token string) ([]string, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("list tags: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("list tags: status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Tags []string `json:"tags"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, "", err
-	}
-	return result.Tags, nextPageURL(resp.Header.Get("Link")), nil
-}
-
-// nextPageURL extracts the rel="next" target from a registry Link header.
-func nextPageURL(link string) string {
-	if link == "" {
-		return ""
-	}
-	for _, part := range strings.Split(link, ",") {
-		part = strings.TrimSpace(part)
-		if !strings.Contains(part, `rel="next"`) {
-			continue
-		}
-		start := strings.Index(part, "<")
-		end := strings.Index(part, ">")
-		if start < 0 || end <= start {
-			continue
-		}
-		path := part[start+1 : end]
-		if strings.HasPrefix(path, "http") {
-			return path
-		}
-		return "https://ghcr.io" + path
-	}
-	return ""
 }
 
 func parseReleaseTag(tag string) (VersionInfo, bool) {
@@ -177,25 +118,3 @@ func compareVersions(a, b string) int {
 // CompareVersions is exported for callers that need to know whether an upgrade
 // target is actually newer than what is deployed.
 func CompareVersions(a, b string) int { return compareVersions(a, b) }
-
-func getGHCRToken(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://ghcr.io/token?scope=repository:element-hq/ess-helm/matrix-stack:pull&service=ghcr.io", nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("get token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-	return result.Token, nil
-}

@@ -24,8 +24,9 @@ func TestConnectReturnToRefusesAnythingOffTheAllowlist(t *testing.T) {
 	}
 }
 
-func TestConnectReturnToKeepsTheTwoRealScreens(t *testing.T) {
-	for _, in := range []string{"/rooms", "/reports"} {
+func TestConnectReturnToKeepsTheRealScreens(t *testing.T) {
+	// Federation reads the destination list with the same Matrix access (etappe 117).
+	for _, in := range []string{"/rooms", "/reports", "/federation"} {
 		if got := connectReturnTo(in); got != in {
 			t.Errorf("connectReturnTo(%q) = %q, want it unchanged", in, got)
 		}

@@ -12,14 +12,14 @@ package updatecheck
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+
+	"github.com/bxnnyg/matrixctrl/internal/ociregistry"
 )
 
 // Result is what the UI needs to say something useful, including when the check
@@ -148,45 +148,9 @@ func (c *Checker) fetch(ctx context.Context) Result {
 	return out
 }
 
-// tags reads the repository's tag list with an anonymous pull token.
+// tags reads every page of the chart's tag list. Reading only the first page is how
+// 0.1.118 went unseen: GHCR's default page is 100 tags, in push order, and it was the
+// 101st (etappe 117).
 func (c *Checker) tags(ctx context.Context) ([]string, error) {
-	tokenURL := fmt.Sprintf("%s/token?scope=repository:%s:pull&service=ghcr.io", c.registry, c.repo)
-	var tok struct {
-		Token string `json:"token"`
-	}
-	if err := c.getJSON(ctx, tokenURL, "", &tok); err != nil {
-		return nil, fmt.Errorf("registry token: %w", err)
-	}
-	if tok.Token == "" {
-		return nil, fmt.Errorf("registry returned an empty token")
-	}
-
-	var list struct {
-		Tags []string `json:"tags"`
-	}
-	listURL := fmt.Sprintf("%s/v2/%s/tags/list", c.registry, c.repo)
-	if err := c.getJSON(ctx, listURL, tok.Token, &list); err != nil {
-		return nil, fmt.Errorf("tag list: %w", err)
-	}
-	sort.Strings(list.Tags)
-	return list.Tags, nil
-}
-
-func (c *Checker) getJSON(ctx context.Context, url, bearer string, into interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s answered %s", url, resp.Status)
-	}
-	return json.NewDecoder(resp.Body).Decode(into)
+	return ociregistry.Tags(ctx, c.client, c.registry, c.repo, 20)
 }

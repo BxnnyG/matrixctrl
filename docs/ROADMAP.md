@@ -108,7 +108,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 116b | Verbunden, aber Setup weiß es nicht: eigene Operation festhalten, Login-Zustand live, jede Antwort anzeigen, echtes Abmelden | ✅ 2026-09-30 · `v0.1.116` · [plan](plans/etappe-116b-verbunden-aber-unsichtbar.md) |
 | 116c | Das MatrixCtrl-Update finden: eigene Karte auf „Updates", „Jetzt prüfen", Cache 1 h statt 6 h | ✅ 2026-09-30 · `v0.1.117` · [plan](plans/etappe-116c-update-sichtbar.md) |
 | 116d | Notzugang auf Räumen und Moderation: sagen statt im Kreis verbinden | ✅ 2026-09-30 · `v0.1.118` · [plan](plans/etappe-116d-notzugang-und-raeume.md) |
-| 117 | Föderation: Delegation, Erreichbarkeit, föderierte Server | 📋 geplant |
+| 117 | Föderation: Erreichbarkeit Schritt für Schritt wie ein fremder Server, Gegenstellen aus Synapse mit „jetzt neu versuchen"; dabei: Tag-Listen über alle Seiten (Update-Prüfung sah ab 0.1.118 nichts mehr) | ✅ 2026-09-30 · `v0.1.119` · [plan](plans/etappe-117-foederation.md) |
 | 118 | Worker-Insights | 📋 geplant |
 | 119 | Bridges (Hookshot, Appservices) | 📋 geplant |
 | 112–113 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei (verschoben: der akute Umzug ist erledigt) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |

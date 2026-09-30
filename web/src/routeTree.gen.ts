@@ -18,6 +18,7 @@ import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as MailRouteImport } from './routes/mail'
 import { Route as LoginProvidersRouteImport } from './routes/login-providers'
+import { Route as FederationRouteImport } from './routes/federation'
 import { Route as BackupRouteImport } from './routes/backup'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
@@ -76,6 +77,11 @@ const MailRoute = MailRouteImport.update({
 const LoginProvidersRoute = LoginProvidersRouteImport.update({
   id: '/login-providers',
   path: '/login-providers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FederationRoute = FederationRouteImport.update({
+  id: '/federation',
+  path: '/federation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BackupRoute = BackupRouteImport.update({
@@ -153,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/reports': typeof ReportsRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/reports': typeof ReportsRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/backup': typeof BackupRoute
+  '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/reports': typeof ReportsRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/federation'
     | '/login-providers'
     | '/mail'
     | '/reports'
@@ -256,6 +266,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/federation'
     | '/login-providers'
     | '/mail'
     | '/reports'
@@ -281,6 +292,7 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/backup'
+    | '/federation'
     | '/login-providers'
     | '/mail'
     | '/reports'
@@ -307,6 +319,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
   BackupRoute: typeof BackupRoute
+  FederationRoute: typeof FederationRoute
   LoginProvidersRoute: typeof LoginProvidersRoute
   MailRoute: typeof MailRoute
   ReportsRoute: typeof ReportsRoute
@@ -391,6 +404,13 @@ declare module '@tanstack/react-router' {
       path: '/login-providers'
       fullPath: '/login-providers'
       preLoaderRoute: typeof LoginProvidersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/federation': {
+      id: '/federation'
+      path: '/federation'
+      fullPath: '/federation'
+      preLoaderRoute: typeof FederationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backup': {
@@ -508,6 +528,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
   BackupRoute: BackupRoute,
+  FederationRoute: FederationRoute,
   LoginProvidersRoute: LoginProvidersRoute,
   MailRoute: MailRoute,
   ReportsRoute: ReportsRoute,
