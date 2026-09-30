@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { MatrixLoginMissing } from "@/components/MatrixLoginMissing";
 import { Card, Badge, Icon, EmptyState, Button, ConfirmDialog, type IconName } from "@/components/mc";
 
 export const Route = createFileRoute("/users")({
@@ -183,13 +184,9 @@ function Users() {
   }
 
   if (data && !data.configured) {
-    return (
-      <EmptyState
-        icon="info"
-        title="Benutzerverwaltung braucht MAS-Zugang"
-        sub="MatrixCtrl läuft im Bootstrap-Modus und hat keine OIDC-Zugangsdaten, mit denen es die Admin-API des Matrix Authentication Service ansprechen könnte. Nach dem Verbinden mit MAS erscheinen die Konten hier."
-      />
-    );
+    // Says where it is fixed — the message used to stop at "needs MAS access"
+    // (etappe 116a).
+    return <MatrixLoginMissing what="Die Benutzerverwaltung" />;
   }
 
   return (

@@ -4533,3 +4533,34 @@ gewinnt. Ohne bekannte eigene Adresse (hinter NAT, wie auf dieser Installation) 
 **Beim Bauen gefunden:** ein vor einer Stunde abgelaufenes Zertifikat hatte „0 Tage
 Restlaufzeit" statt „abgelaufen" — die Division rundet ab. Abgelaufen ist jetzt ein eigenes
 Feld aus dem Vergleich mit der Uhr, nicht aus der Tageszahl erschlossen.
+
+### §4.119 — Nach dem Umzug: „bereits registriert" ist nicht „verbunden" (2026-09-30, operator, etappe 116a)
+
+> Benutzerverwaltung braucht MAS-Zugang … wenn man auf Räume oder Moderation klickt,
+> kommt der Verbinden-Button, der aber nichts macht
+
+Auf dem neuen Server lief MatrixCtrl im Notzugang: keine gespeicherten Login-Einstellungen,
+nach dem Umzug per `recover-login` hereingekommen. Drei Fehler, die sich gegenseitig
+verdeckten:
+
+1. **Der Verbinden-Knopf verschluckte die Antwort.** Er fragte nach einer Login-Adresse,
+   bekam `501 nicht konfiguriert` und sprang zurück — ohne ein Wort.
+2. **Keine Seite sagte, wo es behoben wird.** Die Benutzerverwaltung nannte den Zustand
+   richtig und endete dort.
+3. **Der Weg im Setup hätte nicht gewirkt.** Die MAS-Registrierung war mit der
+   Konfiguration umgezogen, MAS kannte den Client — also antwortete „Matrix-Login
+   verbinden" mit „bereits vollständig registriert". Weder wurde die Rücksprung-Adresse des
+   neuen Panel-Hostnamens eingetragen noch wurden die Zugangsdaten in MatrixCtrl
+   gespeichert. Der Betreiber hätte „erfolgreich" gelesen und wäre im Notzugang geblieben.
+
+**Entscheidung:** „MAS kennt den Client" heißt nur dann „fertig", wenn MatrixCtrl selbst
+Einstellungen gespeichert hat *und* die Adresse, unter der es gerade antwortet, bei MAS
+registriert ist. Fehlt eins, wird die Adresse ergänzt (die alte bleibt — eine entfernte
+Rücksprung-Adresse ist ein Aussperren) und der vorhandene Weg genommen: ESS deployen, MAS
+bestätigen lassen, erst dann umschalten (§4.88). Räume, Moderation und Benutzer zeigen im
+Notzugang eine Erklärung mit Weg ins Setup statt eines Knopfs, der nicht funktionieren kann;
+der Knopf selbst zeigt jeden Fehler an. Unten links steht „Notzugang" statt eines festen
+„Matrix-Login".
+
+**Merksatz:** *Eine Registrierung, die umgezogen ist, ist eine Registrierung für den alten
+Ort.*

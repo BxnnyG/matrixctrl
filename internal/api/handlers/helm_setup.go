@@ -308,6 +308,32 @@ func (h *HelmHandler) ConnectOIDC(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 				}
+				// MAS knows the client. That is not the same as "connected": after a
+				// move to another server the registration arrives with the
+				// configuration, but MatrixCtrl has no login settings stored and answers
+				// under a new hostname MAS was never told about. "Already registered"
+				// here left the operator in bootstrap mode believing it had worked
+				// (etappe 116a). Add the current address, then take the path that
+				// deploys, lets MAS confirm, and only then switches over.
+				redirect := strings.TrimRight(req.PublicURL, "/") + "/api/v1/auth/oidc/callback"
+				withRedirect, added, rerr := ensureRedirect(existing, redirect)
+				stored := false
+				if h.db != nil {
+					_, stored = auth.LoadOIDCConfig(r.Context(), h.db)
+				}
+				if rerr == nil && (added || !stored) {
+					if added {
+						if err := h.configStore.SetSectionValues(r.Context(), map[string]interface{}{
+							"matrixAuthenticationService.additional.0-matrixctrl-client.config": withRedirect,
+						}, nil); err != nil {
+							Error(w, http.StatusInternalServerError, "write MAS client config: "+err.Error())
+							return
+						}
+						_, _ = h.configStore.Commit(r.Context(), "config: add this panel's address to the MatrixCtrl OIDC client", userID)
+					}
+					h.connectUpgrade(w, r, req.PublicURL)
+					return
+				}
 				h.reconcileMASClient(w, r, existing, userID)
 				return
 			}

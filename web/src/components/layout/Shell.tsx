@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode } from "react";
 import { useTweaks } from "@/lib/theme";
 import { api } from "@/lib/api";
+import { useMatrixLogin } from "@/components/MatrixLoginMissing";
 import { Icon, StatusDot, Avatar, Kbd, useIsMobile, ConfirmDialog, type IconName } from "@/components/mc";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
@@ -111,6 +112,7 @@ function activeId(path: string): string {
 }
 
 function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }) {
+  const login = useMatrixLogin();
   const [t] = useTweaks();
   const navigate = useNavigate();
   const cur = activeId(path);
@@ -135,7 +137,13 @@ function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }
         <Avatar name="Admin" size={32} accent />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Admin</div>
-          <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--mono)" }}>Matrix-Login</div>
+          {/* Said as it is. This read "Matrix-Login" on an instance running on the
+              emergency login — the state that explains why rooms and users were empty
+              (etappe 116a). */}
+          <div style={{ fontSize: 11, color: login.data?.enabled === false ? "var(--status-warn)" : "var(--text-faint)", fontFamily: "var(--mono)" }}
+            title={login.data?.enabled === false ? "MatrixCtrl ist nicht mit dem Matrix-Login verbunden — Verbinden im Setup" : undefined}>
+            {login.data?.enabled === false ? "Notzugang" : "Matrix-Login"}
+          </div>
         </div>
         <button title="Abmelden" onClick={() => { localStorage.removeItem("matrixctrl_token"); window.location.href = "/auth/login"; }}
           style={{ background: "transparent", border: "none", color: "var(--text-faint)", cursor: "pointer", padding: 4, display: "grid", placeItems: "center" }}><Icon name="logout" size={16} /></button>

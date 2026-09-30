@@ -192,3 +192,46 @@ func TestNameIsInsertedAfterClientId(t *testing.T) {
 		t.Fatalf("order is id=%d name=%d auth=%d:\n%s", idAt, nameAt, authAt, got.Config)
 	}
 }
+
+// The move of 2026-09-26: the registration came along, the panel's hostname did not.
+func TestAMovedPanelGetsItsRedirectAdded(t *testing.T) {
+	old := buildMASClientConfig("01KSPV9ZMR7NB4B2BBWMPYSD1P", "s3cret", "https://old-panel.example.org/api/v1/auth/oidc/callback")
+	out, added, err := ensureRedirect(old, "https://new-panel.example.org/api/v1/auth/oidc/callback")
+	if err != nil || !added {
+		t.Fatalf("added=%v err=%v", added, err)
+	}
+	var parsed struct {
+		Clients []struct {
+			ClientID     string   `yaml:"client_id"`
+			ClientSecret string   `yaml:"client_secret"`
+			RedirectURIs []string `yaml:"redirect_uris"`
+		} `yaml:"clients"`
+		Policy struct {
+			Data struct {
+				AdminClients []string `yaml:"admin_clients"`
+			} `yaml:"data"`
+		} `yaml:"policy"`
+	}
+	if err := yaml.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	c := parsed.Clients[0]
+	if c.ClientID != "01KSPV9ZMR7NB4B2BBWMPYSD1P" || c.ClientSecret != "s3cret" {
+		t.Errorf("credentials must not change: %+v", c)
+	}
+	if len(c.RedirectURIs) != 2 || c.RedirectURIs[0] != "https://old-panel.example.org/api/v1/auth/oidc/callback" {
+		t.Errorf("the old address stays, the new one is added: %v", c.RedirectURIs)
+	}
+	if len(parsed.Policy.Data.AdminClients) != 1 {
+		t.Errorf("the admin grant must survive: %s", out)
+	}
+}
+
+// Counter-probe: the address is already there — nothing changes, byte for byte.
+func TestAPresentRedirectChangesNothing(t *testing.T) {
+	cfg := buildMASClientConfig("id", "secret", "https://panel.example.org/api/v1/auth/oidc/callback")
+	out, added, err := ensureRedirect(cfg, "https://panel.example.org/api/v1/auth/oidc/callback")
+	if err != nil || added || out != cfg {
+		t.Errorf("added=%v err=%v changed=%v", added, err, out != cfg)
+	}
+}

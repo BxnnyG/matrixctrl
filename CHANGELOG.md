@@ -15,6 +15,20 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.113] — 2026-09-30
+
+### Fixed
+
+- **Connecting the Matrix login after a move to another server.** The registration moved
+  with the configuration and MAS still knew the client, so Setup answered „bereits
+  vollständig registriert" — without adding the new panel address to MAS or storing the
+  credentials in MatrixCtrl. It now adds the address (keeping the old one) and takes the
+  deploy-confirm-switch path.
+- Rooms, moderation and users no longer show a „Verbinden" button that cannot work while
+  MatrixCtrl runs on the emergency login; they explain what is missing and link to Setup.
+  The button itself now shows every error instead of springing back silently.
+- The rail says „Notzugang" instead of a fixed „Matrix-Login" when that is the state.
+
 ## [0.1.112] — 2026-09-30
 
 ### Added

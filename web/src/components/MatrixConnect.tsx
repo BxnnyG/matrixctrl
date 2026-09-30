@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { Card, Icon, Button, Spinner } from "@/components/mc";
+import { MatrixLoginMissing, useMatrixLogin } from "@/components/MatrixLoginMissing";
 
 /** Synapse's admin API is read with the operator's own authority, granted in a
  *  separate authorization (E36). This is the screen for "that has not happened yet",
@@ -74,6 +75,11 @@ export function MatrixConnect({
     },
   });
 
+  // Without a Matrix login configured the button cannot work — the server answers 501.
+  // Asked before offering it, so the screen says what is missing instead (etappe 116a).
+  const login = useMatrixLogin();
+  const unavailable = login.data?.enabled === false && !login.data?.retrying;
+
   // Only ever fired once per mount, on top of the session-wide timer: React can run
   // an effect twice in development, and two authorizations would consume two states
   // and land the operator wherever the second one finishes.
@@ -82,7 +88,7 @@ export function MatrixConnect({
   // Auto-connect is suppressed when the previous attempt failed. `error` is set by the
   // callback's failure redirect, so its presence means "the last round trip did not
   // work" — retrying it silently would hide the reason behind an endless bounce.
-  const mayAuto = auto && !error && !started.current && !recentlyAttempted();
+  const mayAuto = auto && !unavailable && !login.isLoading && !error && !started.current && !recentlyAttempted();
 
   useEffect(() => {
     if (!mayAuto) return;
@@ -93,6 +99,10 @@ export function MatrixConnect({
     // on every render is exactly the loop being guarded against.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mayAuto]);
+
+  if (unavailable) {
+    return <MatrixLoginMissing what="Dieser Bereich" />;
+  }
 
   // While the silent path is running there is nothing to decide, so the panel would
   // only flash a button the operator never needed to press.
@@ -156,6 +166,11 @@ export function MatrixConnect({
         <Button variant="primary" icon="shield" onClick={() => { markAttempt(); connect.mutate(); }} disabled={connect.isPending}>
           {connect.isPending ? "Weiterleitung…" : "Verbinden"}
         </Button>
+        {/* Every failure is shown. The button used to swallow the server's answer and
+            spring back, which read as "does nothing" (etappe 116a). */}
+        {connect.isError && (
+          <div style={{ fontSize: 13, color: "var(--status-err)" }}>{(connect.error as Error).message}</div>
+        )}
       </div>
     </Card>
   );

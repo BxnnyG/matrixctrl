@@ -128,3 +128,47 @@ func missingMASClientFields(merged map[string]interface{}) []string {
 	}
 	return repair.Changed
 }
+
+// ensureRedirect adds redirect to the MatrixCtrl client's redirect_uris when it is not
+// there yet, and keeps every address already registered (etappe 116a).
+//
+// The case it exists for: a move to another server. The registration travels with the
+// configuration and MAS keeps knowing the client, but the panel now answers under a
+// different hostname — and MAS refuses to send a login back to an address it was not
+// told about. Adding rather than replacing: the old address costs nothing, and a
+// redirect removed by mistake is a lockout.
+func ensureRedirect(existing, redirect string) (string, bool, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(existing), &doc); err != nil {
+		return existing, false, fmt.Errorf("the stored MAS client config is not valid YAML: %w", err)
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return existing, false, fmt.Errorf("the stored MAS client config is not a mapping")
+	}
+	clients := mappingValue(doc.Content[0], "clients")
+	if clients == nil || clients.Kind != yaml.SequenceNode || len(clients.Content) == 0 ||
+		clients.Content[0].Kind != yaml.MappingNode {
+		return existing, false, fmt.Errorf("the stored MAS client config has no clients")
+	}
+	client := clients.Content[0]
+	uris := mappingValue(client, "redirect_uris")
+	if uris == nil {
+		uris = &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		client.Content = append(client.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "redirect_uris"}, uris)
+	}
+	if uris.Kind != yaml.SequenceNode {
+		return existing, false, fmt.Errorf("redirect_uris is not a list")
+	}
+	for _, u := range uris.Content {
+		if u.Value == redirect {
+			return existing, false, nil
+		}
+	}
+	uris.Content = append(uris.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: redirect, Style: yaml.DoubleQuotedStyle})
+	out, err := yaml.Marshal(doc.Content[0])
+	if err != nil {
+		return existing, false, err
+	}
+	return string(out), true, nil
+}
