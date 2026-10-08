@@ -224,3 +224,25 @@ func TestSwitchingBackToTheDefaultLeavesNothing(t *testing.T) {
 		t.Errorf("switching back must remove the block: %+v", off)
 	}
 }
+
+// The worker card's switches and Worker-Insights' recommendations must name the same
+// types: a recommendation that leads to a card without its switch is a dead end
+// (etappe 118). Kept here without importing synmetrics — the list is short, and the
+// test in synmetrics checks the other direction against the chart.
+func TestEveryRecommendableWorkerHasASwitch(t *testing.T) {
+	want := []string{"synchrotron", "sliding-sync", "federation-inbound", "federation-reader", "federation-sender",
+		"media-repository", "event-creator", "client-reader", "encryption", "receipts", "typing-persister",
+		"account-data", "user-dir", "pusher", "background"}
+	have := map[string]bool{}
+	for _, f := range workerFields() {
+		have[strings.TrimPrefix(f.ID, "synapse.workers.")] = true
+		if f.Source.Values != f.ID+".enabled" {
+			t.Errorf("%s writes %q", f.ID, f.Source.Values)
+		}
+	}
+	for _, w := range want {
+		if !have[w] {
+			t.Errorf("no switch for %s", w)
+		}
+	}
+}

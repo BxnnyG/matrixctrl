@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkersRouteImport } from './routes/workers'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as TlsDnsRouteImport } from './routes/tls-dns'
 import { Route as SystemRouteImport } from './routes/system'
@@ -34,6 +35,11 @@ import { Route as ConfigSliceRouteImport } from './routes/config/$slice'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
+const WorkersRoute = WorkersRouteImport.update({
+  id: '/workers',
+  path: '/workers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -169,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/system': typeof SystemRoute
   '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
+  '/workers': typeof WorkersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -195,6 +202,7 @@ export interface FileRoutesByTo {
   '/system': typeof SystemRoute
   '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
+  '/workers': typeof WorkersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   '/system': typeof SystemRoute
   '/tls-dns': typeof TlsDnsRoute
   '/users': typeof UsersRoute
+  '/workers': typeof WorkersRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/login': typeof AuthLoginRoute
   '/config/$slice': typeof ConfigSliceRoute
@@ -250,6 +259,7 @@ export interface FileRouteTypes {
     | '/system'
     | '/tls-dns'
     | '/users'
+    | '/workers'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -276,6 +286,7 @@ export interface FileRouteTypes {
     | '/system'
     | '/tls-dns'
     | '/users'
+    | '/workers'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -302,6 +313,7 @@ export interface FileRouteTypes {
     | '/system'
     | '/tls-dns'
     | '/users'
+    | '/workers'
     | '/auth/callback'
     | '/auth/login'
     | '/config/$slice'
@@ -329,6 +341,7 @@ export interface RootRouteChildren {
   SystemRoute: typeof SystemRoute
   TlsDnsRoute: typeof TlsDnsRoute
   UsersRoute: typeof UsersRoute
+  WorkersRoute: typeof WorkersRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthLoginRoute: typeof AuthLoginRoute
   ConfigSliceRoute: typeof ConfigSliceRoute
@@ -343,6 +356,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workers': {
+      id: '/workers'
+      path: '/workers'
+      fullPath: '/workers'
+      preLoaderRoute: typeof WorkersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/users': {
       id: '/users'
       path: '/users'
@@ -538,6 +558,7 @@ const rootRouteChildren: RootRouteChildren = {
   SystemRoute: SystemRoute,
   TlsDnsRoute: TlsDnsRoute,
   UsersRoute: UsersRoute,
+  WorkersRoute: WorkersRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthLoginRoute: AuthLoginRoute,
   ConfigSliceRoute: ConfigSliceRoute,

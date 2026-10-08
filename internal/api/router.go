@@ -28,8 +28,10 @@ type Deps struct {
 	// Federation reach needs nothing but the config; the destination list uses the
 	// operator's Matrix access like rooms (etappe 117).
 	Federation *handlers.FederationHandler
-	Reports    *handlers.ReportsHandler
-	Version    *handlers.VersionHandler
+	// Workers reads the Synapse sampler's minutes (etappe 118).
+	Workers *handlers.WorkersHandler
+	Reports *handlers.ReportsHandler
+	Version *handlers.VersionHandler
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
 	Mail           *handlers.MailHandler
@@ -130,6 +132,10 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/federation/destinations", deps.Federation.Destinations)
 			r.Get("/api/v1/federation/destinations/{destination}/rooms", deps.Federation.Rooms)
 			r.Post("/api/v1/federation/destinations/{destination}/reset", deps.Federation.Reset)
+		}
+
+		if deps.Workers != nil {
+			r.Get("/api/v1/workers", deps.Workers.Get)
 		}
 
 		if deps.Audit != nil {

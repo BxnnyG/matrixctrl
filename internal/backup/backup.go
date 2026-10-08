@@ -52,6 +52,7 @@ const MinReadableFormat = 1
 var regenerable = map[string]bool{
 	"rtc_samples":         true,
 	"node_samples":        true,
+	"synapse_samples":     true,
 	"rtc_address_history": true,
 	"login_attempts":      true,
 	"oidc_states":         true,

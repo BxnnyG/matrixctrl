@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -20,7 +20,7 @@ interface CardDef { id: string; title: string; sub: string; icon: IconName; fiel
 interface Value { value: unknown; is_default: boolean; set_elsewhere?: string }
 interface TasksResponse { cards: CardDef[]; values: Record<string, Value> }
 
-export function TaskView({ diffKey }: { diffKey: string }) {
+export function TaskView({ diffKey, focus }: { diffKey: string; /** A card to scroll to — `?card=` (etappe 118). */ focus?: string }) {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["config", "tasks"],
@@ -50,20 +50,26 @@ export function TaskView({ diffKey }: { diffKey: string }) {
       </p>
       {save.isError && <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>{(save.error as Error).message}</div>}
       {data.cards.map((c) => (
-        <TaskCard key={c.id} card={c} values={data.values} onSet={set} busy={save.isPending} verdict={verdict} />
+        <TaskCard key={c.id} card={c} values={data.values} onSet={set} busy={save.isPending} verdict={verdict} focused={c.id === focus} />
       ))}
     </div>
   );
 }
 
-function TaskCard({ card, values, onSet, busy, verdict }: {
-  card: CardDef; values: Record<string, Value>; onSet: (id: string, v: unknown) => void; busy: boolean; verdict?: ConfigVerdict;
+function TaskCard({ card, values, onSet, busy, verdict, focused }: {
+  card: CardDef; values: Record<string, Value>; onSet: (id: string, v: unknown) => void; busy: boolean; verdict?: ConfigVerdict; focused?: boolean;
 }) {
   const navigate = useNavigate();
   const plain = card.fields.filter((f) => f.kind !== "quantity");
   const groups = [...new Set(card.fields.filter((f) => f.kind === "quantity").map((f) => f.group ?? ""))];
+  // Arriving from a link to this card: bring it into view once it exists.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focused]);
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 4, padding: 0, overflow: "hidden" }}>
+    <div ref={ref} id={`task-${card.id}`} style={{ scrollMarginTop: 72 }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 4, padding: 0, overflow: "hidden", ...(focused ? { borderColor: "var(--accent)" } : {}) }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 10px" }}>
         <div style={{ display: "grid", placeItems: "center", width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)" }}><Icon name={card.icon} size={17} /></div>
         <div style={{ flex: 1 }}>
@@ -73,10 +79,21 @@ function TaskCard({ card, values, onSet, busy, verdict }: {
         {card.id === "registration" && (
           <Button variant="outline" size="sm" icon="key" onClick={() => navigate({ to: "/login-providers" })}>Google, GitHub, Zitadel …</Button>
         )}
+        {card.id === "workers" && (
+          <Button variant="outline" size="sm" icon="activity" onClick={() => navigate({ to: "/workers" })}>Worker-Insights</Button>
+        )}
       </div>
-      {plain.map((f) => <FieldRow key={f.id} f={f} v={values[f.id]} onSet={onSet} busy={busy} />)}
+      {plain.map((f, i) => (
+        <Fragment key={f.id}>
+          {f.group && f.group !== plain[i - 1]?.group && (
+            <div style={{ padding: "10px 18px 2px", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-faint)" }}>{f.group}</div>
+          )}
+          <FieldRow f={f} v={values[f.id]} onSet={onSet} busy={busy} />
+        </Fragment>
+      ))}
       {groups.length > 0 && <Resources fields={card.fields} groups={groups} values={values} onSet={onSet} busy={busy} verdict={verdict} />}
     </Card>
+    </div>
   );
 }
 

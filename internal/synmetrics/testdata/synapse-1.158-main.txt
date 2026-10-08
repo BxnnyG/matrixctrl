@@ -1,0 +1,145 @@
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 2.14818816e+08
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.79062742921e+09
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 16579.47
+# HELP synapse_http_server_response_ru_utime_seconds_total sec
+# TYPE synapse_http_server_response_ru_utime_seconds_total counter
+synapse_http_server_response_ru_utime_seconds_total{method="GET",server_name="example.com",servlet="HealthResource",tag=""} 173.73336699997296
+# HELP synapse_http_server_response_ru_stime_seconds_total sec
+# TYPE synapse_http_server_response_ru_stime_seconds_total counter
+synapse_http_server_response_ru_stime_seconds_total{method="GET",server_name="example.com",servlet="HealthResource",tag=""} 40.62167899999542
+# HELP synapse_background_process_ru_utime_seconds_total User CPU time used by background processes, in seconds
+# TYPE synapse_background_process_ru_utime_seconds_total counter
+synapse_background_process_ru_utime_seconds_total{name="wake_destinations_needing_catchup",server_name="example.com"} 18.040987999992023
+synapse_background_process_ru_utime_seconds_total{name="_schedule_next_expiry",server_name="example.com"} 0.007286000000000001
+synapse_background_process_ru_utime_seconds_total{name="user_parter_loop",server_name="example.com"} 0.015281999999997513
+synapse_background_process_ru_utime_seconds_total{name="generate_total_users",server_name="example.com"} 2.6822050000050157
+synapse_background_process_ru_utime_seconds_total{name="common_usage_metrics_update_gauges",server_name="example.com"} 2.844499999998926
+synapse_background_process_ru_utime_seconds_total{name="resume_sync_partial_state_room",server_name="example.com"} 0.0035629999999996637
+synapse_background_process_ru_utime_seconds_total{name="generate_monthly_active_users",server_name="example.com"} 0.5305359999999523
+synapse_background_process_ru_utime_seconds_total{name="background_updates",server_name="example.com"} 0.011855000000000067
+synapse_background_process_ru_utime_seconds_total{name="_handle_new_device_update_async",server_name="example.com"} 0.013121000000001895
+synapse_background_process_ru_utime_seconds_total{name="presence.notify_new_event",server_name="example.com"} 0.3042680000048428
+synapse_background_process_ru_utime_seconds_total{name="reap_monthly_active_users",server_name="example.com"} 1.33558800000002
+synapse_background_process_ru_utime_seconds_total{name="user_directory.notify_new_event",server_name="example.com"} 0.5596809999919923
+synapse_background_process_ru_utime_seconds_total{name="stats.notify_new_event",server_name="example.com"} 0.06776499999665211
+synapse_background_process_ru_utime_seconds_total{name="update_client_ips",server_name="example.com"} 1.4055559999905434
+synapse_background_process_ru_utime_seconds_total{name="_send_events",server_name="example.com"} 0.0
+synapse_background_process_ru_utime_seconds_total{name="_schedule_db_events",server_name="example.com"} 0.009553000000000963
+synapse_background_process_ru_utime_seconds_total{name="start_pushers",server_name="example.com"} 0.04429299999999864
+synapse_background_process_ru_utime_seconds_total{name="room_forgetter.notify_new_event",server_name="example.com"} 0.37295200000113654
+synapse_background_process_ru_utime_seconds_total{name="typing._handle_timeouts",server_name="example.com"} 0.8129369999986515
+synapse_background_process_ru_utime_seconds_total{name="upsert_safety_check",server_name="example.com"} 0.009465000000000279
+synapse_background_process_ru_utime_seconds_total{name="prune_old_user_ips",server_name="example.com"} 156.44089200007267
+synapse_background_process_ru_utime_seconds_total{name="delayed_events.notify_new_event",server_name="example.com"} 0.5171589999971123
+synapse_background_process_ru_utime_seconds_total{name="_reap_stale_read_write_locks",server_name="example.com"} 70.54527000001247
+synapse_background_process_ru_utime_seconds_total{name="user_directory.refresh_remote_profiles",server_name="example.com"} 0.015737000000000154
+synapse_background_process_ru_utime_seconds_total{name="expire_url_cache_data",server_name="example.com"} 130.92683699998472
+synapse_background_process_ru_utime_seconds_total{name="_get_stats_for_federation_staging",server_name="example.com"} 41.472082000021175
+synapse_background_process_ru_utime_seconds_total{name="_cleanup_locks",server_name="example.com"} 2.822100999984812
+synapse_background_process_ru_utime_seconds_total{name="LruCache._expire_old_entries",server_name="example.com"} 1.7378909999985197
+synapse_background_process_ru_utime_seconds_total{name="_maybe_retry_device_resync",server_name="example.com"} 33.17055099999018
+synapse_background_process_ru_utime_seconds_total{name="handle_presence_timeouts",server_name="example.com"} 5.066270000031423
+synapse_background_process_ru_utime_seconds_total{name="rotate_notifs",server_name="example.com"} 207.00355800004408
+synapse_background_process_ru_utime_seconds_total{name="prune_cache",server_name="example.com"} 0.5580660000075994
+synapse_background_process_ru_utime_seconds_total{name="clean_up_old_cache_invalidations",server_name="example.com"} 0.5648629999954664
+synapse_background_process_ru_utime_seconds_total{name="_delete_state_groups_loop",server_name="example.com"} 12.281191999992215
+synapse_background_process_ru_utime_seconds_total{name="clean_scheduled_tasks",server_name="example.com"} 15.153387999985577
+synapse_background_process_ru_utime_seconds_total{name="persist_presence_changes",server_name="example.com"} 0.08438100000072524
+synapse_background_process_ru_utime_seconds_total{name="update_recently_accessed_media",server_name="example.com"} 6.0577720000000514
+synapse_background_process_ru_utime_seconds_total{name="launch_scheduled_tasks",server_name="example.com"} 25.24577699999882
+synapse_background_process_ru_utime_seconds_total{name="_cleanup_old_transaction_ids",server_name="example.com"} 3.508688000001225
+synapse_background_process_ru_utime_seconds_total{name="_delete_old_federation_inbox_rows",server_name="example.com"} 3.1806479999956014
+synapse_background_process_ru_utime_seconds_total{name="expire_old_sessions",server_name="example.com"} 4.697979000027221
+synapse_background_process_ru_utime_seconds_total{name="send_dummy_events_to_fill_extremities",server_name="example.com"} 3.0090659999970546
+synapse_background_process_ru_utime_seconds_total{name="generate_user_daily_visits",server_name="example.com"} 5.350007000000716
+synapse_background_process_ru_utime_seconds_total{name="_censor_redactions",server_name="example.com"} 4.157824999972934
+synapse_background_process_ru_utime_seconds_total{name="event_push_action_stream_orderings",server_name="example.com"} 13.64795299999728
+synapse_background_process_ru_utime_seconds_total{name="_clear_old_push_actions_staging",server_name="example.com"} 0.83984199999767
+synapse_background_process_ru_utime_seconds_total{name="delete_expired_sessions",server_name="example.com"} 0.45769899999921426
+synapse_background_process_ru_utime_seconds_total{name="cull_expired_threepid_validation_tokens",server_name="example.com"} 0.47633500001385265
+synapse_background_process_ru_utime_seconds_total{name="cleanup_transactions",server_name="example.com"} 0.44083099999650655
+synapse_background_process_ru_utime_seconds_total{name="delete_expired_login_tokens",server_name="example.com"} 0.5278249999983643
+synapse_background_process_ru_utime_seconds_total{name="delete_old_sliding_sync_connections",server_name="example.com"} 0.24920000000026565
+synapse_background_process_ru_utime_seconds_total{name="delete_old_forward_extrem_cache",server_name="example.com"} 0.34168499998661184
+synapse_background_process_ru_utime_seconds_total{name="read_forward_extremities",server_name="example.com"} 0.4653040000008848
+synapse_background_process_ru_utime_seconds_total{name="prune_old_outbound_device_pokes",server_name="example.com"} 0.2869609999989342
+synapse_background_process_ru_utime_seconds_total{name="prune_device_lists_changes_in_room",server_name="example.com"} 0.5217770000021242
+synapse_background_process_ru_utime_seconds_total{name="delete_expired_sticky_events",server_name="example.com"} 0.21766400000347152
+synapse_background_process_ru_utime_seconds_total{name="store_retry_timings",server_name="example.com"} 0.026961999999130626
+# HELP synapse_background_process_ru_stime_seconds_total System CPU time used by background processes, in seconds
+# TYPE synapse_background_process_ru_stime_seconds_total counter
+synapse_background_process_ru_stime_seconds_total{name="wake_destinations_needing_catchup",server_name="example.com"} 59.12035899999775
+synapse_background_process_ru_stime_seconds_total{name="_schedule_next_expiry",server_name="example.com"} 0.005468000000000001
+synapse_background_process_ru_stime_seconds_total{name="user_parter_loop",server_name="example.com"} 0.03567900000000014
+synapse_background_process_ru_stime_seconds_total{name="generate_total_users",server_name="example.com"} 21.042438999998332
+synapse_background_process_ru_stime_seconds_total{name="common_usage_metrics_update_gauges",server_name="example.com"} 22.32247699999951
+synapse_background_process_ru_stime_seconds_total{name="resume_sync_partial_state_room",server_name="example.com"} 0.04226599999999994
+synapse_background_process_ru_stime_seconds_total{name="generate_monthly_active_users",server_name="example.com"} 9.232840000000776
+synapse_background_process_ru_stime_seconds_total{name="background_updates",server_name="example.com"} 0.036980999999999487
+synapse_background_process_ru_stime_seconds_total{name="_handle_new_device_update_async",server_name="example.com"} 0.04725800000000016
+synapse_background_process_ru_stime_seconds_total{name="presence.notify_new_event",server_name="example.com"} 0.44947200000014087
+synapse_background_process_ru_stime_seconds_total{name="reap_monthly_active_users",server_name="example.com"} 2.6537410000004833
+synapse_background_process_ru_stime_seconds_total{name="user_directory.notify_new_event",server_name="example.com"} 0.9288499999993329
+synapse_background_process_ru_stime_seconds_total{name="stats.notify_new_event",server_name="example.com"} 0.10311100000057997
+synapse_background_process_ru_stime_seconds_total{name="update_client_ips",server_name="example.com"} 7.395707999998332
+synapse_background_process_ru_stime_seconds_total{name="_send_events",server_name="example.com"} 0.0
+synapse_background_process_ru_stime_seconds_total{name="_schedule_db_events",server_name="example.com"} 0.024248000000000047
+synapse_background_process_ru_stime_seconds_total{name="start_pushers",server_name="example.com"} 0.04791899999999894
+synapse_background_process_ru_stime_seconds_total{name="room_forgetter.notify_new_event",server_name="example.com"} 1.0465790000002277
+synapse_background_process_ru_stime_seconds_total{name="typing._handle_timeouts",server_name="example.com"} 10.049524999997605
+synapse_background_process_ru_stime_seconds_total{name="upsert_safety_check",server_name="example.com"} 0.13298400000000013
+synapse_background_process_ru_stime_seconds_total{name="prune_old_user_ips",server_name="example.com"} 166.24826300000475
+synapse_background_process_ru_stime_seconds_total{name="delayed_events.notify_new_event",server_name="example.com"} 1.8552930000001413
+synapse_background_process_ru_stime_seconds_total{name="_reap_stale_read_write_locks",server_name="example.com"} 107.41138899999858
+synapse_background_process_ru_stime_seconds_total{name="user_directory.refresh_remote_profiles",server_name="example.com"} 0.04532400000000013
+synapse_background_process_ru_stime_seconds_total{name="expire_url_cache_data",server_name="example.com"} 169.0659379999961
+synapse_background_process_ru_stime_seconds_total{name="_get_stats_for_federation_staging",server_name="example.com"} 112.35266999999943
+synapse_background_process_ru_stime_seconds_total{name="_cleanup_locks",server_name="example.com"} 5.081053000000583
+synapse_background_process_ru_stime_seconds_total{name="LruCache._expire_old_entries",server_name="example.com"} 19.79437900000209
+synapse_background_process_ru_stime_seconds_total{name="_maybe_retry_device_resync",server_name="example.com"} 89.06401099999951
+synapse_background_process_ru_stime_seconds_total{name="handle_presence_timeouts",server_name="example.com"} 47.60639999999681
+synapse_background_process_ru_stime_seconds_total{name="rotate_notifs",server_name="example.com"} 259.9836660000025
+synapse_background_process_ru_stime_seconds_total{name="prune_cache",server_name="example.com"} 17.111155000002164
+synapse_background_process_ru_stime_seconds_total{name="clean_up_old_cache_invalidations",server_name="example.com"} 3.3792689999995624
+synapse_background_process_ru_stime_seconds_total{name="_delete_state_groups_loop",server_name="example.com"} 51.83869100000014
+synapse_background_process_ru_stime_seconds_total{name="clean_scheduled_tasks",server_name="example.com"} 62.78465599999966
+synapse_background_process_ru_stime_seconds_total{name="persist_presence_changes",server_name="example.com"} 3.837996000000473
+synapse_background_process_ru_stime_seconds_total{name="update_recently_accessed_media",server_name="example.com"} 67.5408250000009
+synapse_background_process_ru_stime_seconds_total{name="launch_scheduled_tasks",server_name="example.com"} 100.43213599999794
+synapse_background_process_ru_stime_seconds_total{name="_cleanup_old_transaction_ids",server_name="example.com"} 24.91872499999943
+synapse_background_process_ru_stime_seconds_total{name="_delete_old_federation_inbox_rows",server_name="example.com"} 36.965981999999954
+synapse_background_process_ru_stime_seconds_total{name="expire_old_sessions",server_name="example.com"} 26.092857000000482
+synapse_background_process_ru_stime_seconds_total{name="send_dummy_events_to_fill_extremities",server_name="example.com"} 33.21266800000055
+synapse_background_process_ru_stime_seconds_total{name="generate_user_daily_visits",server_name="example.com"} 26.4589439999995
+synapse_background_process_ru_stime_seconds_total{name="_censor_redactions",server_name="example.com"} 46.98956200000218
+synapse_background_process_ru_stime_seconds_total{name="event_push_action_stream_orderings",server_name="example.com"} 90.38915200000052
+synapse_background_process_ru_stime_seconds_total{name="_clear_old_push_actions_staging",server_name="example.com"} 1.3480739999997624
+synapse_background_process_ru_stime_seconds_total{name="delete_expired_sessions",server_name="example.com"} 2.4511939999998162
+synapse_background_process_ru_stime_seconds_total{name="cull_expired_threepid_validation_tokens",server_name="example.com"} 2.0845570000000357
+synapse_background_process_ru_stime_seconds_total{name="cleanup_transactions",server_name="example.com"} 1.801127000000248
+synapse_background_process_ru_stime_seconds_total{name="delete_expired_login_tokens",server_name="example.com"} 1.4985840000001573
+synapse_background_process_ru_stime_seconds_total{name="delete_old_sliding_sync_connections",server_name="example.com"} 0.9328800000004662
+synapse_background_process_ru_stime_seconds_total{name="delete_old_forward_extrem_cache",server_name="example.com"} 0.938751000000309
+synapse_background_process_ru_stime_seconds_total{name="read_forward_extremities",server_name="example.com"} 0.9493169999994535
+synapse_background_process_ru_stime_seconds_total{name="prune_old_outbound_device_pokes",server_name="example.com"} 0.8454510000002884
+synapse_background_process_ru_stime_seconds_total{name="prune_device_lists_changes_in_room",server_name="example.com"} 3.178356999999451
+synapse_background_process_ru_stime_seconds_total{name="delete_expired_sticky_events",server_name="example.com"} 0.33051699999994355
+synapse_background_process_ru_stime_seconds_total{name="store_retry_timings",server_name="example.com"} 0.0018480000000238306
+# HELP synapse_federation_server_number_inbound_pdu_in_staging The total number of events in the inbound federation staging
+# TYPE synapse_federation_server_number_inbound_pdu_in_staging gauge
+synapse_federation_server_number_inbound_pdu_in_staging{server_name="example.com"} 0.0
+# HELP synapse_federation_transaction_queue_pending_destinations 
+# TYPE synapse_federation_transaction_queue_pending_destinations gauge
+synapse_federation_transaction_queue_pending_destinations{server_name="example.com"} 0.0
+# HELP synapse_federation_transaction_queue_pending_pdus 
+# TYPE synapse_federation_transaction_queue_pending_pdus gauge
+synapse_federation_transaction_queue_pending_pdus{server_name="example.com"} 0.0
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 1234.0

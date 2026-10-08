@@ -47,7 +47,7 @@ const NAV: NavGroup[] = [
     { id: "federation", label: "Föderation", icon: "globe", to: "/federation" }, { id: "bridges", label: "Bridges", icon: "audit" },
   ] },
   { group: "Compliance", phase: "5", items: [
-    { id: "workers", label: "Worker-Insights", icon: "activity" },
+    { id: "workers", label: "Worker-Insights", icon: "activity", to: "/workers" },
   ] },
 ];
 
@@ -65,6 +65,7 @@ const TITLES: Record<string, [string, string]> = {
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
   "/federation": ["Föderation", "Erreichen dich andere Server, und mit wem redet deiner?"],
+  "/workers": ["Worker-Insights", "Wie viel Synapse arbeitet, und ob Worker sich lohnen"],
   "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 

@@ -40,8 +40,9 @@ const iconFor = (file: string): IconName => SECTION_ICONS[file] ?? "file";
 // can be linked to, and the old per-section editor can simply forward here.
 export const Route = createFileRoute("/config/")({
   component: Settings,
-  validateSearch: (s: Record<string, unknown>): { section?: string; mode?: Mode } => ({
+  validateSearch: (s: Record<string, unknown>): { section?: string; mode?: Mode; card?: string } => ({
     section: typeof s.section === "string" ? s.section : undefined,
+    card: typeof s.card === "string" ? s.card : undefined,
     mode: s.mode === "yaml" || s.mode === "diff" || s.mode === "standard" || s.mode === "tasks" ? s.mode : undefined,
   }),
 });
@@ -257,7 +258,7 @@ function Settings() {
         {/* Main panel */}
         <main className="mc-scroll" style={{ flex: 1, overflowY: "auto", background: "var(--bg)" }}>
           {mode === "tasks" ? (
-            <TaskView diffKey={diffData?.diff ?? ""} />
+            <TaskView diffKey={diffData?.diff ?? ""} focus={search.card} />
           ) : searchHits ? (
             <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--text-faint)" }}>{searchHits.length} Treffer für „{query}"</p>

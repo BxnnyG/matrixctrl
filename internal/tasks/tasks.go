@@ -233,6 +233,41 @@ func Cards() []Card {
 			Sub:    "Wie viel Speicher und Rechenzeit jeder Dienst bekommt",
 			Fields: res,
 		},
+		{
+			ID: "workers", Title: "Synapse-Worker", Icon: "activity",
+			Sub:    "Teile von Synapses Arbeit in eigene Prozesse auslagern — ob es sich lohnt, sagt Worker-Insights",
+			Fields: workerFields(),
+		},
+	}
+}
+
+// workerFields are the ESS worker types Worker-Insights can recommend (etappe 118), one
+// switch each. Not all 23: the rest serve setups this product does not build (appservice
+// bridges, SSO) or exist for scale far past a single node, and a list of switches nobody
+// can judge is the opposite of a task.
+func workerFields() []Field {
+	const restarts = "Synapse startet neu; der Worker kommt als eigener Pod dazu."
+	const warn = "Jeder Worker ist ein eigener Synapse-Prozess — rechne mit 100–300 MB Speicher. Die Vorschau zeigt, ob der Knoten das hergibt."
+	w := func(typ, label, help, group string) Field {
+		return Field{ID: "synapse.workers." + typ, Label: label, Help: help, Kind: Bool, Default: false, Group: group,
+			Restarts: restarts, Warn: warn, Source: val("synapse.workers." + typ + ".enabled")}
+	}
+	return []Field{
+		w("synchrotron", "Sync", "Beantwortet das ständige Nachfragen der Apps nach Neuigkeiten — bei vielen gleichzeitig verbundenen Geräten die größte Last.", "Apps"),
+		w("sliding-sync", "Sliding Sync", "Dasselbe für die neuen Element-Apps (Element X).", "Apps"),
+		w("client-reader", "Lesen", "Verlauf, Mitgliederlisten, Profile.", "Apps"),
+		w("event-creator", "Senden", "Nachrichten und Raumänderungen annehmen.", "Apps"),
+		w("encryption", "Verschlüsselung", "Schlüsselaustausch zwischen Geräten.", "Apps"),
+		w("media-repository", "Medien", "Hochladen, Herunterladen, Vorschaubilder, Link-Vorschauen.", "Apps"),
+		w("federation-inbound", "Föderation empfangen", "Nimmt an, was andere Server schicken.", "Föderation"),
+		w("federation-reader", "Föderation beantworten", "Beantwortet Abfragen anderer Server: Schlüssel, Geräte, Raumzustand.", "Föderation"),
+		w("federation-sender", "Föderation senden", "Schickt an andere Server — hilft, wenn deren Warteschlange wächst.", "Föderation"),
+		w("pusher", "Push", "Benachrichtigungen an Handys.", "Sonstiges"),
+		w("background", "Hintergrundaufgaben", "Aufräumen, Statistiken, Zähler.", "Sonstiges"),
+		w("receipts", "Lesebestätigungen", "", "Sonstiges"),
+		w("typing-persister", "Tipp-Anzeige", "", "Sonstiges"),
+		w("account-data", "Kontodaten", "Einstellungen, die Apps auf dem Server ablegen.", "Sonstiges"),
+		w("user-dir", "Nutzerverzeichnis", "Die Suche nach Personen.", "Sonstiges"),
 	}
 }
 

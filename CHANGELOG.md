@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.120] — 2026-10-08
+
+### Added
+
+- **Worker-Insights** (was greyed out since phase 1): does Synapse need workers, and which?
+  Every Synapse process is read once a minute on its metrics port and recorded for 30
+  days — share of a CPU core, memory, and where the time goes by area (sync, federation
+  in/out, media, sending, reading, encryption …), each with the ESS worker type that
+  would take it over. The verdict rests on the 95th percentile over a week, because a
+  server idle at night and saturated every evening averages to "fine": „Kein Worker
+  nötig" with the number, „Beobachten", or „Ein Worker würde helfen: …" when one area
+  carries at least a quarter of a saturated process — and „ausgelastet, aber nicht an
+  einer Stelle" when none does, instead of guessing. A growing federation queue
+  recommends the sender regardless of CPU; a switched-on worker idling for a day is
+  named with the memory it costs. Before an hour of history the page shows the
+  process's lifetime average, labelled as such. Synapse attributes only part of its CPU
+  time to areas (about 15 % on the production server); the rest is shown as such.
+- **Settings card „Synapse-Worker"**: one switch per recommendable worker type, with
+  what it takes over and what it costs; the preview shows restarts and whether the node
+  has the memory. Settings can now be linked to a card (`?card=workers`).
+
 ## [0.1.119] — 2026-09-30
 
 ### Added

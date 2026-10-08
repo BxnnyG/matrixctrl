@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
+	"github.com/bxnnyg/matrixctrl/internal/synmetrics"
 	"github.com/bxnnyg/matrixctrl/internal/updatecheck"
 	"github.com/bxnnyg/matrixctrl/internal/version"
 )
@@ -246,6 +249,28 @@ func main() {
 		synapse.NewDispositions(pool, synapse.KindEvent),
 		synapse.NewDispositions(pool, synapse.KindUser))
 
+	synStore := synmetrics.NewStore(pool)
+	synapseProcs := func(ctx context.Context) ([]k8s.SynapseProcess, error) {
+		if k8sClient == nil {
+			return nil, nil
+		}
+		return k8sClient.SynapseProcesses(ctx, essNS, essRelease)
+	}
+	synSampler := synmetrics.NewSampler(synStore, func(ctx context.Context) ([]synmetrics.Target, error) {
+		procs, err := synapseProcs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		targets := make([]synmetrics.Target, 0, len(procs))
+		for _, p := range procs {
+			targets = append(targets, synmetrics.Target{Process: p.Pod, Worker: p.Worker,
+				URL: "http://" + net.JoinHostPort(p.IP, strconv.Itoa(int(p.Port))) + "/_synapse/metrics"})
+		}
+		return targets, nil
+	})
+	workersHandler := handlers.NewWorkersHandler(synStore, synSampler.Latest, synapseProcs, configStore)
+	workersHandler.SetReadErrors(synSampler.Errors)
+
 	fedChecker := federation.New()
 	federationHandler := handlers.NewFederationHandler(configStore, fedChecker.Check, synapseFor)
 
@@ -330,6 +355,7 @@ func main() {
 		Config:         configHandler,
 		Setup:          setupHandler,
 		Federation:     federationHandler,
+		Workers:        workersHandler,
 		Audit:          handlers.NewAuditHandler(auditStore),
 		RTC:            rtcHandler,
 		Users:          usersHandler,
@@ -364,6 +390,12 @@ func main() {
 		nodeStore := nodehist.NewStore(pool)
 		statusHandler.SetNodeHistory(nodeStore)
 		go nodehist.NewSampler(nodeStore, k8sClient.NodeInfo).Run(context.Background())
+	}
+
+	// Every Synapse process, every minute: how much of a core it uses and where that
+	// goes — the record "does this server need workers" is answered from (etappe 118).
+	if k8sClient != nil {
+		go synSampler.Run(context.Background())
 	}
 
 	// Both of the above append forever. On a single-node cluster sharing a disk with

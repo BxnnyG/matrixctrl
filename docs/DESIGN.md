@@ -85,7 +85,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
 | S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS & DNS has its own page since E115** — each certificate seen from the visitor and from the origin (§4.118). (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
 | S15 Federation & bridges | ⏳ ½ (E117) | **Federation since E117:** reachability walked as a remote server walks it (delegation, target, TLS for the delegated name, signing key naming this server, client delegation + CORS), from this server — live-checked against production, matrix.org and a name without Matrix; destinations from Synapse with failing-first and backoff reset (tested against a stub only — no admin token on the playground). Bridges: E119 |
-| S16 Compliance & scale insights | ⏳ not started | Phase 5 |
+| S16 Compliance & scale insights | ⏳ ½ (E118) | **Worker insights since E118:** every Synapse process sampled per minute from its own metrics, 30 days; verdict from the weekly 95th percentile against the one-core ceiling of a Python process; recommendations only for an area carrying ≥ 25 %; live-read on production (0.4 % of a core over 8.5 days → no worker) and the playground. Cross-component audit: open |
 | S17 Multi-instance & i18n | ⏳ not started | Phase 6 — UI currently ships German only |
 
 ## 2. Systems & gaps
@@ -4683,4 +4683,39 @@ gesagt. Die ESS-Versionsliste blätterte längst richtig (E42); die Lektion war 
 geteilt worden. Jetzt liest `internal/ociregistry` für alle, mit `n=1000` **und**
 `rel="next"`; der Live-Test verlangt mindestens 0.1.118 und fällt, wenn man den alten
 Zustand nachstellt. Installationen vor 0.1.119 brauchen einmal den Befehl.
+
+### §4.123 — Worker-Insights: zuerst die Zahl, die sich nicht schönrechnen lässt (2026-10-08, agent, etappe 118)
+
+**Was gemessen wird.** Jeder Synapse-Prozess (Hauptprozess und Worker, über das
+Instanz-Label des Charts, nicht über Namen) wird jede Minute auf seinem eigenen
+Metrik-Port gelesen. Gespeichert werden Raten, nicht Zähler: Das Paaren zweier Ablesungen
+passiert einmal, im Sampler, wo ein Neustart sichtbar ist (anderer `process_start_time`).
+Ein Paar über einen Neustart hinweg ergibt keine Minute statt einer negativen.
+
+**Warum die Gesamtzahl führt.** Synapse ordnet seine CPU-Zeit Endpunkten und
+Hintergrundjobs zu — und auf dem Produktionsserver erklärten die am 2026-10-08 nur etwa
+15 % der Gesamtzeit. Der Rest ist Replikation, Event-Schleife, Datenbanktreiber. Eine
+Seite, die nur die zugeordneten Bereiche zeigte, ließe einen Nebenposten wie die Hauptlast
+aussehen. Also: Anteil eines Kerns je Prozess als Hauptzahl, die Bereiche als Hinweis,
+der Rest als eigene Zeile „nicht zuzuordnen".
+
+**Warum das Perzentil.** Ein Server, der nachts schläft und jeden Abend vier Stunden am
+Anschlag läuft, hat im Wochenschnitt Luft. Entschieden wird am 95. Perzentil der Minuten
+einer Woche, gemessen an der Grenze eines Python-Prozesses: ein Kern. Unter 50 % kein
+Worker, 50–80 % beobachten, darüber ein Worker — aber nur für einen Bereich, der
+mindestens ein Viertel trägt. Trägt keiner so viel, sagt die Seite das, statt den
+größten kleinen Posten zu empfehlen. Jede Regel hat einen Test, und jeder Test fällt,
+wenn man seine Regel herausnimmt.
+
+**„Kein Worker nötig" ist das häufigste richtige Ergebnis** und bekommt deshalb dieselbe
+Sorgfalt wie eine Empfehlung: mit der Zahl, ohne Einschalt-Knopf. Produktion lag über
+8,5 Tage bei 0,4 % eines Kerns.
+
+**Einschalten über die Einstellungen.** Kein zweiter Speicherweg: eine Aufgaben-Karte
+„Synapse-Worker" mit den empfehlbaren Typen, deren Vorschau Neustarts und Speicher gegen
+den Knoten prüft. Ein Test hält Empfehlungen und Schalter deckungsgleich, ein anderer die
+Typen gegen das Chart.
+
+**Ablesefehler werden gezeigt.** Ein Sampler, der Synapse nicht erreicht, sähe sonst
+genauso aus wie einer, der noch nicht lange genug läuft.
 
