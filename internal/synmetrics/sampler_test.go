@@ -92,3 +92,13 @@ func TestAnUnreadableProcessIsReported(t *testing.T) {
 		t.Fatal("no error reported for a process that cannot be read")
 	}
 }
+
+func TestAFailedListIsReported(t *testing.T) {
+	s := newSampler(&captured{}, func(context.Context) ([]Target, error) {
+		return nil, fmt.Errorf("pods is forbidden")
+	})
+	s.Once(context.Background())
+	if e := s.Errors()[listKey]; e != "pods is forbidden" {
+		t.Fatalf("errors: %v", s.Errors())
+	}
+}

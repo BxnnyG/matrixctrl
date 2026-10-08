@@ -25,6 +25,9 @@ const (
 	metricsLimit  = 8 << 20
 )
 
+// listKey is where Errors reports a failure to list the processes at all.
+const listKey = "Synapse-Pods auflisten"
+
 // Target is one process to read.
 type Target struct {
 	Process string
@@ -104,8 +107,19 @@ func (s *Sampler) Once(ctx context.Context) {
 	defer cancel()
 	targets, err := s.targets(c)
 	if err != nil {
+		// Reported like a process that cannot be read: a sampler that cannot even list
+		// Synapse is otherwise silent, and the page would only ever say "too little data".
+		s.mu.Lock()
+		if s.errs[listKey] != err.Error() {
+			log.Printf("synmetrics: cannot list Synapse processes: %v", err)
+		}
+		s.errs[listKey] = err.Error()
+		s.mu.Unlock()
 		return
 	}
+	s.mu.Lock()
+	delete(s.errs, listKey)
+	s.mu.Unlock()
 	present := map[string]bool{}
 	for _, t := range targets {
 		present[t.Process] = true
@@ -143,7 +157,7 @@ func (s *Sampler) Once(ctx context.Context) {
 		}
 	}
 	for p := range s.errs {
-		if !present[p] {
+		if p != listKey && !present[p] {
 			delete(s.errs, p)
 		}
 	}

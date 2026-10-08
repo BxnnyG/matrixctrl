@@ -15,6 +15,11 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Fixed
+
+- Worker-Insights: a sampler that cannot even list the Synapse pods now says so on the
+  page (and once in the log) instead of staying silent behind „zu wenig Messwerte".
+
 ## [0.1.120] — 2026-10-08
 
 ### Added
