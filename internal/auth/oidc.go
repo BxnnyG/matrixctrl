@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,6 +40,9 @@ type oidcDiscovery struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	UserinfoEndpoint      string `json:"userinfo_endpoint"`
+	// RevocationEndpoint ends a session by one of its tokens (RFC 7009) — what lets
+	// MatrixCtrl stop leaving one MAS session behind per sign-in (etappe 119d).
+	RevocationEndpoint string `json:"revocation_endpoint"`
 }
 
 type OIDCService struct {
@@ -274,6 +278,12 @@ func (o *OIDCService) LoginWithCode(ctx context.Context, code string) (string, e
 	if tr.Error != "" {
 		return "", fmt.Errorf("token error %s: %s", tr.Error, tr.ErrorDesc)
 	}
+
+	// The sign-in's MAS session has done its job once userinfo is read: MatrixCtrl keeps
+	// its own session from here. Ended whatever the outcome, so a refused sign-in leaves
+	// nothing behind either. It used to stay open for good — one "MatrixCtrl" entry per
+	// sign-in in the operator's session list (etappe 119d).
+	defer o.RevokeLater(tr.AccessToken, "access_token")
 
 	// UserInfo
 	uiReq, err := http.NewRequestWithContext(ctx, "GET", o.discovery.UserinfoEndpoint, nil)
@@ -516,4 +526,49 @@ func (o *OIDCService) UserID(ctx context.Context, accessToken string) (string, e
 		return "", fmt.Errorf("no Matrix user identifier in token response")
 	}
 	return ui.Sub, nil
+}
+
+// ClientID is MatrixCtrl's own client at MAS.
+func (o *OIDCService) ClientID() string { return o.cfg.ClientID }
+
+// Revoke ends the MAS session a token belongs to (RFC 7009). MAS answers 200 for a token
+// it does not know, as the RFC asks, so an already ended session is not an error.
+func (o *OIDCService) Revoke(ctx context.Context, token, hint string) error {
+	if token == "" || o.discovery == nil || o.discovery.RevocationEndpoint == "" {
+		return nil
+	}
+	body := url.Values{"token": {token}}
+	if hint != "" {
+		body.Set("token_type_hint", hint)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.discovery.RevocationEndpoint, strings.NewReader(body.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(o.cfg.ClientID, o.cfg.ClientSecret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("revocation answered %s", resp.Status)
+	}
+	return nil
+}
+
+// RevokeLater revokes in the background, with its own deadline: the request that
+// finished with the token must not wait for MAS to confirm, and must not cancel it.
+func (o *OIDCService) RevokeLater(token, hint string) {
+	if token == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := o.Revoke(ctx, token, hint); err != nil {
+			log.Printf("oidc: could not end a MAS session: %v", err)
+		}
+	}()
 }

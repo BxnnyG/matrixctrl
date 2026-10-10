@@ -159,7 +159,8 @@ export function MatrixConnect({
           Der Zugriff umfasst technisch die volle Matrix-API deines Kontos — Synapse
           kann ein Token sonst keiner Person zuordnen. <strong>MatrixCtrl nutzt davon
           ausschließlich die Admin-Schnittstelle</strong> und liest keine Nachrichten.
-          Es wird <strong>kein Gerät</strong> auf deinem Konto angelegt.
+          In deiner Sitzungsliste bei MAS erscheint der Zugriff als <strong>„MatrixCtrl“</strong>; er
+          endet beim Abmelden und spätestens einen Tag, nachdem er zuletzt benutzt wurde.
         </p>
 
         {/* Still not stored — E52 made the reconnect invisible, not persistent. Saying

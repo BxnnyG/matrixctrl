@@ -56,7 +56,14 @@ type MatrixTokens struct {
 	sessions map[string]*matrixSession
 	refresh  Refresher
 	now      func() time.Time
+	// revoke ends the MAS session behind a refresh token that is being let go of —
+	// replaced by a new grant or forgotten at sign-out. Without it each one stayed
+	// open at MAS for good (etappe 119d).
+	revoke func(refreshToken string)
 }
+
+// SetRevoker wires the call that ends a MAS session by its refresh token.
+func (m *MatrixTokens) SetRevoker(f func(refreshToken string)) { m.revoke = f }
 
 func NewMatrixTokens(refresh Refresher) *MatrixTokens {
 	return &MatrixTokens{
@@ -74,11 +81,15 @@ func (m *MatrixTokens) Put(userID, access, refresh string, expiresIn int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, exists := m.sessions[userID]; !exists && len(m.sessions) >= maxSessions {
+	prev, exists := m.sessions[userID]
+	if !exists && len(m.sessions) >= maxSessions {
 		m.evictExpiredLocked()
 		if len(m.sessions) >= maxSessions {
 			return // refuse rather than grow; the operator is told to sign in again
 		}
+	}
+	if exists && prev.refreshToken != "" && prev.refreshToken != refresh && m.revoke != nil {
+		m.revoke(prev.refreshToken)
 	}
 	m.sessions[userID] = &matrixSession{
 		accessToken:  access,
@@ -141,8 +152,12 @@ func (m *MatrixTokens) Get(ctx context.Context, userID string) (string, error) {
 // fails.
 func (m *MatrixTokens) Forget(userID string) {
 	m.mu.Lock()
+	s, ok := m.sessions[userID]
 	delete(m.sessions, userID)
 	m.mu.Unlock()
+	if ok && s.refreshToken != "" && m.revoke != nil {
+		m.revoke(s.refreshToken)
+	}
 }
 
 // Has reports whether this process holds a session for the user, without refreshing.

@@ -241,7 +241,14 @@ func main() {
 		}
 		return o.RefreshSynapseAdmin(ctx, refreshToken)
 	})
+	// A grant that is replaced or forgotten ends its MAS session (etappe 119d).
+	matrixTokens.SetRevoker(func(refreshToken string) {
+		if o := authHandler.OIDC(); o != nil {
+			o.RevokeLater(refreshToken, "refresh_token")
+		}
+	})
 	authHandler.SetMatrixTokens(matrixTokens)
+	go auth.SweepMASSessions(context.Background(), authHandler.OIDC)
 
 	// One factory for both screens: the token belongs to the caller, so a client
 	// captured at construction would carry one operator's authority into another

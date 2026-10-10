@@ -15,6 +15,22 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.124] — 2026-10-11
+
+### Fixed
+
+- **MatrixCtrl filled the operator's MAS session list.** It never ended a session at MAS:
+  every sign-in left one open, every „Verbinden" for rooms and moderation another, and
+  since the automatic reconnect every restart one more. Now the sign-in's session is
+  ended as soon as MatrixCtrl has its own (token revocation, RFC 7009), a Matrix grant is
+  revoked when it is replaced or forgotten at sign-out, and once at start and then hourly
+  MatrixCtrl ends its own sessions nothing uses any more: sign-ins older than ten
+  minutes, Matrix grants idle for a day (an unused one is reconnected silently on the
+  next visit), and its own spent admin tokens. Only sessions of MatrixCtrl's client are
+  ever touched. The log says how many were ended.
+- The connect screen claimed no device was created; it now says the access appears as
+  „MatrixCtrl" in the MAS session list and when it ends.
+
 ## [0.1.123] — 2026-10-10
 
 ### Fixed

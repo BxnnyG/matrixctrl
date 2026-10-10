@@ -113,6 +113,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 119a | Namensauflösung im Cluster beobachten: Ausfall vs. kein Netz unterscheiden, Anmeldefehler in Worten (Anlass: NetBird-DNS-Ausfall in Produktion) | ✅ 2026-10-10 · `v0.1.121` · [plan](plans/etappe-119a-namensaufloesung.md) |
 | 119b | Hooks ablösen: abgedeckte Hooks überspringen (Vergleich mit dem Release-Manifest), Neuinstallationen schreiben die Anruf-Werte, Hooks unter „Erweitert" | ✅ 2026-10-10 · `v0.1.122` · [plan](plans/etappe-119b-hooks-abloesen.md) |
 | 119c | Upgrades am Anruf-Server: hostNetwork-Port-Blockade während Helm wartet lösen; ehrliche Fehlermeldung; Hook-Hinweis aus der Abdeckung; Name statt ULID | ✅ 2026-10-10 · `v0.1.123` · [plan](plans/etappe-119c-hostnetwork-upgrade.md) |
+| 119d | MAS-Sitzungen aufräumen: Widerruf nach der Anmeldung und beim Ersetzen/Abmelden, stündlich verwaiste MatrixCtrl-Sitzungen beenden | ✅ 2026-10-11 · `v0.1.124` · [plan](plans/etappe-119d-mas-sitzungen.md) |
 | 119 | Bridges (Hookshot, Appservices) | 📋 geplant |
 | 112–113 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei (verschoben: der akute Umzug ist erledigt) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |

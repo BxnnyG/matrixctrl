@@ -4788,3 +4788,26 @@ wiederhergestellt" stand nach jedem Fehlschlag — ESS-Upgrades laufen nicht ato
 drei Versuche ließen die Pods größtenteils neu und das Release auf `failed` zurück. Eine
 beruhigende Falschaussage nach einem Fehler ist schlimmer als keine.
 
+### §4.127 — Was MatrixCtrl bei MAS öffnet, schließt es auch (2026-10-11, operator, etappe 119d)
+
+Die Sitzungsliste des Betreibers bei MAS war voller „Unknown device · MatrixCtrl". MatrixCtrl
+öffnete Sitzungen an drei Stellen und schloss keine: die Anmeldung (deren Token nur für
+Userinfo gebraucht wird), den Matrix-Zugriff für Räume und Moderation (dessen Refresh-Token
+nur im Speicher liegt, §E36 — also bei jedem Neustart verloren und seit E52 automatisch
+neu angefordert) und den eigenen Admin-Zugang (eine Sitzung pro Token, alle paar Minuten).
+
+**An der Quelle:** Die Anmelde-Sitzung wird nach dem Lesen der Userinfo widerrufen, in
+jedem Fall, auch bei abgelehnter Anmeldung. Ein Matrix-Zugriff, der ersetzt oder beim
+Abmelden vergessen wird, wird widerrufen.
+
+**Danach:** Was ein Neustart verwaist, kann kein Speicher mehr widerrufen. Deshalb fragt
+MatrixCtrl stündlich die MAS-Admin-API nach den aktiven Sitzungen *seines eigenen Clients*
+und beendet die, die nichts mehr benutzt: Anmeldungen nach zehn Minuten, Zugriffe nach
+einem Tag ohne Nutzung (ein benutzter erneuert sich alle paar Minuten), eigene
+Admin-Sitzungen nach einer Stunde. Fremde Clients — Element auf dem Handy — fasst die
+Regel nie an; jede Bedingung hat einen Test mit Gegenprobe. Der Preis: Wer Räume einen Tag
+nicht geöffnet hat, wird beim nächsten Öffnen still neu verbunden.
+
+Der Satz „Es wird kein Gerät auf deinem Konto angelegt" auf dem Verbinden-Schirm war in
+genau dem Sinn falsch, der den Betreiber interessierte: Er sah die Einträge.
+
