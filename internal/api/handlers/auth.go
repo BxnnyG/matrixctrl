@@ -263,7 +263,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 // displayName is the name to show for a session, when the session's ID is not one.
 //
 // MAS does not put the Matrix ID into its userinfo, so a session falls back to the
-// OIDC `sub` — a ULID — and the sidebar showed "01KFY1JRA76V3JFYY…" where the operator
+// OIDC `sub` — a ULID — and the sidebar showed a ULID ("01H…") where the operator
 // expected their name (etappe 119c). The username is asked of MAS once per ID and kept;
 // usernames do not change under a running session.
 func (h *AuthHandler) displayName(ctx context.Context, userID string) string {
