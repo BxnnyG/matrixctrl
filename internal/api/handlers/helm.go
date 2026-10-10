@@ -6,8 +6,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,11 +112,21 @@ func (h *HelmHandler) UpgradeCheck(w http.ResponseWriter, r *http.Request) {
 // rolloutProbe builds the function the progress ticker calls to describe what the
 // rollout is stuck on. Returns nil when there is no cluster connection, which the
 // ticker treats as "no extra detail" rather than as an error.
+//
+// It is the one probe that also acts, and only on one pattern: a host-network pod
+// that cannot be placed because its predecessor holds the ports (P2-23). Left alone,
+// that rollout never finishes — Helm waits ten minutes and fails, every time; it did so
+// three times on ESS 26.10.0 (etappe 119c). Removing the old pod is what "restart the
+// call server" already does, and the line says what it costs.
 func (h *HelmHandler) rolloutProbe(ctx context.Context) probeFunc {
 	if h.k8s == nil || h.essNS == "" {
 		return nil
 	}
 	return func() string {
+		if removed, err := h.k8s.UnblockHostPortRollouts(ctx, h.essNS); err == nil && len(removed) > 0 {
+			return fmt.Sprintf("Der neue Pod wartete auf die Ports des alten (Host-Netz) — %s beendet, damit er starten kann. "+
+				"Laufende Anrufe brechen dabei kurz ab.", strings.Join(removed, ", "))
+		}
 		return rollout.Describe(rollout.Assess(podStates(h.k8s.RolloutState(ctx, h.essNS))))
 	}
 }

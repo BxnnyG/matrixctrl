@@ -15,6 +15,26 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.123] — 2026-10-10
+
+### Fixed
+
+- **ESS upgrades hung on the call server and failed after ten minutes, every time.** With
+  the call server on the host network (now in the ESS settings, and since 0.1.122 for every
+  new installation), one replica and `maxUnavailable: 0`, the new pod needs the ports the
+  old one holds — it stayed Pending, Helm timed out, and three upgrades to ESS 26.10.0
+  failed in a row on the production server. While Helm waits, MatrixCtrl now recognises
+  exactly that pattern (scheduler refuses for ports, both pods on the host network, same
+  Deployment, different ReplicaSets) and removes the old pod, as „Anruf-Server neu
+  starten" already did; the log says so, and that running calls drop briefly.
+- **A failed ESS upgrade claimed Helm had restored the previous revision.** ESS upgrades
+  do not run atomic; nothing was restored. The message now says the release is `failed`,
+  that parts may already run the new version, and what the two ways on are.
+- The upgrade page announced „Post-Upgrade-Hooks laufen automatisch" for two hooks that
+  0.1.122 skips. It now lists only hooks that will do something, and nothing otherwise.
+- The sidebar showed a ULID instead of the operator's name: MAS gives no Matrix ID in
+  userinfo, so sessions carry the OIDC `sub`. `/auth/me` now resolves it to the username.
+
 ## [0.1.122] — 2026-10-10
 
 ### Changed

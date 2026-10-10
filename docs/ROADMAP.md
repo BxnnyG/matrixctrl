@@ -112,6 +112,7 @@ Etappes 1–10 are **reconstructed from `git log`** (39 commits, 2026-05-27 →
 | 118 | Worker-Insights: jede Minute jeder Synapse-Prozess (Anteil eines Kerns, Speicher, Bereiche), Urteil aus dem 95. Perzentil einer Woche, Worker-Schalter in den Einstellungen | ✅ 2026-10-08 · `v0.1.120` · [plan](plans/etappe-118-worker-insights.md) |
 | 119a | Namensauflösung im Cluster beobachten: Ausfall vs. kein Netz unterscheiden, Anmeldefehler in Worten (Anlass: NetBird-DNS-Ausfall in Produktion) | ✅ 2026-10-10 · `v0.1.121` · [plan](plans/etappe-119a-namensaufloesung.md) |
 | 119b | Hooks ablösen: abgedeckte Hooks überspringen (Vergleich mit dem Release-Manifest), Neuinstallationen schreiben die Anruf-Werte, Hooks unter „Erweitert" | ✅ 2026-10-10 · `v0.1.122` · [plan](plans/etappe-119b-hooks-abloesen.md) |
+| 119c | Upgrades am Anruf-Server: hostNetwork-Port-Blockade während Helm wartet lösen; ehrliche Fehlermeldung; Hook-Hinweis aus der Abdeckung; Name statt ULID | ✅ 2026-10-10 · `v0.1.123` · [plan](plans/etappe-119c-hostnetwork-upgrade.md) |
 | 119 | Bridges (Hookshot, Appservices) | 📋 geplant |
 | 112–113 | Der Umzug als ein Vorgang · Server-zu-Server ohne Datei (verschoben: der akute Umzug ist erledigt) | 📋 geplant · [plan](plans/etappe-102-umzug-ohne-shell.md) |
 | 72 | Ein Backup statt drei Entschuldigungen | ✅ 2026-09-05 · `v0.1.68` · [plan](plans/etappe-72-one-backup.md) |

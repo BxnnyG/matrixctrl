@@ -12,7 +12,7 @@ export const BOOTSTRAP_USER = "admin"; // internal/auth.BootstrapUserID
 export function useSession() {
   const q = useQuery({
     queryKey: ["auth", "me"],
-    queryFn: () => api.get<{ user_id: string }>("/api/v1/auth/me"),
+    queryFn: () => api.get<{ user_id: string; name?: string }>("/api/v1/auth/me"),
     staleTime: 60_000,
   });
   const userId = q.data?.user_id;
@@ -20,8 +20,9 @@ export function useSession() {
     userId,
     loading: q.isLoading,
     bootstrap: userId === BOOTSTRAP_USER,
-    /** "@alice:example.com" → "alice"; the emergency login → "Admin". */
-    name: !userId || userId === BOOTSTRAP_USER ? "Admin" : userId.replace(/^@/, "").split(":")[0],
+    /** "@alice:example.com" → "alice"; a MAS ID → the username the server resolved
+     *  (etappe 119c — it showed the ULID); the emergency login → "Admin". */
+    name: !userId || userId === BOOTSTRAP_USER ? "Admin" : q.data?.name || userId.replace(/^@/, "").split(":")[0],
   };
 }
 

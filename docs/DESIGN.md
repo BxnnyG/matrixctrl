@@ -4764,3 +4764,27 @@ Hooks-Seite steht unter „Erweitert", für Leute mit eigenen Hooks. Die Regress
 „SFU-Patches überleben ein Helm-Upgrade" (S11) bleibt — erfüllt jetzt durch die
 Chart-Werte selbst, die Hooks sind nur noch der Fallback für Installationen ohne sie.
 
+### §4.126 — Wenn das Ablösen der Hooks die Blockade freilegt (2026-10-10, operator, etappe 119c)
+
+Drei Upgrades auf ESS 26.10.0 scheiterten nach je zehn Minuten. Ursache: der Anruf-Server
+im Host-Netz, eine Replik, `maxUnavailable: 0` — der neue Pod braucht die Ports des alten
+und bleibt `Pending`, der alte geht erst, wenn der neue bereit ist. Bekannt seit P2-23,
+damals nur für den Neustart-Knopf gelöst. Unsichtbar blieb es, solange `hostNetwork` per
+Hook *nach* dem Upgrade kam: Helm selbst rollte einen Pod ohne Host-Ports. Seit der Wert in
+den ESS-Einstellungen steht — beim Betreiber von Hand, ab 0.1.122 für jede Neuinstallation
+—, trifft es jede Template-Änderung des SFU. §4.125 hat also eine Blockade freigelegt, die
+der Hook verdeckt hatte.
+
+**Lösung im Warten, nicht im Chart.** Die Deployment-Strategie lässt das Chart nicht
+setzen. Also erkennt der Fortschritts-Takt, der während jedes ESS-Upgrades läuft, genau
+dieses Muster — Scheduler-Ablehnung wegen Ports, beide Pods im Host-Netz, dieselbe
+Deployment über verschiedene ReplicaSets — und entfernt den alten Pod. Nichts anderes, was
+gerade `Pending` ist; jede Bedingung hat einen Test mit Gegenprobe (zwei davon schlugen
+zuerst nicht an und zeigten fehlende Fälle). Der Preis — ein kurzer Abbruch laufender
+Anrufe — steht im Log, denn ohne den Schritt gibt es kein Upgrade.
+
+**Was die Seite behauptete.** „Helm hat die vorherige Revision automatisch
+wiederhergestellt" stand nach jedem Fehlschlag — ESS-Upgrades laufen nicht atomic, und die
+drei Versuche ließen die Pods größtenteils neu und das Release auf `failed` zurück. Eine
+beruhigende Falschaussage nach einem Fehler ist schlimmer als keine.
+

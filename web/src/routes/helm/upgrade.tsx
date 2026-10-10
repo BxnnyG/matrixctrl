@@ -135,6 +135,11 @@ function UpgradeWizard() {
   const [showLog, setShowLog] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const qc = useQueryClient();
+  const hooksQuery = useQuery({
+    queryKey: ["hooks"],
+    queryFn: () => api.get<{ name: string; trigger: string; enabled: boolean; covered?: string }[]>("/api/v1/hooks"),
+  });
+  const pendingHooks = (hooksQuery.data ?? []).filter((h) => h.enabled && h.trigger !== "manual" && h.trigger !== "post-rollback" && !h.covered);
 
   const check = useQuery({
     queryKey: ["helm", "upgrade-check", selectedVersion],
@@ -228,13 +233,18 @@ function UpgradeWizard() {
         </Card>
       )}
 
-      <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-warn) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
-        <Icon name="alert" size={18} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
-        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
-          <strong style={{ color: "var(--text)" }}>Post-Upgrade-Hooks laufen automatisch.</strong>
-          <div style={{ color: "var(--text-dim)", marginTop: 2 }}>SFU <code style={{ fontFamily: "var(--mono)" }}>hostNetwork</code> und Service <code style={{ fontFamily: "var(--mono)" }}>externalTrafficPolicy</code> werden nach dem Upgrade gepatcht.</div>
-        </div>
-      </Card>
+      {/* Only hooks that will actually do something. This was a fixed sentence about
+          the two call-server patches — still shown after ESS had taken both over and
+          MatrixCtrl skipped them (etappe 119c). */}
+      {pendingHooks.length > 0 && (
+        <Card style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <Icon name="hook" size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+            <strong style={{ color: "var(--text)" }}>Nach dem Upgrade {pendingHooks.length === 1 ? "läuft ein Hook" : `laufen ${pendingHooks.length} Hooks`}:</strong>
+            <div style={{ color: "var(--text-dim)", marginTop: 2 }}>{pendingHooks.map((h) => h.name).join(", ")}</div>
+          </div>
+        </Card>
+      )}
 
       {!upgradeId ? (
         <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -332,7 +342,14 @@ function UpgradeWizard() {
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ fontSize: 13, lineHeight: 1.55 }}>
                   <strong style={{ color: "var(--text)" }}>Upgrade fehlgeschlagen.</strong>
-                  <div style={{ color: "var(--text-dim)", marginTop: 3 }}>Helm hat die vorherige Revision automatisch wiederhergestellt. Sieh die Logs oben für Details.</div>
+                  {/* Said as it is. This claimed Helm had restored the previous revision —
+                      ESS upgrades do not run atomic, and on 2026-10-10 three failed
+                      attempts left most pods on the new version and the release on
+                      "failed" (etappe 119c). */}
+                  <div style={{ color: "var(--text-dim)", marginTop: 3 }}>
+                    Es wurde nichts zurückgerollt: ESS steht jetzt auf „failed“, ein Teil läuft womöglich schon in der neuen Version.
+                    Ein neuer Versuch setzt dort an; auf der Übersicht kannst du stattdessen zur vorigen Revision zurückrollen. Der Grund steht im Log oben.
+                  </div>
                 </div>
                 <div><Button variant="outline" size="sm" onClick={() => navigate({ to: "/helm" })}>Zur Übersicht</Button></div>
               </div>

@@ -50,6 +50,11 @@ type AuthHandler struct {
 	retry *auth.RetryState
 	// dnsFailing reports a cluster-wide name-resolution outage (etappe 119a).
 	dnsFailing func() bool
+
+	// names caches session ID → username for /auth/me (etappe 119c); lookupName
+	// replaces the MAS lookup in tests.
+	names      sync.Map
+	lookupName func(ctx context.Context, id string) (string, error)
 }
 
 func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Pool, jwtKey []byte) *AuthHandler {
@@ -248,7 +253,46 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID := authmw.UserIDFromContext(r.Context())
-	JSON(w, http.StatusOK, map[string]string{"user_id": userID})
+	out := map[string]string{"user_id": userID}
+	if name := h.displayName(r.Context(), userID); name != "" {
+		out["name"] = name
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// displayName is the name to show for a session, when the session's ID is not one.
+//
+// MAS does not put the Matrix ID into its userinfo, so a session falls back to the
+// OIDC `sub` — a ULID — and the sidebar showed "01KFY1JRA76V3JFYY…" where the operator
+// expected their name (etappe 119c). The username is asked of MAS once per ID and kept;
+// usernames do not change under a running session.
+func (h *AuthHandler) displayName(ctx context.Context, userID string) string {
+	if userID == "" || userID == auth.BootstrapUserID || strings.HasPrefix(userID, "@") {
+		return ""
+	}
+	if v, ok := h.names.Load(userID); ok {
+		return v.(string)
+	}
+	lookup := h.lookupName
+	if lookup == nil {
+		lookup = func(ctx context.Context, id string) (string, error) {
+			c := h.MAS()
+			if c == nil {
+				return "", errors.New("no MAS client")
+			}
+			u, err := c.UserByID(ctx, id)
+			if err != nil || u == nil {
+				return "", err
+			}
+			return u.Username, nil
+		}
+	}
+	name, err := lookup(ctx, userID)
+	if err != nil || name == "" {
+		return "" // asked again next time; a name is a courtesy, not a requirement
+	}
+	h.names.Store(userID, name)
+	return name
 }
 
 // GET /api/v1/auth/oidc/available — lets the frontend know if OIDC is configured.

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -42,5 +43,35 @@ func TestAvailabilityCarriesTheDNSWordOnlyWhenFailing(t *testing.T) {
 	failing = true
 	if b := body(); !strings.Contains(b, `"dns":"failing"`) {
 		t.Fatalf("failing resolution not said: %s", b)
+	}
+}
+
+// The sidebar showed a ULID where the operator expected their name: MAS gives no Matrix
+// ID in userinfo, so the session falls back to the `sub` (etappe 119c).
+func TestASessionIDIsShownAsAName(t *testing.T) {
+	h := NewAuthHandler(nil, nil, nil, []byte("0123456789abcdef0123456789abcdef"))
+	calls := 0
+	h.lookupName = func(_ context.Context, id string) (string, error) {
+		calls++
+		if id == "01KFY1JRA76V3JFYY0000000AB" {
+			return "alice", nil
+		}
+		return "", errors.New("unknown")
+	}
+	if got := h.displayName(context.Background(), "01KFY1JRA76V3JFYY0000000AB"); got != "alice" {
+		t.Fatalf("name = %q", got)
+	}
+	h.displayName(context.Background(), "01KFY1JRA76V3JFYY0000000AB")
+	if calls != 1 {
+		t.Errorf("MAS asked %d times for the same ID; the name is kept", calls)
+	}
+	// A Matrix ID and the emergency login are names already — MAS is not asked.
+	for _, id := range []string{"@bob:example.com", "admin"} {
+		if got := h.displayName(context.Background(), id); got != "" {
+			t.Errorf("displayName(%q) = %q", id, got)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("MAS was asked about a Matrix ID or the emergency login")
 	}
 }
