@@ -4719,3 +4719,23 @@ Typen gegen das Chart.
 **Ablesefehler werden gezeigt.** Ein Sampler, der Synapse nicht erreicht, sähe sonst
 genauso aus wie einer, der noch nicht lange genug läuft.
 
+### §4.124 — Wenn der Cluster keine Namen mehr auflösen kann (2026-10-10, operator, etappe 119a)
+
+**Anlass.** NetBird hatte `/etc/resolv.conf` des Produktionsservers übernommen und schickte
+alle Anfragen an zwei andere Geräte im VPN; beide waren offline. CoreDNS gibt an den
+Host-Resolver weiter — also verlor jeder Dienst im Cluster jeden externen Namen
+gleichzeitig: MatrixCtrl erreichte MAS nicht, MAS den Anmelde-Anbieter, Synapse die
+anderen Server. MatrixCtrl zeigte davon eine Go-Fehlermeldung auf der Anmeldeseite — dem
+einen Ort, an dem man in diesem Zustand festsitzt, weil der Notzugang gesperrt ist,
+sobald der Matrix-Login existiert.
+
+**Was jetzt geprüft wird.** Jede Minute die Namen, auf die es ankommt, über den Resolver
+des eigenen Pods — denselben Weg wie jeder Dienst. Nur Ausfälle zählen (Timeout,
+SERVFAIL); ein Name, den es nicht gibt, ist ein fehlender Eintrag und Sache von TLS & DNS,
+nicht ein roter Dashboard-Banner. Scheitert die Auflösung, wird **ein** Name **einmal**
+bei einem öffentlichen Resolver nachgefragt: Antwortet der, hängt nur der Cluster
+(Ursache: der Resolver des Hosts), und die Karte bietet den Weg an, k3s davon unabhängig zu
+machen (`resolv-conf`). Antwortet auch der nicht, fehlt die Verbindung nach draußen, und
+der k3s-Weg wäre der falsche Rat. Auf der öffentlichen Anmeldeseite steht davon nur ein
+Wort im Verfügbarkeits-Endpunkt (`dns: failing`) — keine Adressen vor der Anmeldung.
+

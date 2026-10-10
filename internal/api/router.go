@@ -34,9 +34,11 @@ type Deps struct {
 	Version *handlers.VersionHandler
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
-	Mail           *handlers.MailHandler
-	TLSDNS         *handlers.TLSDNSHandler
-	SelfUpdate     *handlers.SelfUpdateHandler
+	// DNSHealth is the cluster's name resolution (etappe 119a).
+	DNSHealth  *handlers.DNSHealthHandler
+	Mail       *handlers.MailHandler
+	TLSDNS     *handlers.TLSDNSHandler
+	SelfUpdate *handlers.SelfUpdateHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -136,6 +138,9 @@ func NewRouter(deps Deps) http.Handler {
 
 		if deps.Workers != nil {
 			r.Get("/api/v1/workers", deps.Workers.Get)
+		}
+		if deps.DNSHealth != nil {
+			r.Get("/api/v1/dns-health", deps.DNSHealth.Get)
 		}
 
 		if deps.Audit != nil {

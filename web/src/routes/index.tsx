@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ClusterDNSAlert } from "@/components/ClusterDNSAlert";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -289,6 +290,9 @@ function Dashboard() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {/* First: when the cluster cannot resolve names, half of what follows is a
+          consequence of it (etappe 119a). */}
+      <ClusterDNSAlert />
       {/* Hero */}
       <Card style={{ padding: 0, overflow: "hidden", position: "relative" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 140% at 100% 0%, var(--accent-soft), transparent 55%)", pointerEvents: "none" }} />

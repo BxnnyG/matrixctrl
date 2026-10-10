@@ -20,6 +20,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/auth"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/db"
+	"github.com/bxnnyg/matrixctrl/internal/dnshealth"
 	"github.com/bxnnyg/matrixctrl/internal/federation"
 	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
@@ -343,6 +344,19 @@ func main() {
 		mailHandler = handlers.NewMailHandler(k8sClient, configStore, essNS, essRelease)
 	}
 	tlsdnsHandler := handlers.NewTLSDNSHandler(k8sClient, configStore, essNS)
+
+	// Can the cluster still resolve the names it depends on (etappe 119a)? Checked
+	// through the pod's own resolver, the path every service takes.
+	dnsChecker := dnshealth.New(func(ctx context.Context) []string {
+		names := handlers.ConfiguredHosts(ctx, configStore)
+		if loginProviders != nil {
+			names = append(names, loginProviders.IssuerHosts(ctx)...)
+		}
+		return names
+	})
+	go dnsChecker.Run(context.Background())
+	authHandler.SetDNSFailing(func() bool { return !dnsChecker.State().OK })
+	dnsHealthHandler := handlers.NewDNSHealthHandler(dnsChecker)
 	selfUpdateHandler := handlers.NewSelfUpdateHandler(k8sClient, essNS, env("MATRIXCTRL_RELEASE", "matrixctrl"))
 
 	router := api.NewRouter(api.Deps{
@@ -363,6 +377,7 @@ func main() {
 		Reports:        reportsHandler,
 		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
 		LoginProviders: loginProviders,
+		DNSHealth:      dnsHealthHandler,
 		Mail:           mailHandler,
 		TLSDNS:         tlsdnsHandler,
 		SelfUpdate:     selfUpdateHandler,

@@ -15,8 +15,24 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.121] — 2026-10-10
+
+### Added
+
+- **The cluster's name resolution is watched.** Every minute MatrixCtrl resolves the names
+  it and ESS depend on (server name, Synapse, MAS, … and the external login providers)
+  through the cluster's own resolver. When that fails it asks one public resolver for the
+  same name to tell „only the cluster's resolution is stuck" from „no way out at all", and
+  the dashboard says which, since when, which names — and, for the first case, how to make
+  k3s independent of the host's resolver. A missing record is not an outage; that stays
+  with TLS & DNS.
+
 ### Fixed
 
+- **A login broken by DNS showed a raw Go error** („lookup … on 10.43.0.10:53: server
+  misbehaving") on the one page the operator cannot get past. It now says that the server
+  cannot resolve names and that the account is not the problem; the login page shows it
+  before the click, and the Matrix redirect no longer ends on a JSON error body.
 - Worker-Insights: a sampler that cannot even list the Synapse pods now says so on the
   page (and once in the log) instead of staying silent behind „zu wenig Messwerte".
 

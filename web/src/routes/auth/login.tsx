@@ -23,6 +23,9 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
   const [oidcRetrying, setOidcRetrying] = useState(false);
+  // The cluster cannot resolve names (etappe 119a): said before the click, because the
+  // click will fail and the operator is otherwise left guessing at their account.
+  const [dnsFailing, setDnsFailing] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
@@ -39,12 +42,14 @@ function Login() {
     let timer: ReturnType<typeof setTimeout>;
 
     const poll = () => {
-      api.get<{ enabled: boolean; retrying?: boolean }>("/api/v1/auth/oidc/available")
+      api.get<{ enabled: boolean; retrying?: boolean; dns?: string }>("/api/v1/auth/oidc/available")
         .then((r) => {
           if (cancelled) return;
           setOidcEnabled(r.enabled);
           setOidcRetrying(!!r.retrying);
-          if (!r.enabled && r.retrying) timer = setTimeout(poll, 5000);
+          setDnsFailing(r.dns === "failing");
+          // Asked again while resolution is down, so the note disappears by itself.
+          if ((!r.enabled && r.retrying) || r.dns === "failing") timer = setTimeout(poll, 5000);
         })
         .catch(() => { if (!cancelled) setOidcEnabled(false); });
     };
@@ -98,6 +103,16 @@ function Login() {
 
           {oidcEnabled === null && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 0", fontSize: 13, color: "var(--text-faint)" }}><Spinner size={15} /> Laden…</div>
+          )}
+
+          {dnsFailing && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--status-warn)", background: "color-mix(in oklch, var(--status-warn) 10%, var(--surface))", border: "1px solid color-mix(in oklch, var(--status-warn) 30%, var(--border))", borderRadius: "var(--radius-sm)", padding: "10px 12px", marginBottom: 20 }}>
+              <Icon name="alert" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                <strong style={{ fontWeight: 650 }}>Der Server kann gerade keine Namen auflösen (DNS).</strong>{" "}
+                Die Anmeldung über Matrix scheitert deshalb, bis das wieder geht — das liegt nicht an deinem Konto. Diese Seite merkt es von selbst.
+              </span>
+            </div>
           )}
 
           {oidcEnabled === true && (

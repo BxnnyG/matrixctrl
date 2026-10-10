@@ -15,6 +15,7 @@ import (
 
 	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/auth"
+	"github.com/bxnnyg/matrixctrl/internal/dnshealth"
 	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
@@ -47,6 +48,8 @@ type AuthHandler struct {
 	// never configured. Read by the login page so a password box that appears because
 	// the IdP is down does not look like the normal way in (E33).
 	retry *auth.RetryState
+	// dnsFailing reports a cluster-wide name-resolution outage (etappe 119a).
+	dnsFailing func() bool
 }
 
 func NewAuthHandler(svc TokenService, oidcSvc *auth.OIDCService, db *pgxpool.Pool, jwtKey []byte) *AuthHandler {
@@ -259,10 +262,32 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) OIDCAvailable(w http.ResponseWriter, r *http.Request) {
 	o := h.getOIDC()
 	enabled := o != nil && o.Enabled()
-	JSON(w, http.StatusOK, map[string]bool{
+	out := map[string]interface{}{
 		"enabled":  enabled,
 		"retrying": !enabled && h.retry.Active(),
-	})
+	}
+	// One word, no detail: the page in front of the login needs to know why signing in
+	// may fail before the operator tries, and this endpoint is public (etappe 119a).
+	if h.dnsFailing != nil && h.dnsFailing() {
+		out["dns"] = "failing"
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// SetDNSFailing wires the cluster's name-resolution check.
+func (h *AuthHandler) SetDNSFailing(f func() bool) { h.dnsFailing = f }
+
+// loginError is what the login page shows for a failed sign-in.
+//
+// A failure to resolve a name used to arrive verbatim — "lookup mas… on 10.43.0.10:53:
+// server misbehaving" — on the one page the operator cannot get past while it lasts:
+// the emergency login is closed once Matrix login exists (etappe 119a).
+func loginError(err error) string {
+	if dnshealth.IsResolutionError(err) {
+		return "Der Server kann gerade keine Namen auflösen (DNS) und erreicht deshalb die Anmeldung nicht. " +
+			"Das liegt nicht an deinem Konto — sobald die Namensauflösung wieder geht, klappt es."
+	}
+	return err.Error()
 }
 
 // GET /api/v1/auth/oidc/redirect — generates a state and redirects the browser to MAS.
@@ -274,7 +299,9 @@ func (h *AuthHandler) OIDCRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 	authURL, err := o.AuthURL(r.Context())
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		// The browser navigated here; a JSON error body is a dead end for it.
+		log.Printf("OIDC redirect error: %v", err)
+		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(loginError(err)), http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, authURL, http.StatusFound)
@@ -318,7 +345,7 @@ func (h *AuthHandler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 	userID, err := o.LoginWithCode(r.Context(), code)
 	if err != nil {
 		log.Printf("OIDC callback error: %v", err)
-		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(err.Error()), http.StatusFound)
+		http.Redirect(w, r, "/auth/login?error="+url.QueryEscape(loginError(err)), http.StatusFound)
 		return
 	}
 
