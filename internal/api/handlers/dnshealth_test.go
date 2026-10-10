@@ -53,15 +53,15 @@ func TestASessionIDIsShownAsAName(t *testing.T) {
 	calls := 0
 	h.lookupName = func(_ context.Context, id string) (string, error) {
 		calls++
-		if id == "01KFY1JRA76V3JFYY0000000AB" {
+		if id == "01HZZZZZZZZZZZZZZZZZZZZZZZ" {
 			return "alice", nil
 		}
 		return "", errors.New("unknown")
 	}
-	if got := h.displayName(context.Background(), "01KFY1JRA76V3JFYY0000000AB"); got != "alice" {
+	if got := h.displayName(context.Background(), "01HZZZZZZZZZZZZZZZZZZZZZZZ"); got != "alice" {
 		t.Fatalf("name = %q", got)
 	}
-	h.displayName(context.Background(), "01KFY1JRA76V3JFYY0000000AB")
+	h.displayName(context.Background(), "01HZZZZZZZZZZZZZZZZZZZZZZZ")
 	if calls != 1 {
 		t.Errorf("MAS asked %d times for the same ID; the name is kept", calls)
 	}
