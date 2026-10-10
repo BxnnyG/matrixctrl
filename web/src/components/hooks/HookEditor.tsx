@@ -32,6 +32,9 @@ export interface Hook {
   builtin: boolean;
   actions: HookAction[];
   lastRunStatus?: string;
+  /** Why the next run would be skipped — the chart already sets what it patches
+   *  (etappe 119b). Empty when the hook still has work to do. */
+  covered?: string;
 }
 
 const ACTION_TYPES = [

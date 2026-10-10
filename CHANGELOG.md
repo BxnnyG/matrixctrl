@@ -15,6 +15,23 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.122] — 2026-10-10
+
+### Changed
+
+- **Hooks skip themselves when ESS already does their job.** Before a hook runs, every
+  value its patches set is compared with the release's rendered manifest; if the chart
+  already renders all of them, the run is recorded as „übersprungen" with the reason
+  instead of patching the same values again and rolling the call server for nothing.
+  Both built-in hooks (call server on the host network, source addresses kept) are
+  covered on any ESS whose settings carry those values — on the production server they
+  were. A hook with an HTTP call, a removing patch, or no manifest to compare always runs.
+- **New installations write the call settings directly** (`matrixRTC.sfu.hostNetwork`,
+  `externalTrafficPolicy: Local` on the call ports) instead of relying on the hooks.
+- The hooks page says in words what hooks are, marks covered ones „Nicht mehr nötig",
+  and counts only hooks that still have work. Hooks moved to a new menu group
+  „Erweitert".
+
 ## [0.1.121] — 2026-10-10
 
 ### Added

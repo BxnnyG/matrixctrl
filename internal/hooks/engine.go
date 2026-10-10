@@ -15,6 +15,20 @@ import (
 type Engine struct {
 	db     *pgxpool.Pool
 	runner *Runner
+	// coverage, when set, lets a hook be skipped because the chart already does what it
+	// would do (etappe 119b).
+	coverage Coverage
+}
+
+// SetCoverage wires the check that decides whether a hook still has anything to do.
+func (e *Engine) SetCoverage(c Coverage) { e.coverage = c }
+
+// Covered is the reason a hook would be skipped now, or "".
+func (e *Engine) Covered(h Hook) string {
+	if e == nil || e.coverage == nil {
+		return ""
+	}
+	return e.coverage(h)
 }
 
 func NewEngine(db *pgxpool.Pool, runner *Runner) *Engine {
@@ -72,7 +86,18 @@ func (e *Engine) runHook(ctx context.Context, h Hook, trigger TriggerType, trigg
 	var results []ActionResult
 	finalStatus := RunSuccess
 
-	for i, action := range h.Actions {
+	// Skipped, not run, when the chart already sets everything the hook patches: the
+	// patch would change nothing, and running it anyway is a rollout of the SFU for
+	// nothing — a dropped call on every upgrade (etappe 119b). Recorded like a run, so
+	// the history says why nothing happened.
+	actions := h.Actions
+	if reason := e.Covered(h); reason != "" {
+		results = append(results, ActionResult{Type: "covered", Status: "skipped", Note: reason})
+		finalStatus = RunSkipped
+		actions = nil
+	}
+
+	for i, action := range actions {
 		res := e.runner.Run(ctx, action)
 		res.ActionIndex = i
 		results = append(results, res)

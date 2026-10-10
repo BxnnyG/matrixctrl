@@ -3,6 +3,7 @@ package drift
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -119,4 +120,26 @@ func SameValue(a, b any) bool {
 		return qa.Cmp(qb) == 0
 	}
 	return fmt.Sprint(a) == fmt.Sprint(b)
+}
+
+// PatchCovered reports whether the chart's object already carries every value a patch
+// sets — in which case the patch changes nothing and the hook that applies it is no
+// longer needed (etappe 119b). missing names the paths the chart does not cover.
+//
+// The question is asked of the rendered release manifest, not of the live object: the
+// live object carries the patch itself, so it would always look covered.
+func PatchCovered(manifest, resourceType, name string, sets map[string]any) (bool, []string) {
+	if len(sets) == 0 {
+		return false, nil
+	}
+	obj := ManifestObject(manifest, resourceType, name)
+	var missing []string
+	for path, want := range sets {
+		got, ok := ValueAt(obj, path)
+		if obj == nil || !ok || !SameValue(got, want) {
+			missing = append(missing, path)
+		}
+	}
+	sort.Strings(missing)
+	return len(missing) == 0, missing
 }

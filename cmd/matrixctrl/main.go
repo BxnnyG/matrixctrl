@@ -21,6 +21,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/db"
 	"github.com/bxnnyg/matrixctrl/internal/dnshealth"
+	"github.com/bxnnyg/matrixctrl/internal/drift"
 	"github.com/bxnnyg/matrixctrl/internal/federation"
 	gitpkg "github.com/bxnnyg/matrixctrl/internal/git"
 	"github.com/bxnnyg/matrixctrl/internal/helm"
@@ -176,6 +177,13 @@ func main() {
 		runner = hooks.NewRunner(k8sClient)
 	}
 	engine := hooks.NewEngine(pool, runner)
+	// A hook whose every patch the chart already renders is skipped, with the reason in
+	// its history (etappe 119b). Read per run: the manifest is the one the upgrade that
+	// triggered the hooks just installed.
+	if helmClient != nil {
+		hc, rel := helmClient, essRelease
+		engine.SetCoverage(drift.HookCoverage(func() (string, error) { return hc.ReleaseManifest(rel) }))
+	}
 
 	configGit, err := gitpkg.OpenOrInit(configRepoPath)
 	if err != nil {

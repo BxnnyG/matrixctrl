@@ -10,8 +10,9 @@ export const Route = createFileRoute("/hooks/")({
 });
 
 const RUN_TONE: Record<string, "ok" | "err" | "warn" | "info"> = {
-  success: "ok", failed: "err", partial: "warn", running: "info",
+  success: "ok", failed: "err", partial: "warn", running: "info", skipped: "info",
 };
+const RUN_LABEL: Record<string, string> = { success: "OK", failed: "fehlgeschlagen", partial: "teilweise", running: "läuft", skipped: "übersprungen" };
 const TRIGGER_LABEL: Record<string, string> = {
   "post-upgrade": "Nach Upgrade & Rollback", "post-rollback": "Nur nach Rollback", manual: "Nur manuell",
 };
@@ -42,6 +43,10 @@ function HooksList() {
 
   const autoHooks = (hooks ?? []).filter((h) => h.trigger !== "manual");
   const activeCount = autoHooks.filter((h) => h.enabled).length;
+  // Enabled is not the same as "will do something": a hook whose patches the chart
+  // already renders is skipped (etappe 119b).
+  const workCount = autoHooks.filter((h) => h.enabled && !h.covered).length;
+  const coveredCount = autoHooks.filter((h) => h.enabled && h.covered).length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -50,10 +55,18 @@ function HooksList() {
         <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--accent-soft)", color: "var(--accent)", flexShrink: 0 }}><Icon name="rocket" size={19} /></div>
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
-            {activeCount} von {autoHooks.length} Hooks laufen beim nächsten Deployment
+            {/* Not before the list is in: an empty list reads as "nothing to do", which
+                is a claim, not a loading state. */}
+            {!hooks ? "Lade…" : workCount === 0
+              ? "Beim nächsten Update gibt es für Hooks nichts zu tun"
+              : `${workCount} ${workCount === 1 ? "Hook hat" : "Hooks haben"} beim nächsten Update etwas zu tun`}
+            {coveredCount > 0 && <span style={{ fontWeight: 400, color: "var(--text-faint)" }}> · {coveredCount} nicht mehr nötig</span>}
+            {activeCount < autoHooks.length && <span style={{ fontWeight: 400, color: "var(--text-faint)" }}> · {autoHooks.length - activeCount} ausgeschaltet</span>}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>
-            Built-in-Hooks patchen die SFU-Services, damit WebRTC-Calling nach dem Upgrade funktioniert.
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2, lineHeight: 1.55, maxWidth: "76ch" }}>
+            Hooks sind Korrekturen, die MatrixCtrl nach jedem ESS-Update ausführt — für Einstellungen, die ESS früher nicht selbst setzen konnte.
+            Die eingebauten für die Anrufe braucht es mit aktuellem ESS nicht mehr: ESS setzt beides selbst, und MatrixCtrl überspringt sie dann.
+            Eigene Hooks sind etwas für Fortgeschrittene.
           </div>
         </div>
         <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>Hook erstellen</Button>
@@ -74,13 +87,15 @@ function HooksList() {
                     <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{hook.name}</span>
                     {hook.builtin && <Badge tone="accent" size="sm">Built-in</Badge>}
                     {!hook.enabled && <Badge tone="neutral" size="sm">Deaktiviert</Badge>}
+                    {hook.enabled && hook.covered && <Badge tone="ok" size="sm" icon="check">Nicht mehr nötig</Badge>}
                     {runTone && hook.lastRunStatus && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                         <StatusDot status={runTone === "ok" ? "ok" : runTone === "info" ? "info" : runTone === "warn" ? "warn" : "err"} pulse={hook.lastRunStatus === "running"} size={7} />
-                        <span style={{ fontSize: 11.5, color: `var(--status-${runTone})`, fontWeight: 500 }}>{hook.lastRunStatus === "success" ? "OK" : hook.lastRunStatus}</span>
+                        <span style={{ fontSize: 11.5, color: `var(--status-${runTone})`, fontWeight: 500 }}>{RUN_LABEL[hook.lastRunStatus] ?? hook.lastRunStatus}</span>
                       </span>
                     )}
                   </div>
+                  {hook.enabled && hook.covered && <p style={{ margin: "0 0 4px", fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5 }}>{hook.covered}</p>}
                   {hook.description && <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-faint)", lineHeight: 1.5 }}>{hook.description}</p>}
                   <div style={{ display: "flex", gap: 12, marginTop: 7, fontSize: 11.5, color: "var(--text-faint)", flexWrap: "wrap" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="clock" size={11} />{TRIGGER_LABEL[hook.trigger] ?? hook.trigger}</span>

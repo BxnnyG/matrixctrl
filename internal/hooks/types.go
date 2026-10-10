@@ -64,7 +64,9 @@ type ActionResult struct {
 	Type        string `json:"type"`
 	Status      string `json:"status"` // "success" | "failed"
 	Error       string `json:"error,omitempty"`
-	DurationMs  int64  `json:"duration_ms"`
+	// Note says why an action did not run — today only "the chart already sets this".
+	Note       string `json:"note,omitempty"`
+	DurationMs int64  `json:"duration_ms"`
 }
 
 type RunStatus string
@@ -74,6 +76,8 @@ const (
 	RunSuccess RunStatus = "success"
 	RunFailed  RunStatus = "failed"
 	RunPartial RunStatus = "partial"
+	// RunSkipped: nothing to do, because the chart already sets what the hook patches.
+	RunSkipped RunStatus = "skipped"
 )
 
 type HookRun struct {

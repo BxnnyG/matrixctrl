@@ -28,7 +28,7 @@ interface HookDetailT {
   builtin: boolean;
   actions: HookAction[];
 }
-interface ActionResult { action_index: number; type: string; status: string; error?: string; duration_ms: number }
+interface ActionResult { action_index: number; type: string; status: string; error?: string; note?: string; duration_ms: number }
 interface HookRun {
   id: string;
   status: string;
@@ -40,7 +40,7 @@ interface HookRun {
 }
 
 const RUN_DOT: Record<string, "ok" | "err" | "warn" | "info" | "idle"> = {
-  success: "ok", failed: "err", partial: "warn", running: "info",
+  success: "ok", failed: "err", partial: "warn", running: "info", skipped: "idle",
 };
 
 function HookDetail() {
@@ -147,12 +147,13 @@ function HookDetail() {
                 <div style={{ borderTop: "1px solid var(--border-soft)", padding: "10px 16px", display: "flex", flexDirection: "column", gap: 8, background: "var(--panel)" }}>
                   {run.action_results.length > 0 ? run.action_results.map((r) => (
                     <div key={r.action_index} style={{ display: "flex", gap: 9, fontSize: 12 }}>
-                      <Icon name={r.status === "success" ? "check" : "x"} size={14} stroke={2.2} style={{ color: r.status === "success" ? "var(--status-ok)" : "var(--status-err)", flexShrink: 0, marginTop: 1 }} />
+                      <Icon name={r.status === "success" || r.status === "skipped" ? "check" : "x"} size={14} stroke={2.2} style={{ color: r.status === "success" ? "var(--status-ok)" : r.status === "skipped" ? "var(--text-faint)" : "var(--status-err)", flexShrink: 0, marginTop: 1 }} />
                       <div style={{ minWidth: 0 }}>
                         <span style={{ color: "var(--text-dim)" }}>Aktion {r.action_index + 1}</span>
                         <code style={{ marginLeft: 6, fontFamily: "var(--mono)", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, color: "var(--text-dim)" }}>{r.type}</code>
                         <span style={{ color: "var(--text-faint)", marginLeft: 6, fontFamily: "var(--mono)" }}>{r.duration_ms}ms</span>
                         {r.error && <p style={{ margin: "3px 0 0", color: "var(--status-err)", lineHeight: 1.5 }}>{r.error}</p>}
+                        {r.note && <p style={{ margin: "3px 0 0", color: "var(--text-dim)", lineHeight: 1.5 }}>{r.note}</p>}
                       </div>
                     </div>
                   )) : <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Keine Aktions-Details verfügbar.</div>}

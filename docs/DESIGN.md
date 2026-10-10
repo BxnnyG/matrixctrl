@@ -4739,3 +4739,28 @@ machen (`resolv-conf`). Antwortet auch der nicht, fehlt die Verbindung nach drau
 der k3s-Weg wäre der falsche Rat. Auf der öffentlichen Anmeldeseite steht davon nur ein
 Wort im Verfügbarkeits-Endpunkt (`dns: failing`) — keine Adressen vor der Anmeldung.
 
+### §4.125 — Hooks ablösen, nicht für alle einschalten (2026-10-10, operator, etappe 119b)
+
+**Frage des Betreibers:** Braucht man die Hooks noch, sollten sie für jeden an sein,
+verstehen das Laien? **Antwort:** Für die Anrufe nicht mehr — und deshalb soll niemand sie
+verstehen müssen.
+
+Die beiden eingebauten Hooks reparierten nach jedem Upgrade, was das Chart damals nicht
+konnte. ESS setzt beides heute selbst; in Produktion standen die Werte in den Helm-Werten,
+und die Hooks patchten Gleiches mit Gleichem — samt Neustart des Anruf-Servers, also einem
+abgebrochenen Anruf pro Upgrade für nichts.
+
+**Abdeckung statt Sonderfall.** Ein Hook wird übersprungen, wenn das gerenderte
+Release-Manifest jeden Wert enthält, den seine Patches setzen. Verglichen wird mit dem
+Manifest, nicht mit dem Live-Objekt, das den Patch ja selbst trägt (§4.111 hat dieselbe
+Unterscheidung für Ressourcen gemacht). Das gilt für eigene Hooks genauso. Was sich nicht
+vergleichen lässt — HTTP-Aufrufe, `remove`-Patches, ein nicht lesbares Manifest —, läuft
+immer: lieber ein überflüssiger Patch als ein verschluckter Aufruf. Ein halb abgedeckter
+Hook läuft ebenfalls: `hostNetwork` ohne `ClusterFirstWithHostNet` nähme dem Anruf-Server
+das Cluster-DNS, und er fände Valkey nicht mehr.
+
+**Neuinstallationen** schreiben die Werte direkt, gegen das Chart-Schema getestet. Die
+Hooks-Seite steht unter „Erweitert", für Leute mit eigenen Hooks. Die Regressions-Invariante
+„SFU-Patches überleben ein Helm-Upgrade" (S11) bleibt — erfüllt jetzt durch die
+Chart-Werte selbst, die Hooks sind nur noch der Fallback für Installationen ohne sie.
+

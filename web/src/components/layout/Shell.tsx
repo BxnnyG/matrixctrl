@@ -24,7 +24,6 @@ const NAV: NavGroup[] = [
   ] },
   { group: "Deployment", items: [
     { id: "helm", label: "Updates", icon: "helm", to: "/helm" },
-    { id: "hooks", label: "Hooks", icon: "hook", to: "/hooks" },
     { id: "setup", label: "Setup", icon: "rocket", to: "/setup" },
   ] },
   { group: "Betrieb", items: [
@@ -49,6 +48,13 @@ const NAV: NavGroup[] = [
   { group: "Compliance", phase: "5", items: [
     { id: "workers", label: "Worker-Insights", icon: "activity", to: "/workers" },
   ] },
+  // Hooks were the answer to a chart that could not set the call server's network;
+  // it can now, and the built-in ones skip themselves. What remains is a tool for
+  // people who write their own — so it sits here, not between Updates and Setup
+  // (etappe 119b).
+  { group: "Erweitert", items: [
+    { id: "hooks", label: "Hooks", icon: "hook", to: "/hooks" },
+  ] },
 ];
 
 const TITLES: Record<string, [string, string]> = {
@@ -57,7 +63,7 @@ const TITLES: Record<string, [string, string]> = {
   "/config/history": ["Verlauf", "Jede gespeicherte Version der Einstellungen · Zurückspringen"],
   "/helm": ["Updates", "MatrixCtrl und ESS aktualisieren — mit Patch-erhaltenden Hooks"],
   "/helm/history": ["Upgrade-Verlauf", "Vergangene Upgrades · Revision & Hook-Ergebnis"],
-  "/hooks": ["Hooks", "Post-Upgrade Patch-Engine"],
+  "/hooks": ["Hooks", "Eigene Korrekturen nach jedem ESS-Update — für Fortgeschrittene"],
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
   "/backup": ["Backup", "Konfiguration und Datenbank sichern und zurückspielen"],

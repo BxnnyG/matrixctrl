@@ -58,7 +58,9 @@ func (h *HooksHandler) List(w http.ResponseWriter, r *http.Request) {
 		if lastStatus != nil {
 			hk.LastRunStatus = *lastStatus
 		}
-		result = append(result, hookToMap(hk))
+		m := hookToMap(hk)
+		m["covered"] = h.engine.Covered(hk)
+		result = append(result, m)
 	}
 	if result == nil {
 		result = []map[string]interface{}{}
@@ -85,7 +87,10 @@ func (h *HooksHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.Unmarshal(actionsJSON, &hk.Actions)
-	JSON(w, http.StatusOK, hookToMap(hk))
+	m := hookToMap(hk)
+	// Why the next run would be skipped, or "" — said on the page before it happens.
+	m["covered"] = h.engine.Covered(hk)
+	JSON(w, http.StatusOK, m)
 }
 
 func (h *HooksHandler) Create(w http.ResponseWriter, r *http.Request) {

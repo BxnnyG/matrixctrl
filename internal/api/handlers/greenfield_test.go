@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
+
+	cfgschema "github.com/bxnnyg/matrixctrl/internal/config/schema"
 )
 
 // The greenfield deploy failed on every attempt because this map contained
@@ -98,6 +101,48 @@ func TestGreenfieldRemovalsAndHostnamesDoNotOverlap(t *testing.T) {
 	for _, k := range greenfieldRemovals() {
 		if _, clash := set[k]; clash {
 			t.Errorf("%q is both written and removed", k)
+		}
+	}
+}
+
+// The call values replace the two built-in hooks on every new installation (etappe
+// 119b). A key the chart's schema does not know fails `helm install` for the whole
+// release — the wellKnownDelegation lesson above — so each is checked against the
+// embedded schema rather than against memory.
+func TestGreenfieldCallValuesExistInTheChartSchema(t *testing.T) {
+	raw, err := cfgschema.Get("26.5.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s map[string]any
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatal(err)
+	}
+	for key, val := range greenfieldCallValues() {
+		node := s
+		for _, part := range strings.Split(key, ".") {
+			props, _ := node["properties"].(map[string]any)
+			next, ok := props[part].(map[string]any)
+			if !ok {
+				t.Fatalf("%s: %q is not in the schema", key, part)
+			}
+			node = next
+		}
+		switch val.(type) {
+		case bool:
+			if node["type"] != "boolean" {
+				t.Errorf("%s: schema type %v for a bool", key, node["type"])
+			}
+		case string:
+			if enum, ok := node["enum"].([]any); ok {
+				found := false
+				for _, e := range enum {
+					found = found || e == val
+				}
+				if !found {
+					t.Errorf("%s: %q not in %v", key, val, enum)
+				}
+			}
 		}
 	}
 }

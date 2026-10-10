@@ -91,6 +91,9 @@ func (h *HelmHandler) DeployESS(w http.ResponseWriter, r *http.Request) {
 		}
 
 		changes := applyHostnameOverrides(greenfieldHostnames(sn), req.Hostnames)
+		for k, v := range greenfieldCallValues() {
+			changes[k] = v
+		}
 		if err := h.configStore.SetSectionValues(ctx, changes, greenfieldRemovals()); err != nil {
 			stream.emit("WARNING: could not apply hostnames: " + err.Error())
 		}
@@ -508,6 +511,22 @@ func greenfieldHostnames(serverName string) map[string]interface{} {
 		"elementWeb.ingress.host":                  "element." + serverName,
 		"elementAdmin.ingress.host":                "admin." + serverName,
 		"matrixRTC.ingress.host":                   "mrtc." + serverName,
+	}
+}
+
+// greenfieldCallValues put the call server on the host network and keep the callers'
+// source addresses — what the two built-in hooks used to patch after every upgrade,
+// written as the chart settings that do it today (etappe 119b). A new installation
+// therefore never needs those hooks; they find everything covered and skip.
+//
+// Kept apart from greenfieldHostnames: that map is also the derivation a server rename
+// compares against, and these are not hostnames.
+func greenfieldCallValues() map[string]interface{} {
+	return map[string]interface{}{
+		"matrixRTC.sfu.hostNetwork":                                       true,
+		"matrixRTC.sfu.exposedServices.rtcTcp.externalTrafficPolicy":      "Local",
+		"matrixRTC.sfu.exposedServices.rtcMuxedUdp.externalTrafficPolicy": "Local",
+		"matrixRTC.sfu.exposedServices.turn.externalTrafficPolicy":        "Local",
 	}
 }
 
