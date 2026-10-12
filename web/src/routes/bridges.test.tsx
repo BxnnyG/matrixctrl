@@ -41,4 +41,12 @@ describe("BridgesView", () => {
     expect(screen.getByText("whatsapp")).toBeTruthy();
     expect(screen.getByText(/im Cluster unbekannt/)).toBeTruthy();
   });
+
+  // The three stumbles of the first real run: group room, moderator, address in the DM.
+  it("walks through what the first real run tripped over", () => {
+    render(<BridgesView data={{ ...base, hookshot: { ...base.hookshot, webhooks: true } }} />);
+    expect(screen.getByText(/Gruppenraum/)).toBeTruthy();
+    expect(screen.getByText(/Moderator/)).toBeTruthy();
+    expect(screen.getByText(/im Direktchat/)).toBeTruthy();
+  });
 });

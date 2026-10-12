@@ -90,10 +90,18 @@ function HookshotCard({ h }: { h: Hookshot }) {
       {h.enabled && running && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--border-soft)", paddingTop: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>So benutzt du es</div>
-          <Step n={1}>In einem Raum <Copyable text={h.bot} /> einladen.</Step>
-          {h.webhooks && <Step n={2}>Webhook anlegen: <Copyable text="!hookshot webhook name" /> — Hookshot antwortet mit einer Adresse{h.webhook_prefix ? <> unter <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{h.webhook_prefix}/…</code></> : null}. Alles, was dorthin geschickt wird, erscheint im Raum.</Step>}
-          {h.feeds && <Step n={h.webhooks ? 3 : 2}>Feed abonnieren: <Copyable text="!hookshot feed https://…" /></Step>}
-          <Step n={1 + (h.webhooks ? 1 : 0) + (h.feeds ? 1 : 0) + 1}>Alle Befehle: <Copyable text="!hookshot help" /></Step>
+          {/* A group room, not a DM: a DM with the bot is Hookshot's admin room, which
+              takes no `!hookshot` prefix and, with nothing enabled, knows only `help` —
+              the operator's first try on 2026-10-12 (etappe 119). */}
+          {/* Every step below was a stumble in the first real run on 2026-10-12: a DM is
+              Hookshot's admin room; without moderator rights it configures nothing; the
+              secret address arrives in the DM, not in the room (etappe 119). */}
+          <Step n={1}>In einem <strong>Gruppenraum</strong> (kein Direktchat) <Copyable text={h.bot} /> einladen.</Step>
+          <Step n={2}>Den Bot dort zum <strong>Moderator</strong> machen — sonst richtet er nichts ein.</Step>
+          {h.webhooks && <Step n={3}>Webhook anlegen: <Copyable text="!hookshot webhook name" />. Die geheime Adresse{h.webhook_prefix ? <> (unter <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{h.webhook_prefix}/…</code>)</> : null} schickt Hookshot dir <strong>im Direktchat</strong>, nicht in den Raum. Ausprobieren:
+            <div style={{ marginTop: 4 }}><Copyable text={`curl -X POST -H 'Content-Type: application/json' -d '{"text":"Hallo"}' <Adresse>`} /></div></Step>}
+          {h.feeds && <Step n={h.webhooks ? 4 : 3}>Feed abonnieren: <Copyable text="!hookshot feed https://…" /></Step>}
+          <Step n={3 + (h.webhooks ? 1 : 0) + (h.feeds ? 1 : 0)}>Alle Befehle: <Copyable text="!hookshot help" /></Step>
         </div>
       )}
     </Card>

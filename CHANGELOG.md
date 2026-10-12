@@ -15,6 +15,16 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.126] — 2026-10-12
+
+### Fixed
+
+- **The Hookshot guide led into three dead ends**, found in the first real run (playground,
+  2026-10-12, webhook posted and arrived): a DM with the bot is Hookshot's admin room, where
+  `!hookshot` commands are „not understood"; in a group room the bot configures nothing
+  until it is a moderator; and the secret webhook address arrives in the DM, not in the
+  room. The guide now says all three, with a copyable test call.
+
 ## [0.1.125] — 2026-10-12
 
 ### Added

@@ -4827,3 +4827,13 @@ prüft, ob die Adresse aus dem Cluster eine Verbindung annimmt: das, woran Bridg
 Praxis brechen (umbenannter Service, verschobener Namespace). Es behauptet nicht, sie zu
 betreiben.
 
+**Nachtrag 0.1.126: der erste echte Durchlauf.** Auf der Spielwiese (vom Betreiber
+freigegeben): Hookshot mit Webhooks eingeschaltet, Testkonto, Gruppenraum, Bot eingeladen,
+Webhook angelegt, POST → `202` → Nachricht im Raum. Dabei drei Stolpersteine, die jeder
+trifft und die keine Anleitung von uns erwähnte — der Betreiber hatte den ersten schon im
+Screenshot: Direktchat = Admin-Raum, Moderator-Rechte nötig, geheime Adresse im Direktchat.
+Nebenbei: Der Testweg per `helm upgrade` an MatrixCtrl vorbei scheiterte zweimal an alten
+Image-Pins der Spielwiese (matrix-tools 0.7.3 kennt `randbytes` nicht; Valkey erbte
+`redis:7.4-alpine` über den alten `redis.image`-Schlüssel und wurde nie bereit) — genau die
+Pins, gegen die MatrixCtrl beim Upgrade warnt.
+
