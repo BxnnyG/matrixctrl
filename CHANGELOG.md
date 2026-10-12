@@ -15,6 +15,20 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.125] — 2026-10-12
+
+### Added
+
+- **Bridges** (the last page greyed out since phase 1). *Hookshot*, which ESS ships: on or
+  off, running, version, whether webhooks and feeds are on — ESS switches Hookshot on
+  without either, a bridge that accepts nothing, and the page says so — and how to use it,
+  with copyable commands and the address webhooks arrive under. *Other bridges*: every
+  appservice registration Synapse knows (`synapse.appservices`), with id, bot, address and
+  user namespace — never the tokens — and whether the address answers from inside the
+  cluster. Said plainly that MatrixCtrl does not run those bridges.
+- **Settings card „Bridges"**: Hookshot on/off, incoming webhooks, RSS/Atom feeds; the two
+  functions write into Hookshot's own additional block, where ESS's tests enable them.
+
 ## [0.1.124] — 2026-10-11
 
 ### Fixed

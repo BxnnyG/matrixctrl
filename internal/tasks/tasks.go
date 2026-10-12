@@ -234,6 +234,24 @@ func Cards() []Card {
 			Fields: res,
 		},
 		{
+			ID: "bridges", Title: "Bridges", Icon: "globe",
+			Sub: "Hookshot verbindet Räume mit Webhooks und Feeds — andere Bridges stehen auf der Seite Bridges",
+			Fields: []Field{
+				{ID: "hookshot.enabled", Label: "Hookshot", Kind: Bool, Default: false,
+					Help:     "Die Bridge von Element für Webhooks, RSS-/Atom-Feeds, GitHub, GitLab und Jira. Läuft als eigener Dienst; im Raum lädt man @hookshot ein.",
+					Restarts: "Hookshot wird gestartet; Synapse startet neu, um die Bridge zu kennen.", Source: val("hookshot.enabled")},
+				// ESS turns Hookshot on without turning these on: a bridge that accepts
+				// nothing. Its own tests enable them in an additional block, which is
+				// where these write (etappe 119).
+				{ID: "hookshot.webhooks", Label: "Eingehende Webhooks", Kind: Bool, Default: false,
+					Help:     "Andere Dienste schicken Nachrichten per HTTP in einen Raum — Monitoring, Formulare, Skripte. Die Adresse vergibt Hookshot pro Webhook.",
+					Restarts: "Hookshot startet neu.", Source: Source{Component: "hookshot", Key: "generic.enabled"}},
+				{ID: "hookshot.feeds", Label: "RSS- und Atom-Feeds", Kind: Bool, Default: false,
+					Help:     "Neue Einträge eines Feeds erscheinen als Nachricht im Raum.",
+					Restarts: "Hookshot startet neu.", Source: Source{Component: "hookshot", Key: "feeds.enabled"}},
+			},
+		},
+		{
 			ID: "workers", Title: "Synapse-Worker", Icon: "activity",
 			Sub:    "Teile von Synapses Arbeit in eigene Prozesse auslagern — ob es sich lohnt, sagt Worker-Insights",
 			Fields: workerFields(),

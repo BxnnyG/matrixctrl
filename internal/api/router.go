@@ -35,7 +35,9 @@ type Deps struct {
 	// LoginProviders is sign-in through Google, GitHub or OIDC, in MAS (etappe 110).
 	LoginProviders *handlers.LoginProvidersHandler
 	// DNSHealth is the cluster's name resolution (etappe 119a).
-	DNSHealth  *handlers.DNSHealthHandler
+	DNSHealth *handlers.DNSHealthHandler
+	// Bridges: Hookshot and appservice registrations (etappe 119).
+	Bridges    *handlers.BridgesHandler
 	Mail       *handlers.MailHandler
 	TLSDNS     *handlers.TLSDNSHandler
 	SelfUpdate *handlers.SelfUpdateHandler
@@ -141,6 +143,9 @@ func NewRouter(deps Deps) http.Handler {
 		}
 		if deps.DNSHealth != nil {
 			r.Get("/api/v1/dns-health", deps.DNSHealth.Get)
+		}
+		if deps.Bridges != nil {
+			r.Get("/api/v1/bridges", deps.Bridges.Get)
 		}
 
 		if deps.Audit != nil {

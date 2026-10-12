@@ -372,6 +372,10 @@ func main() {
 	go dnsChecker.Run(context.Background())
 	authHandler.SetDNSFailing(func() bool { return !dnsChecker.State().OK })
 	dnsHealthHandler := handlers.NewDNSHealthHandler(dnsChecker)
+	var bridgesHandler *handlers.BridgesHandler
+	if k8sClient != nil {
+		bridgesHandler = handlers.NewBridgesHandler(k8sClient, configStore, essNS)
+	}
 	selfUpdateHandler := handlers.NewSelfUpdateHandler(k8sClient, essNS, env("MATRIXCTRL_RELEASE", "matrixctrl"))
 
 	router := api.NewRouter(api.Deps{
@@ -393,6 +397,7 @@ func main() {
 		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),
 		LoginProviders: loginProviders,
 		DNSHealth:      dnsHealthHandler,
+		Bridges:        bridgesHandler,
 		Mail:           mailHandler,
 		TLSDNS:         tlsdnsHandler,
 		SelfUpdate:     selfUpdateHandler,

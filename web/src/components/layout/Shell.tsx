@@ -43,7 +43,7 @@ const NAV: NavGroup[] = [
     { id: "tls", label: "TLS & DNS", icon: "lock", to: "/tls-dns" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
   ] },
   { group: "Netzwerk", phase: "4", items: [
-    { id: "federation", label: "Föderation", icon: "globe", to: "/federation" }, { id: "bridges", label: "Bridges", icon: "audit" },
+    { id: "federation", label: "Föderation", icon: "globe", to: "/federation" }, { id: "bridges", label: "Bridges", icon: "audit", to: "/bridges" },
   ] },
   { group: "Compliance", phase: "5", items: [
     { id: "workers", label: "Worker-Insights", icon: "activity", to: "/workers" },
@@ -72,6 +72,7 @@ const TITLES: Record<string, [string, string]> = {
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
   "/federation": ["Föderation", "Erreichen dich andere Server, und mit wem redet deiner?"],
   "/workers": ["Worker-Insights", "Wie viel Synapse arbeitet, und ob Worker sich lohnen"],
+  "/bridges": ["Bridges", "Hookshot und andere Bridges"],
   "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 

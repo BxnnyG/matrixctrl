@@ -246,3 +246,30 @@ func TestEveryRecommendableWorkerHasASwitch(t *testing.T) {
 		}
 	}
 }
+
+// Hookshot's two functions go into Hookshot's own additional block, the switch into the
+// chart value — and the block is valid Hookshot config (etappe 119).
+func TestTheBridgeCardWritesWhereHookshotReadsIt(t *testing.T) {
+	v := values(t, "hookshot:\n  enabled: false\n")
+	var all []Field
+	for _, c := range Cards() {
+		all = append(all, c.Fields...)
+	}
+	plan, err := Write(v, all, map[string]interface{}{"hookshot.enabled": true, "hookshot.webhooks": true, "hookshot.feeds": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Set["hookshot.enabled"] != true {
+		t.Errorf("switch: %+v", plan.Set)
+	}
+	text, _ := plan.Set["hookshot.additional."+Block+".config"].(string)
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		t.Fatalf("block is not YAML: %q", text)
+	}
+	for _, path := range [][]string{{"generic", "enabled"}, {"feeds", "enabled"}} {
+		if got, _ := get(doc, path); got != true {
+			t.Errorf("%v not set in %q", path, text)
+		}
+	}
+}
