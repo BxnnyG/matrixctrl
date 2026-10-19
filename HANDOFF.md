@@ -12,8 +12,8 @@ Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 - Orchestrator-Modus eingerichtet (ORCHESTRATOR.md, .claude/agents/).
 
 ## Offen / Nächster Schritt
-Betreiber wählt; Empfehlung in dieser Reihenfolge:
-1. Automatische Backups mit Zeitplan + Ziel außerhalb des Servers (S3-kompatibel); Backup vor jedem ESS-Upgrade. Heute nur manuell.
+**In Arbeit: Etappe 120 Automatische Backups** — Plan `docs/plans/etappe-120-automatische-backups.md` (Betreiber-Entscheidungen 2026-10-19: ganzes Archiv mit age verschlüsselt, Upgrade stoppt bei fehlgeschlagenem Vorab-Backup, Medien-Schalter Standard an, Restore aus S3). Für den Live-Test wird ein S3-kompatibler Bucket gebraucht.
+Danach:
 2. Benachrichtigungen bei Problemen (DNS, Zertifikat, Update, hängender Pod, Föderation) — per Hookshot-Webhook in einen Admin-Raum oder E-Mail.
 3. Einladungs-Codes (MAS-Registrierungstokens).
 Weiter: Bridge aus dem Panel anmelden; Schalter `externalTrafficPolicy` für die Anruf-Ports (Aufgaben-Feld mit mehreren Pfaden); Server-Mitteilung an alle; Speicherplatz/Aufräumen; englische UI (P3-2); Restore-Probe gegen live ESS (§4.106); Audit-Aufbewahrung (Betreiber-Entscheidung, P2-19).
