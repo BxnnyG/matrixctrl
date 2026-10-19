@@ -14,7 +14,17 @@ interface UpgradeEntry {
   status: string;
   ts_initiated: string;
   helm_revision?: number;
+  /** Backup taken before the upgrade (etappe 120). Empty on older entries. */
+  backup_status?: "ok" | "skipped" | "failed" | "not_configured" | "";
+  backup_object?: string;
 }
+
+const BACKUP_LABEL: Record<string, { tone: "ok" | "warn" | "err" | "neutral"; label: string }> = {
+  ok: { tone: "ok", label: "Backup gesichert" },
+  skipped: { tone: "warn", label: "Ohne Backup" },
+  failed: { tone: "err", label: "Backup fehlgeschlagen" },
+  not_configured: { tone: "neutral", label: "Kein Backup-Ziel" },
+};
 
 const essVersion = (v: string) => v.replace(/^matrix-stack-/, "");
 
@@ -67,9 +77,16 @@ function HelmHistory() {
                   </div>
                   <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 2 }}>
                     {new Date(e.ts_initiated).toLocaleString("de-DE")}{e.helm_revision != null && ` · Revision #${e.helm_revision}`}
+                    {e.backup_status === "ok" && e.backup_object && <> · <span style={{ fontFamily: "var(--mono)" }}>{e.backup_object.split("/").pop()}</span></>}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {e.backup_status && BACKUP_LABEL[e.backup_status] && (
+                    <Badge tone={BACKUP_LABEL[e.backup_status].tone} size="sm" icon="database"
+                      style={{ cursor: e.backup_object ? "help" : undefined }}>
+                      {BACKUP_LABEL[e.backup_status].label}
+                    </Badge>
+                  )}
                   <StatusDot status={st.dot} pulse={e.status === "running" || e.status === "running-hooks"} />
                   <Badge tone={st.tone} size="sm">{st.label}</Badge>
                 </div>

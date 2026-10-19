@@ -4837,3 +4837,46 @@ Image-Pins der Spielwiese (matrix-tools 0.7.3 kennt `randbytes` nicht; Valkey er
 `redis:7.4-alpine` über den alten `redis.image`-Schlüssel und wurde nie bereit) — genau die
 Pins, gegen die MatrixCtrl beim Upgrade warnt.
 
+
+### §4.129 — Backups, die niemand anstößt und niemand mitlesen kann (2026-10-19, operator, etappe 120)
+
+Bis hierhin gab es ein Backup nur, wenn jemand im Browser auf „Herunterladen" drückte, und
+es lag dann dort, wo der Browser es hinlegte. Jetzt läuft täglich ein Backup und vor jedem
+ESS-Versionswechsel ein weiteres, jeweils direkt zu einem S3-kompatiblen Speicher außerhalb
+des Servers.
+
+**Verschlüsselt wird das ganze Archiv, mit einem öffentlichen Schlüssel (age, X25519).**
+Das Seal-Verfahren des Downloads (§4.100, ein Schlüssel pro Download, einmal gezeigt) passt
+nicht zu einem Backup, bei dem niemand zusieht. Ein Schlüssel auf dem Server wäre wieder
+„wer den Server hat, hat das Archiv". Mit dem Schlüsselpaar kann der Server verschlüsseln,
+aber nicht lesen: Der private Schlüssel wird einmal angezeigt und nirgends gespeichert. Ganz
+statt nur der Geheimnisse hat der Betreiber entschieden, weil beim Speicher-Anbieter sonst
+Nachrichten und Konten im Klartext lägen. Ein Archiv lässt sich auch ohne MatrixCtrl mit
+`age -d` öffnen.
+
+**Ein gescheitertes Vorab-Backup hält das Upgrade an** (Betreiber). Helm wird nicht
+angefasst, und „Ohne Backup fortfahren" muss man ausdrücklich wählen. Der Verlauf vermerkt,
+wie es lief. Ohne eingerichtetes Ziel gibt es nur einen Hinweis: Sperren soll nur ein
+Backup, das eingerichtet ist und scheitert, nicht ein Feature, das niemand benutzt.
+
+**Kein halbes Objekt darf wie ein Backup aussehen.** Das Archiv geht als Strom durch die
+Verschlüsselung in einen Multipart-Upload unbekannter Länge. Scheitert der Bau, sieht der
+Upload einen Lesefehler und bricht ab. Hat ein Store das Objekt trotzdem angenommen, wird
+es wieder gelöscht. Gegen einen echten S3-Server (SeaweedFS) geprüft, mit Gegenprobe: Ohne
+diese beiden Sicherungen fand der Live-Test das 20-MiB-Bruchstück im Bucket.
+
+**Aufbewahrung zählt nach Vorkommen, nicht nach Kalender:** die jeweils neuesten Backups der
+7 jüngsten Tage und der 4 jüngsten Wochen, die Backups haben, und Vor-Upgrade-Backups
+30 Tage. Nach einer Pause von zwei Wochen löscht die Regel also nicht alles. Aufgeräumt wird
+nur nach einem erfolgreichen Upload und nur im eigenen Namensmuster.
+
+**Medien Datei für Datei (Archivformat 3).** Beim Bauen zeigte sich, dass `CreateFull` die
+Medien als einen Member `media/media.tar` ablegte und dafür den ganzen Strom erst in eine
+Temp-Datei im Panel-Pod kopierte, weil tar die Größe vorab braucht. Bei Medien von hunderten
+Gigabyte wäre der Pod evicted worden, beim Browser-Download schon seit E102. Jetzt wird jeder
+Eintrag des Pod-tar als eigener Member übernommen, denn dessen Größe steht im Header. Restore
+liest beide Formate.
+
+Bewusst offen: Restore spoolt das Archiv weiter auf die Platte, also braucht ein Restore
+*mit* Medien lokal Platz in Archivgröße. Nur ein Ziel und nur S3. Benachrichtigung bei
+Fehlschlag kommt mit der Etappe „Benachrichtigungen" (über `offsite_runs`).

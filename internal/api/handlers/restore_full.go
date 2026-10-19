@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bxnnyg/matrixctrl/internal/backup"
+	"github.com/bxnnyg/matrixctrl/internal/backup/offsite"
 	"github.com/bxnnyg/matrixctrl/internal/restore"
 )
 
@@ -115,45 +118,132 @@ func (h *StatusHandler) RestoreFull(w http.ResponseWriter, r *http.Request) {
 	h.restore = job
 	h.restoreMu.Unlock()
 
-	// Spooled before anything else: the upload is the one part that fails often (a
-	// dropped connection, a proxy limit), and failing before a single container is
-	// stopped is the difference between "try again" and "my server is down".
-	spool, err := os.CreateTemp("", "mxctrl-restore-*.tar.gz")
-	if err != nil {
+	fail := func(code int, msg string, err error) {
 		job.finish(nil, err)
-		Error(w, http.StatusInternalServerError, "Kein Platz für das Archiv: "+err.Error())
-		return
+		Error(w, code, msg+err.Error())
 	}
-	size, err := io.Copy(spool, r.Body)
-	if err != nil {
-		_ = spool.Close()
-		_ = os.Remove(spool.Name())
-		job.finish(nil, err)
-		Error(w, http.StatusBadRequest, "Das Archiv kam nicht vollständig an: "+err.Error())
-		return
-	}
-	_ = spool.Close()
-	job.say("upload", fmt.Sprintf("%.1f MB empfangen", float64(size)/1024/1024))
 
+	// Where the archive comes from: the request body (an upload, possibly age-encrypted),
+	// or an object in the offsite bucket (etappe 120). Either way the private key is
+	// used here, for this request, and goes no further: it is not put on the job, not
+	// logged, not kept after the stream has been opened.
 	opts := restoreOptions{
 		Media:       r.URL.Query().Get("media") != "false",
 		Keys:        r.URL.Query().Get("keys") != "false",
 		RecoveryKey: r.Header.Get("X-MatrixCtrl-Recovery-Key"),
 	}
-
+	var src io.Reader
+	var srcClose func()
+	fromBucket := r.URL.Query().Get("source") == "s3"
 	// Detached from the request: the operator's browser may close, the restore must not.
-	go func() {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Hour)
+	if fromBucket {
+		if h.offsite == nil {
+			cancel()
+			fail(http.StatusServiceUnavailable, "", errors.New("Das Backup-Ziel ist nicht eingerichtet."))
+			return
+		}
+		rc, _, err := h.offsite.OpenObject(ctx, r.URL.Query().Get("object"))
+		if err != nil {
+			cancel()
+			fail(http.StatusBadGateway, "Das Backup konnte nicht geöffnet werden: ", err)
+			return
+		}
+		// Decrypting reads the header, so a wrong key fails here, before anything is
+		// downloaded in full and long before anything is stopped.
+		dec, err := offsite.Decrypt(rc, r.Header.Get(ageKeyHeader))
+		if err != nil {
+			_ = rc.Close()
+			cancel()
+			fail(http.StatusUnprocessableEntity, "", err)
+			return
+		}
+		src, srcClose = dec, func() { _ = rc.Close() }
+	} else {
+		body, err := openUpload(r)
+		if err != nil {
+			cancel()
+			fail(http.StatusUnprocessableEntity, "", err)
+			return
+		}
+		src, srcClose = body, func() {}
+	}
+
+	// Spooled before anything else: the upload is the one part that fails often (a
+	// dropped connection, a proxy limit), and failing before a single container is
+	// stopped is the difference between "try again" and "my server is down".
+	spool, err := os.CreateTemp("", "mxctrl-restore-*.tar.gz")
+	if err != nil {
+		cancel()
+		srcClose()
+		fail(http.StatusInternalServerError, "Kein Platz für das Archiv: ", err)
+		return
+	}
+	spoolIn := func() error {
+		defer srcClose()
+		size, err := io.Copy(spool, src)
+		_ = spool.Close()
+		if err != nil {
+			_ = os.Remove(spool.Name())
+			return err
+		}
+		job.say("upload", fmt.Sprintf("%.1f MB empfangen", float64(size)/1024/1024))
+		return nil
+	}
+	run := func() {
 		defer os.Remove(spool.Name())
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Hour)
 		defer cancel()
 		report, err := h.runRestore(ctx, spool.Name(), opts, job)
 		job.finish(report, err)
 		if err != nil {
 			log.Printf("restore: failed: %v", err)
 		}
-	}()
+	}
+
+	if fromBucket {
+		// A multi-gigabyte download does not fit in a request; the progress shows it.
+		job.say("download", "Backup wird aus dem Bucket geladen und entschlüsselt")
+		go func() {
+			if err := spoolIn(); err != nil {
+				cancel()
+				job.finish(nil, fmt.Errorf("das Backup kam nicht vollständig an: %w", err))
+				return
+			}
+			run()
+		}()
+	} else {
+		if err := spoolIn(); err != nil {
+			cancel()
+			fail(http.StatusBadRequest, "Das Archiv kam nicht vollständig an: ", err)
+			return
+		}
+		go run()
+	}
 
 	JSON(w, http.StatusAccepted, map[string]any{"started": true})
+}
+
+// ageKeyHeader carries the operator's private age key for one request. A header and not a
+// query value, so it cannot end up in the request log (which prints the URL).
+const ageKeyHeader = "X-MatrixCtrl-Age-Key"
+
+// offsiteSource is the one thing a restore needs from the backup bucket.
+type offsiteSource interface {
+	OpenObject(ctx context.Context, name string) (io.ReadCloser, int64, error)
+}
+
+// SetOffsite wires the bucket as a second source for a restore (etappe 120).
+func (h *StatusHandler) SetOffsite(src offsiteSource) { h.offsite = src }
+
+// openUpload returns the request body, decrypted if it is an age file. Recognised by its
+// first bytes and not by its name: a renamed file is still what it is.
+func openUpload(r *http.Request) (io.Reader, error) {
+	br := bufio.NewReaderSize(r.Body, 4096)
+	head, _ := br.Peek(offsite.MagicLen())
+	if !offsite.LooksEncrypted(head) {
+		return br, nil
+	}
+	return offsite.Decrypt(br, r.Header.Get(ageKeyHeader))
 }
 
 // GET /api/v1/status/restore/progress — what has happened so far.
@@ -256,7 +346,7 @@ func (h *StatusHandler) runRestore(ctx context.Context, path string, opts restor
 	}
 
 	if opts.Media {
-		n, err := h.restoreMedia(ctx, path, stamp, prog)
+		n, err := h.restoreMedia(ctx, path, stamp, a.Media, prog)
 		if err != nil {
 			// The databases are back and correct; the files are a separate part and
 			// saying so is more useful than calling the whole thing a failure.
@@ -464,14 +554,31 @@ func (h *StatusHandler) adminPG(ctx context.Context) (*restore.AdminPG, error) {
 	return restore.OpenAdmin(ctx, dsn)
 }
 
-// restoreMedia streams the media member of the archive back into the Synapse pod.
+// restoreMedia streams the media of the archive back into the Synapse pod.
 //
 // After the databases, because it needs a running Synapse pod to exec into — and by then
 // there is one. The stream never lands in this process: it goes from the spooled file
-// through the tar reader into the pod's stdin.
-func (h *StatusHandler) restoreMedia(ctx context.Context, path, stamp string, prog restore.Progress) (int64, error) {
-	r, size, err := memberReader(path, "media/media.tar")
+// through the tar reader into the pod's stdin. An archive in the per-file layout is
+// turned back into one tar on the way (backup.MediaTarStream); the old single-member
+// layout is passed on as it is. info supplies the size for the free-space check, which
+// has to be known before the first byte is sent.
+func (h *StatusHandler) restoreMedia(ctx context.Context, path, stamp string, info backup.MediaInfo, prog restore.Progress) (int64, error) {
+	f, err := os.Open(path)
 	if err != nil {
+		return 0, err
+	}
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+	r, ok, err := backup.MediaTarStream(tar.NewReader(gz), closeBoth{gz, f})
+	if err != nil || !ok {
+		_ = gz.Close()
+		_ = f.Close()
+		if err != nil {
+			return 0, err
+		}
 		prog("media", "keine Dateien in diesem Archiv")
 		return 0, nil
 	}
@@ -481,16 +588,39 @@ func (h *StatusHandler) restoreMedia(ctx context.Context, path, stamp string, pr
 	if err != nil {
 		return 0, err
 	}
-	return restore.Media(ctx, h.k8s, h.essNS, pod, "synapse", "/media", stamp, size, r, prog)
+	return restore.Media(ctx, h.k8s, h.essNS, pod, "synapse", "/media", stamp, info.Bytes, r, prog)
+}
+
+// closeBoth closes the decompressor and the file under it.
+type closeBoth struct{ gz, f io.Closer }
+
+func (c closeBoth) Close() error {
+	_ = c.gz.Close()
+	return c.f.Close()
 }
 
 // restoreKeys puts the homeserver's identity back, if the operator supplied the recovery
 // key that was shown once when the archive was made.
 func (h *StatusHandler) restoreKeys(ctx context.Context, path, recoveryKey string, prog restore.Progress) (*restore.KeyResult, error) {
-	r, _, err := memberReader(path, "secrets/sealed.bin")
+	r, _, err := memberReader(path, backup.SealedSecretsMember)
 	if err != nil {
-		prog("keys", "keine Schlüssel in diesem Archiv")
-		return nil, nil
+		// No sealed part: an archive that was encrypted as a whole carries the keys
+		// as they are, and needs no recovery key — the private key already opened it.
+		pr, _, perr := memberReader(path, backup.PlainSecretsMember)
+		if perr != nil {
+			prog("keys", "keine Schlüssel in diesem Archiv")
+			return nil, nil
+		}
+		defer pr.Close()
+		plain, rerr := io.ReadAll(io.LimitReader(pr, 1<<20))
+		if rerr != nil {
+			return nil, rerr
+		}
+		res, kerr := restore.KeysPlain(ctx, h.k8s, h.essNS, plain, prog)
+		if kerr != nil {
+			return nil, kerr
+		}
+		return &res, nil
 	}
 	defer r.Close()
 

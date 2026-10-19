@@ -41,6 +41,8 @@ type Deps struct {
 	Mail       *handlers.MailHandler
 	TLSDNS     *handlers.TLSDNSHandler
 	SelfUpdate *handlers.SelfUpdateHandler
+	// Offsite is the automatic, encrypted backup to S3 (etappe 120). Nil in tests.
+	Offsite *handlers.OffsiteHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
 	// every installation did before this existed.
 	Roles *auth.Roles
@@ -182,6 +184,20 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/backup/full", deps.Status.BackupFull)
 			// What the options cost, so the choice is made against a number (etappe 102).
 			r.Get("/backup/sizes", deps.Status.BackupSizes)
+			// Automatic backups to S3, encrypted with the operator's public key (etappe 120).
+			if deps.Offsite != nil {
+				r.Route("/backup/offsite", func(r chi.Router) {
+					r.Get("/settings", deps.Offsite.GetSettings)
+					r.Put("/settings", deps.Offsite.PutSettings)
+					r.Post("/probe", deps.Offsite.Probe)
+					r.Post("/keypair", deps.Offsite.KeyPair)
+					r.Put("/public-key", deps.Offsite.PutPublicKey)
+					r.Post("/run", deps.Offsite.Run)
+					r.Get("/status", deps.Offsite.Status)
+					r.Get("/objects", deps.Offsite.List)
+					r.Get("/objects/download", deps.Offsite.Download)
+				})
+			}
 			r.Get("/backup", deps.Status.Backup)
 			// Synapse's own database — the accounts, rooms and messages that make a
 			// rebuilt server the same server (etappe 70).

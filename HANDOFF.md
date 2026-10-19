@@ -12,7 +12,7 @@ Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 - Orchestrator-Modus eingerichtet (ORCHESTRATOR.md, .claude/agents/).
 
 ## Offen / Nächster Schritt
-**In Arbeit: Etappe 120 Automatische Backups** — Plan `docs/plans/etappe-120-automatische-backups.md` (Betreiber-Entscheidungen 2026-10-19: ganzes Archiv mit age verschlüsselt, Upgrade stoppt bei fehlgeschlagenem Vorab-Backup, Medien-Schalter Standard an, Restore aus S3). Für den Live-Test wird ein S3-kompatibler Bucket gebraucht.
+**In Arbeit: Etappe 120 Automatische Backups** — Plan `docs/plans/etappe-120-automatische-backups.md`, DESIGN §4.129. Gebaut und geprüft (Go-Tests, vitest, make check; Live-Test gegen SeaweedFS-S3 `internal/backup/offsite/s3_live_test.go` mit Gegenprobe; DB-Rundreise gegen Postgres). Noch nicht veröffentlicht. Offen: Abnahme auf der Spielwiese gegen einen echten Bucket (Zeitplan-Lauf, Restore aus Bucket, Upgrade mit Vorab-Backup, Upgrade mit falschem Zugang muss sperren), dann Release.
 Danach:
 2. Benachrichtigungen bei Problemen (DNS, Zertifikat, Update, hängender Pod, Föderation) — per Hookshot-Webhook in einen Admin-Raum oder E-Mail.
 3. Einladungs-Codes (MAS-Registrierungstokens).

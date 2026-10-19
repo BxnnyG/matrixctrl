@@ -49,7 +49,16 @@ hat keins, und eins, das auf demselben Server liegt, stirbt mit ihm.
   (Hetzner, Backblaze, Wasabi, MinIO, AWS) und lädt einen Strom unbekannter Länge in Teilen
   hoch. Es braucht nichts lokal zwischenzuspeichern und ist viel kleiner als das AWS-SDK.
 - Strom: `CreateFull → age.Encrypt → io.Pipe → PutObject(size -1)`. Der Server braucht
-  dafür keinen Platz.
+  dafür keinen Platz. **Korrektur beim Bauen:** `CreateFull` legte die Medien bisher als
+  *einen* Member `media/media.tar` ab und kopierte dafür den ganzen Strom erst in eine
+  Temp-Datei, weil tar die Größe vorab braucht. Bei großen Medien wäre der Panel-Pod
+  evicted worden, beim Browser-Download heute schon. Darum werden die Medien jetzt Datei
+  für Datei als `media/files/…` übernommen (Archivformat 3). Alte Archive bleiben lesbar.
+- Restore spoolt das Archiv weiterhin auf die Platte, auch aus S3: Ein Restore *mit*
+  Medien braucht lokal Platz in Archivgröße. Das ist unverändert und bewusst nicht Teil
+  dieser Etappe.
+- S3-Zugang liegt im Secret `matrixctrl-backup-s3` im ESS-Namespace, weil die Role nur dort
+  Secrets schreiben darf (wie beim Mail-Secret).
 - Objektname: `<prefix>/matrixctrl-<yyyy-mm-dd-hhmm>-<anlass>.tar.gz.age`, Anlass
   `zeitplan` | `vor-upgrade-<version>` | `manuell`.
 

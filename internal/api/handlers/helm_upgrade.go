@@ -31,6 +31,9 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 		// OverridePinnedImages starts the upgrade although the config pins images the
 		// target chart does not match. Behind an explicit confirmation in the UI.
 		OverridePinnedImages bool `json:"override_pinned_images"`
+		// SkipBackup goes on without the backup that normally precedes an upgrade. The
+		// UI offers it after a backup failed; the history records that it was used.
+		SkipBackup bool `json:"skip_backup"`
 	}
 	if err := Decode(r, &req); err != nil || req.ToVersion == "" {
 		Error(w, http.StatusBadRequest, "to_version required")
@@ -120,6 +123,20 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 			stream.emit("WARNING: " + imagepin.Describe(pinned) + " — bewusst übergangen.")
 		}
 
+		// The backup comes after every refusal and before Helm touches anything: if it
+		// fails, the release is exactly as it was (etappe 120).
+		proceed, outcome, object, berr := h.backupBeforeUpgrade(ctx, stream, req.ToVersion, req.SkipBackup)
+		_, _ = h.db.Exec(ctx, "UPDATE upgrade_history SET backup_status=$1, backup_object=$2 WHERE id=$3",
+			outcome, object, upgradeUUID)
+		if !proceed {
+			msg := "Das Backup vor dem Upgrade ist fehlgeschlagen: " + berr.Error()
+			stream.emit("ERROR: " + msg + " Helm wurde nicht angefasst.")
+			stream.failBackup()
+			_, _ = h.db.Exec(ctx, `UPDATE upgrade_history SET status='failed', error_message=$1, ts_completed=NOW() WHERE id=$2`,
+				msg, upgradeUUID)
+			return
+		}
+
 		// Apply, not rollout: helm has not written anything yet. The snapshot
 		// promotes this to `rollout` the moment a workload stops being settled,
 		// which is the observable definition of "the rollout has begun".
@@ -176,6 +193,57 @@ func (h *HelmHandler) Upgrade(w http.ResponseWriter, r *http.Request) {
 		"upgrade_id": upgradeID,
 		"history_id": upgradeUUID.String(),
 	})
+}
+
+// preUpgradeBackup is what the upgrade needs from the offsite backups.
+type preUpgradeBackup interface {
+	Configured(ctx context.Context) (bool, []string, error)
+	// BackupBeforeUpgrade takes a backup without media and returns the object's key.
+	BackupBeforeUpgrade(ctx context.Context, version string, say func(string)) (string, error)
+}
+
+// SetPreUpgradeBackup wires the backup that precedes a version upgrade.
+func (h *HelmHandler) SetPreUpgradeBackup(b preUpgradeBackup) { h.backup = b }
+
+// Outcomes recorded in upgrade_history.backup_status.
+const (
+	backupOK            = "ok"
+	backupSkipped       = "skipped"
+	backupFailed        = "failed"
+	backupNotConfigured = "not_configured"
+)
+
+// backupBeforeUpgrade decides whether the upgrade may start (operator decision,
+// 2026-10-19): a backup runs first; if one is set up and fails, the upgrade does not
+// start. proceed is false only for that case. With no target set up the upgrade goes on
+// with a note — a block there would make the feature a precondition of upgrading at all.
+// skip is the operator's explicit "Ohne Backup fortfahren".
+func (h *HelmHandler) backupBeforeUpgrade(ctx context.Context, stream *upgradeStream, version string, skip bool) (proceed bool, outcome, object string, err error) {
+	if skip {
+		stream.emit("WARNING: Das Backup vor dem Upgrade wurde auf Wunsch übersprungen.")
+		return true, backupSkipped, "", nil
+	}
+	if h.backup == nil {
+		stream.emit("Hinweis: Es ist kein Backup-Ziel eingerichtet, das Upgrade läuft ohne Backup.")
+		return true, backupNotConfigured, "", nil
+	}
+	ok, missing, cerr := h.backup.Configured(ctx)
+	if cerr != nil {
+		// Could not even tell: a configured target we cannot read is not "none".
+		return false, backupFailed, "", cerr
+	}
+	if !ok {
+		stream.emit("Hinweis: Das Backup-Ziel ist nicht eingerichtet (es fehlt: " + strings.Join(missing, ", ") +
+			"), das Upgrade läuft ohne Backup.")
+		return true, backupNotConfigured, "", nil
+	}
+	stream.emit("Backup vor dem Upgrade (ohne Medien) …")
+	key, berr := h.backup.BackupBeforeUpgrade(ctx, version, func(m string) { stream.emit(m) })
+	if berr != nil {
+		return false, backupFailed, "", berr
+	}
+	stream.emit("Backup vor dem Upgrade gespeichert.")
+	return true, backupOK, key, nil
 }
 
 // ApplyConfig commits the current config to git and runs an in-place helm upgrade
@@ -345,5 +413,7 @@ func (h *HelmHandler) GetUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 		"status": stream.status,
 		"logs":   stream.logs,
 		"done":   stream.done,
+		// Machine-readable: the UI offers "Ohne Backup fortfahren" only for this case.
+		"backup_failed": stream.backupFailed,
 	})
 }

@@ -35,13 +35,15 @@ import (
 //
 //	1 — configuration, MatrixCtrl's database, Synapse's database (etappe 72)
 //	2 — the accounts and the media and the sealed keys (102), and the sequences (106)
+//	3 — the media as one member per file under media/files/ instead of one media/media.tar,
+//	    so it streams without a temporary file (etappe 120). Older archives stay readable.
 //
 // The jump to 2 is about the counters: a format-1 archive has no `sequences` in its
 // manifest, which is not a formatting detail but the difference between a homeserver
 // that comes back and one that hands out ids it has already used. Such an archive is
 // still accepted and still restores rooms, messages and accounts — and the preview says
 // plainly what it cannot do, because a silent success is the expensive failure here.
-const FormatVersion = 2
+const FormatVersion = 3
 
 // MinReadableFormat is the oldest layout a restore still understands.
 const MinReadableFormat = 1
@@ -53,6 +55,7 @@ var regenerable = map[string]bool{
 	"rtc_samples":         true,
 	"node_samples":        true,
 	"synapse_samples":     true,
+	"offsite_runs":        true, // what happened on the *old* server; not this one's history
 	"rtc_address_history": true,
 	"login_attempts":      true,
 	"oidc_states":         true,

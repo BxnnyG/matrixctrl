@@ -81,7 +81,7 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if isDone {
-			send(map[string]string{"type": "done", "status": doneStatus})
+			send(stream.doneFrame(doneStatus))
 			return
 		}
 
@@ -90,7 +90,7 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 		// stream with nobody listening, and this connection would wait forever.
 		ch, alreadyDone, status := stream.subscribe()
 		if alreadyDone {
-			send(map[string]string{"type": "done", "status": status})
+			send(stream.doneFrame(status))
 			return
 		}
 		defer stream.unsubscribe(ch)
@@ -115,7 +115,7 @@ func (h *WSHandler) UpgradeLogs(w http.ResponseWriter, r *http.Request) {
 					// rather than whatever it held three seconds ago.
 					sendProgress()
 					_, _, finalStatus := stream.snapshot()
-					send(map[string]string{"type": "done", "status": finalStatus})
+					send(stream.doneFrame(finalStatus))
 					return
 				}
 				if !send(map[string]string{"type": "log", "line": line}) {

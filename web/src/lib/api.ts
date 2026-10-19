@@ -8,8 +8,11 @@ const BASE = "";
  *  explanation that could never appear (E36). */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** The parsed error body, for answers that carry more than a message (e.g. missing[]). */
+  readonly data?: Record<string, unknown>;
+  constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
+    this.data = data;
     this.name = "ApiError";
     this.status = status;
   }
@@ -19,9 +22,9 @@ function getToken(): string | null {
   return localStorage.getItem("matrixctrl_token");
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...extra };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, {
@@ -41,7 +44,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(err.error ?? res.statusText, res.status);
+    throw new ApiError(err.error ?? res.statusText, res.status, err);
   }
 
   if (res.status === 204) return undefined as T;
@@ -110,7 +113,8 @@ async function upload<T>(path: string, body: Blob, onProgress?: (sent: number) =
 export const api = {
   upload,
   get: <T = unknown>(path: string) => request<T>("GET", path),
-  post: <T = unknown>(path: string, body: unknown) => request<T>("POST", path, body),
+  // extra headers: for a secret that must not travel in the URL (the age key, etappe 120)
+  post: <T = unknown>(path: string, body: unknown, headers?: Record<string, string>) => request<T>("POST", path, body, headers),
   put: <T = unknown>(path: string, body: unknown) => request<T>("PUT", path, body),
   delete: <T = unknown>(path: string) => request<T>("DELETE", path),
 };

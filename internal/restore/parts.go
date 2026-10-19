@@ -141,14 +141,20 @@ type KeyResult struct {
 // accounts and files all restore without it (§4.102), which is why only this part is
 // encrypted.
 func Keys(ctx context.Context, s Secrets, ns string, sealed, recoveryKey []byte, prog Progress) (KeyResult, error) {
-	var res KeyResult
-
 	plain, err := backup.Open(recoveryKey, sealed)
 	if err != nil {
-		return res, fmt.Errorf("die Schlüssel lassen sich mit diesem Wiederherstellungsschlüssel " +
+		return KeyResult{}, fmt.Errorf("die Schlüssel lassen sich mit diesem Wiederherstellungsschlüssel " +
 			"nicht öffnen — er gehört zu genau diesem Archiv und wurde beim Herunterladen einmal angezeigt")
 	}
+	return KeysPlain(ctx, s, ns, plain, prog)
+}
 
+// KeysPlain puts back a secrets part that needs no key of its own: it came out of an
+// archive that was encrypted as a whole, and the operator's private key has already been
+// used to open that (etappe 120). Same merge as Keys, so the credentials that belong to
+// this installation are kept either way.
+func KeysPlain(ctx context.Context, s Secrets, ns string, plain []byte, prog Progress) (KeyResult, error) {
+	var res KeyResult
 	var sec corev1.Secret
 	if err := yaml.Unmarshal(plain, &sec); err != nil {
 		return res, fmt.Errorf("der entschlüsselte Teil ist kein Secret: %w", err)

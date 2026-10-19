@@ -21,7 +21,8 @@ export interface UpgradeProgress {
 
 interface UseUpgradeStreamOptions {
   onLog: (line: string) => void;
-  onDone: (status: string) => void;
+  /** backupFailed: the upgrade ended because the backup before it failed, not Helm. */
+  onDone: (status: string, info?: { backupFailed: boolean }) => void;
   /** Latest structured snapshot. Each one supersedes the last — it is a state, not
    *  an event, so a dropped frame costs nothing and nothing needs folding. */
   onProgress?: (progress: UpgradeProgress) => void;
@@ -86,10 +87,10 @@ export function useUpgradeStream(
       return true;
     };
 
-    const finish = (status: string) => {
+    const finish = (status: string, backupFailed = false) => {
       if (finished) return;
       finished = true;
-      opts.onDone(status);
+      opts.onDone(status, { backupFailed });
     };
 
     // A browser cannot set an Authorization header on a WebSocket, so something has
@@ -126,7 +127,7 @@ export function useUpgradeStream(
       };
 
       ws.onmessage = (e) => {
-        let msg: { type?: string; line?: string; status?: string; progress?: UpgradeProgress };
+        let msg: { type?: string; line?: string; status?: string; backup_failed?: boolean; progress?: UpgradeProgress };
         try {
           msg = JSON.parse(e.data);
         } catch {
@@ -148,7 +149,7 @@ export function useUpgradeStream(
             if (msg.progress) opts.onProgress?.(msg.progress);
             return;
           case "done":
-            finish(msg.status ?? "unknown");
+            finish(msg.status ?? "unknown", msg.backup_failed === true);
             return;
           default:
             // Unknown types are ignored rather than echoed, so a future
@@ -175,12 +176,12 @@ export function useUpgradeStream(
       if (cancelled || finished) return;
 
       try {
-        const status = await api.get<{ status: string; done: boolean }>(
+        const status = await api.get<{ status: string; done: boolean; backup_failed?: boolean }>(
           `/api/v1/helm/releases/ess/upgrade/${upgradeId}`,
         );
         if (cancelled) return;
         if (status.done) {
-          finish(status.status);
+          finish(status.status, status.backup_failed === true);
           return;
         }
       } catch {

@@ -41,8 +41,11 @@ type Archive struct {
 	// they are small and decide what a restore can promise — whether the counters are
 	// there at all — while their data is streamed elsewhere.
 	PartManifests map[string]HomeserverManifest
-	tables        map[string][]byte // table name -> CSV
-	config        map[string][]byte // path under config-repo/ -> contents
+	// Media is what the archive holds of the uploaded files, in either layout. Counted
+	// from the member headers alone, so a preview of a huge archive stays a header walk.
+	Media  MediaInfo
+	tables map[string][]byte // table name -> CSV
+	config map[string][]byte // path under config-repo/ -> contents
 }
 
 // Read parses an archive without changing anything, so the operator can be shown what
@@ -71,6 +74,7 @@ func Read(r io.Reader) (*Archive, error) {
 		if err != nil {
 			return nil, fmt.Errorf("beschädigtes Archiv: %w", err)
 		}
+		a.Media.note(h)
 		if h.Typeflag != tar.TypeReg {
 			continue
 		}

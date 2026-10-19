@@ -39,6 +39,8 @@ type HelmHandler struct {
 	// probe is additive and its absence costs detail, not correctness.
 	k8s   *k8s.Client
 	essNS string
+	// backup is the backup taken before a version upgrade (etappe 120). Nil: none.
+	backup preUpgradeBackup
 	// oidcReloader hot-reloads the auth service after connect-OIDC (set in main).
 	oidcReloader func(context.Context) error
 	// In-memory log streams for WebSocket consumers
@@ -222,7 +224,7 @@ func (h *HelmHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	// MatrixCtrl upgrade history
 	rows, err := h.db.Query(r.Context(), `
-		SELECT id, from_version, to_version, status, ts_initiated, helm_revision, pre_flight
+		SELECT id, from_version, to_version, status, ts_initiated, helm_revision, pre_flight, backup_status, backup_object
 		FROM upgrade_history WHERE true ORDER BY ts_initiated DESC LIMIT 20`)
 	if err != nil {
 		JSON(w, http.StatusOK, helmHistory)
@@ -242,13 +244,17 @@ func (h *HelmHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		// deliberately different from an empty list, which means checked and clean.
 		PreFlight []capacity.Finding `json:"pre_flight,omitempty"`
 		Checked   bool               `json:"preflight_checked"`
+		// BackupStatus is what happened to the backup before this upgrade (etappe 120):
+		// ok | skipped | failed | not_configured, empty for older rows.
+		BackupStatus string `json:"backup_status,omitempty"`
+		BackupObject string `json:"backup_object,omitempty"`
 	}
 
 	var result []entry
 	for rows.Next() {
 		var e entry
 		var pf []byte
-		if err := rows.Scan(&e.ID, &e.FromVersion, &e.ToVersion, &e.Status, &e.TsInitiated, &e.HelmRevision, &pf); err != nil {
+		if err := rows.Scan(&e.ID, &e.FromVersion, &e.ToVersion, &e.Status, &e.TsInitiated, &e.HelmRevision, &pf, &e.BackupStatus, &e.BackupObject); err != nil {
 			continue
 		}
 		if len(pf) > 0 {

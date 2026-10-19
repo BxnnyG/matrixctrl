@@ -46,6 +46,8 @@ type StatusHandler struct {
 	// response that nothing is waiting for.
 	restore   *restoreJob
 	restoreMu sync.Mutex
+	// offsite is the backup bucket as a restore source (etappe 120). Nil: no such source.
+	offsite offsiteSource
 }
 
 // SetBackup wires what a backup needs: the database and the config repository path
@@ -105,86 +107,12 @@ func (h *StatusHandler) BackupFull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var hs *pgx.Conn
-	if h.k8s != nil {
-		if dsn, err := h.synapseDSN(r.Context()); err == nil {
-			if conn, cerr := pgx.Connect(r.Context(), dsn); cerr == nil {
-				hs = conn
-				defer conn.Close(context.Background())
-			} else {
-				// Logged, never echoed: the message carries the DSN and the DSN carries
-				// the password.
-				log.Printf("full backup: synapse unreachable, continuing without it: %v", cerr)
-			}
-		}
+	mode := secretsSealed
+	if r.URL.Query().Get("secrets") == "0" {
+		mode = secretsNone
 	}
-
-	// The accounts. Under MSC3861 they live in the authentication service's database,
-	// not Synapse's — which is why a "full" archive used to bring the rooms back and
-	// nobody who could log in to them (etappe 102).
-	var mas *pgx.Conn
-	if h.k8s != nil {
-		if dsn, err := h.masDSN(r.Context()); err == nil {
-			if conn, cerr := pgx.Connect(r.Context(), dsn); cerr == nil {
-				mas = conn
-				defer conn.Close(context.Background())
-			} else {
-				log.Printf("full backup: MAS database unreachable, continuing without the accounts: %v", cerr)
-			}
-		}
-	}
-
-	opts := backup.FullOptions{
-		DB:         h.backupDB,
-		Homeserver: hs,
-		MAS:        mas,
-		ConfigRepo: h.backupRepo,
-		AppVersion: h.appVersion,
-		ESS:        h.essRelease_(r),
-	}
-
-	// The keys, sealed. On by default: without them a restore keeps no sessions and
-	// cannot decrypt the accounts. The key is generated per archive, returned in a
-	// header, and stored nowhere — see internal/backup/seal.go for why that is the
-	// only placement that works.
-	var shownKey string
-	if r.URL.Query().Get("secrets") != "0" && h.k8s != nil {
-		if blob, err := h.k8s.SecretYAML(r.Context(), h.essNS, "ess-generated"); err == nil {
-			key, shown, kerr := backup.NewRecoveryKey()
-			if kerr == nil {
-				if sealed, serr := backup.Seal(key, blob); serr == nil {
-					opts.Sealed = sealed
-					shownKey = shown
-				} else {
-					log.Printf("full backup: sealing the keys failed, continuing without them: %v", serr)
-				}
-			}
-		} else {
-			log.Printf("full backup: could not read ess-generated, continuing without the keys: %v", err)
-		}
-	}
-
-	// The uploaded files, off the volume only Synapse mounts. Opt-in, because they can
-	// be hundreds of gigabytes.
-	var mediaPipe *io.PipeReader
-	if r.URL.Query().Get("media") == "1" && h.k8s != nil {
-		if pod, perr := h.synapsePod(r.Context()); perr == nil {
-			pr, pw := io.Pipe()
-			mediaPipe = pr
-			go func() {
-				err := h.k8s.TarFromPod(context.Background(), h.essNS, pod, "synapse", "/media", pw)
-				_ = pw.CloseWithError(err)
-			}()
-			opts.Media = pr
-		} else {
-			log.Printf("full backup: no synapse pod for the media, continuing without them: %v", perr)
-		}
-	}
-	defer func() {
-		if mediaPipe != nil {
-			_ = mediaPipe.Close()
-		}
-	}()
+	opts, shownKey, cleanup := h.assembleArchive(r.Context(), r.URL.Query().Get("media") == "1", mode)
+	defer cleanup()
 
 	name := "matrixctrl-full-" + time.Now().UTC().Format("2006-01-02-1504") + ".tar.gz"
 	w.Header().Set("Content-Type", "application/gzip")
@@ -256,7 +184,7 @@ func (h *StatusHandler) synapsePod(ctx context.Context) (string, error) {
 }
 
 // essRelease_ reads the managed release for a manifest, best effort.
-func (h *StatusHandler) essRelease_(r *http.Request) backup.Release {
+func (h *StatusHandler) essRelease_() backup.Release {
 	var ess backup.Release
 	if h.helm != nil {
 		if rel, err := h.helm.GetRelease(h.essRelease); err == nil && rel != nil {
@@ -342,6 +270,9 @@ type restorePreview struct {
 	Parts    []string      `json:"parts,omitempty"`
 	Counters *bool         `json:"counters,omitempty"`
 	PartRows []archivePart `json:"part_rows,omitempty"`
+	// Media is the uploaded files' count and size, whichever layout the archive uses
+	// (files is -1 for the old single-tar layout, which cannot be counted unopened).
+	Media *backup.MediaInfo `json:"media,omitempty"`
 }
 
 // archivePart is one database in the archive, as a line the operator can read.
@@ -359,6 +290,10 @@ func (h *StatusHandler) RestorePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := restorePreview{Manifest: a.Manifest, ServerName: archiveServerName(a), Parts: a.Parts}
+	if a.Media.Layout != "" {
+		m := a.Media
+		p.Media = &m
+	}
 	for prefix, man := range a.PartManifests {
 		var rows int64
 		for _, t := range man.Tables {
@@ -444,7 +379,12 @@ func (h *StatusHandler) Restore(w http.ResponseWriter, r *http.Request) {
 // readArchive is the shared upload path. Bounded: an unbounded read of an uploaded file
 // is how a panel is turned off by a large POST.
 func (h *StatusHandler) readArchive(r *http.Request) (*backup.Archive, error) {
-	return backup.Read(io.LimitReader(r.Body, 512<<20))
+	// An age-encrypted archive is opened with the key from the request header (etappe 120).
+	body, err := openUpload(r)
+	if err != nil {
+		return nil, err
+	}
+	return backup.Read(io.LimitReader(body, 512<<20))
 }
 
 // SetNodeHistory wires the recorded node samples (etappe 59).

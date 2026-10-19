@@ -5,6 +5,11 @@ import { Card, Icon, Button } from "@/components/mc";
 import { api } from "@/lib/api";
 import { essVersion, PART_LABELS, type ArchiveManifest, type RestoreProgress } from "@/lib/archive";
 import { ArchivePicker } from "@/components/ArchivePicker";
+import { OffsiteCard, OffsiteObjects } from "@/components/OffsiteBackup";
+
+const AGE_KEY_HEADER = "X-MatrixCtrl-Age-Key";
+/** An age file starts with this line, whatever it is called. */
+const AGE_MAGIC = "age-encryption.org/";
 
 export const Route = createFileRoute("/backup")({ component: BackupPage });
 
@@ -99,17 +104,32 @@ function BackupPage() {
   const [reading, setReading] = useState(false);
   const [sent, setSent] = useState(0);
 
-  const pick = async (f: File | null) => {
-    setArchive(f); setPreview(null); setRestoreErr(null); setRestoreMsg(null); setSent(0);
-    if (!f) return;
-    setReading(true);
+  // An archive encrypted by the automatic backups (age). It needs the private key to be
+  // read at all, so the preview waits for it. The key lives in this component's state
+  // only and is cleared once the restore has started.
+  const [encrypted, setEncrypted] = useState(false);
+  const [ageKey, setAgeKey] = useState("");
+
+  const readPreview = async (f: File, key?: string) => {
+    setReading(true); setRestoreErr(null); setSent(0);
     try {
-      setPreview(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f, setSent));
+      setPreview(await api.upload<ArchiveManifest>("/api/v1/status/restore/preview", f, setSent,
+        key ? { [AGE_KEY_HEADER]: key } : undefined));
     } catch (e) {
       setRestoreErr(e instanceof Error ? e.message : "Archiv unlesbar");
     } finally {
       setReading(false);
     }
+  };
+
+  const pick = async (f: File | null) => {
+    setArchive(f); setPreview(null); setRestoreErr(null); setRestoreMsg(null); setSent(0);
+    setEncrypted(false); setAgeKey("");
+    if (!f) return;
+    let isAge = f.name.endsWith(".age");
+    try { isAge = isAge || (await f.slice(0, AGE_MAGIC.length).text()) === AGE_MAGIC; } catch { /* name decides */ }
+    if (isAge) { setEncrypted(true); return; }
+    await readPreview(f);
   };
 
   // What to put back. Both default to on: an archive that carries them was made by
@@ -151,19 +171,33 @@ function BackupPage() {
 
   useEffect(() => { logEnd.current?.scrollIntoView({ block: "nearest" }); }, [progress?.steps?.length]);
 
-  const needsKey = putBackKeys && (preview?.parts?.includes("secrets/") ?? false);
+  // A whole-archive-encrypted backup carries its secrets unsealed: no recovery key.
+  const needsKey = !encrypted && putBackKeys && (preview?.parts?.includes("secrets/") ?? false);
 
   const doRestore = async () => {
     if (!archive) return;
     setRestoring(true); setRestoreErr(null); setRestoreMsg(null); setProgress(null); setSent(0);
     try {
       const q = `?media=${putBackMedia}&keys=${putBackKeys}`;
+      const headers: Record<string, string> = {};
+      if (needsKey) headers["X-MatrixCtrl-Recovery-Key"] = restoreKey;
+      if (encrypted) headers[AGE_KEY_HEADER] = ageKey.trim();
       await api.upload<{ started: boolean }>("/api/v1/status/restore/full" + q, archive, setSent,
-        needsKey ? { "X-MatrixCtrl-Recovery-Key": restoreKey } : undefined);
+        Object.keys(headers).length ? headers : undefined);
+      setAgeKey("");
     } catch (e) {
       setRestoring(false);
       setRestoreErr(e instanceof Error ? e.message : "Wiederherstellung fehlgeschlagen");
     }
+  };
+
+  // Restore straight from the bucket. A wrong key is refused at once (422) and comes back
+  // as a rejection, so the dialog can say so; otherwise the same progress polling takes over.
+  const restoreFromBucket = async (name: string, key: string) => {
+    setRestoreErr(null); setRestoreMsg(null); setProgress(null);
+    await api.post(`/api/v1/status/restore/full?source=s3&object=${encodeURIComponent(name)}`, undefined,
+      { [AGE_KEY_HEADER]: key });
+    setRestoring(true);
   };
 
   return (
@@ -272,6 +306,9 @@ function BackupPage() {
         </div>
       </Card>
 
+      <OffsiteCard />
+      <OffsiteObjects onRestore={restoreFromBucket} restoring={restoring} />
+
       {/* Restore. Two steps, and the preview exists so nobody discovers after the fact
           that they put a 26.8.0 configuration onto a different cluster. Since etappe 106
           it puts back every part the archive holds, not only MatrixCtrl's own. */}
@@ -290,6 +327,22 @@ function BackupPage() {
 
         <ArchivePicker file={archive} busy={reading} sent={sent} error={restoreErr}
           onPick={(f) => void pick(f)} />
+
+        {encrypted && archive && !preview && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+              Dieses Archiv ist verschlüsselt (age). Ohne den privaten Schlüssel lässt es sich nicht lesen.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input type="password" value={ageKey} onChange={(e) => setAgeKey(e.target.value)}
+                placeholder="AGE-SECRET-KEY-1…" autoComplete="off" spellCheck={false} aria-label="Privater Schlüssel"
+                style={{ flex: "1 1 280px", fontFamily: "var(--font-mono)", fontSize: 12.5, padding: "8px 10px", background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }} />
+              <Button variant="outline" size="sm" disabled={reading || ageKey.trim() === ""} onClick={() => void readPreview(archive, ageKey.trim())}>
+                Entschlüsseln und prüfen
+              </Button>
+            </div>
+          </div>
+        )}
 
         {preview && (
           <div style={{ fontSize: 12.5, color: "var(--text-dim)", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "10px 12px", lineHeight: 1.7 }}>
@@ -339,6 +392,7 @@ function BackupPage() {
                     value={restoreKey}
                     onChange={(e) => setRestoreKey(e.target.value)}
                     placeholder="Wiederherstellungsschlüssel (beim Erstellen des Archivs einmal angezeigt)"
+                    autoComplete="off" spellCheck={false}
                     style={{
                       fontFamily: "var(--font-mono)", fontSize: 12.5, padding: "8px 10px",
                       background: "var(--surface-2)", color: "var(--text)",
@@ -382,7 +436,7 @@ function BackupPage() {
         {preview && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <Button variant="primary" icon="upload" onClick={() => void doRestore()}
-              disabled={restoring || (needsKey && restoreKey.trim() === "")}>
+              disabled={restoring || (needsKey && restoreKey.trim() === "") || (encrypted && ageKey.trim() === "")}>
               {restoring ? "Wird eingespielt…" : "Jetzt wiederherstellen"}
             </Button>
             <span style={{ fontSize: 12, color: "var(--status-warn)" }}>

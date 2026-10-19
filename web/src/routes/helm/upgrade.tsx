@@ -121,7 +121,7 @@ function PinnedImages({ pinned, note, busy, onFollow, error }: {
   );
 }
 
-function UpgradeWizard() {
+export function UpgradeWizard() {
   const navigate = useNavigate();
   const logRef = useRef<HTMLDivElement>(null);
   const preselected = Route.useSearch().version;
@@ -134,6 +134,10 @@ function UpgradeWizard() {
   const [elapsed, setElapsed] = useState(0);
   const [showLog, setShowLog] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
+  // The backup before the upgrade failed (stream says so explicitly; "failed" alone
+  // could also be Helm). Offers "Ohne Backup fortfahren" (etappe 120).
+  const [backupFailed, setBackupFailed] = useState(false);
+  const lastOverride = useRef(false);
   const qc = useQueryClient();
   const hooksQuery = useQuery({
     queryKey: ["hooks"],
@@ -185,9 +189,13 @@ function UpgradeWizard() {
   });
 
   const upgrade = useMutation({
-    mutationFn: ({ version, override }: { version: string; override?: boolean }) =>
-      api.post<UpgradeResponse>("/api/v1/helm/releases/ess/upgrade", { to_version: version, override_pinned_images: !!override }),
+    mutationFn: ({ version, override, skipBackup }: { version: string; override?: boolean; skipBackup?: boolean }) => {
+      lastOverride.current = !!override;
+      return api.post<UpgradeResponse>("/api/v1/helm/releases/ess/upgrade",
+        { to_version: version, override_pinned_images: !!override, skip_backup: !!skipBackup });
+    },
     onSuccess: (res) => {
+      setBackupFailed(false);
       setUpgradeId(res.upgrade_id);
       setLogs([]);
       setDone(false);
@@ -203,9 +211,10 @@ function UpgradeWizard() {
       setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 30);
     },
     onProgress: setProgress,
-    onDone: (status) => {
+    onDone: (status, info) => {
       setDone(true);
       setFinalStatus(status);
+      setBackupFailed(status === "failed" && !!info?.backupFailed);
       // Collapsed by default, opened on failure. The structured panel is the thing
       // to read while an upgrade is going well; the moment it is not, the log is,
       // and making the operator hunt for it at that point would be the wrong
@@ -336,7 +345,31 @@ function UpgradeWizard() {
             </Card>
           )}
 
-          {done && finalStatus === "failed" && (
+          {done && finalStatus === "failed" && backupFailed && (
+            <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-warn) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-warn) 30%, var(--border))" }}>
+              <Icon name="alert" size={20} style={{ color: "var(--status-warn)", flexShrink: 0, marginTop: 1 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+                  <strong style={{ color: "var(--text)" }}>Das Backup vor dem Upgrade ist fehlgeschlagen.</strong>
+                  <div style={{ color: "var(--text-dim)", marginTop: 3 }}>
+                    Das Upgrade wurde nicht gestartet, ESS ist unverändert. Der Grund steht im Log oben.
+                    Du kannst das Backup-Ziel prüfen und es erneut versuchen — oder das Upgrade bewusst ohne Backup ausführen.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Button variant="dangerGhost" size="sm" icon="alert" disabled={upgrade.isPending}
+                    onClick={() => upgrade.mutate({ version: selectedVersion, override: lastOverride.current, skipBackup: true })}>
+                    {upgrade.isPending ? <><Spinner size={13} /> Starte…</> : "Ohne Backup fortfahren"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate({ to: "/backup" })}>Zum Backup-Ziel</Button>
+                  <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/helm" })}>Zur Übersicht</Button>
+                </div>
+                {upgrade.isError && <div style={{ fontSize: 12.5, color: "var(--status-err)" }}>{(upgrade.error as Error).message}</div>}
+              </div>
+            </Card>
+          )}
+
+          {done && finalStatus === "failed" && !backupFailed && (
             <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "color-mix(in oklch, var(--status-err) 9%, var(--surface))", borderColor: "color-mix(in oklch, var(--status-err) 30%, var(--border))" }}>
               <Icon name="x" size={20} style={{ color: "var(--status-err)", flexShrink: 0, marginTop: 1 }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

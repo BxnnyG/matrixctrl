@@ -48,6 +48,11 @@ type upgradeStream struct {
 	// exactly there (etappe 108). Zero for operations that are not config applies.
 	origin applyOrigin
 
+	// backupFailed is set when the upgrade ended because the backup before it failed.
+	// The status alone ("failed") cannot tell that from a failed Helm run, and only the
+	// first may offer "Ohne Backup fortfahren" (etappe 120).
+	backupFailed bool
+
 	mu sync.Mutex
 }
 
@@ -163,6 +168,25 @@ func (s *upgradeStream) emit(msg interface{}) {
 		default:
 		}
 	}
+}
+
+// failBackup ends the stream as failed because the backup before the upgrade failed.
+func (s *upgradeStream) failBackup() {
+	s.mu.Lock()
+	s.backupFailed = true
+	s.mu.Unlock()
+	s.finish("failed")
+}
+
+// doneFrame is the terminal websocket message. backup_failed is only present when true.
+func (s *upgradeStream) doneFrame(status string) map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f := map[string]any{"type": "done", "status": status}
+	if s.backupFailed {
+		f["backup_failed"] = true
+	}
+	return f
 }
 
 func (s *upgradeStream) finish(status string) {

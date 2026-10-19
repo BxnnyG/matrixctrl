@@ -15,6 +15,24 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic off-site backups** (etappe 120): daily at a set time and before every ESS
+  version upgrade, streamed straight to any S3-compatible store (Hetzner, Backblaze, Wasabi,
+  AWS, MinIO, SeaweedFS). The whole archive is encrypted with an age public key; the private
+  key is shown once and never stored, so the server can write backups but not read them.
+  Retention keeps 7 daily, 4 weekly and pre-upgrade backups for 30 days. The backup page
+  lists the bucket and restores from it directly.
+- **Upgrade stops when its pre-upgrade backup fails**; „Ohne Backup fortfahren" runs it
+  anyway, and the upgrade history records which way it went.
+- Encrypted `.age` archives can be uploaded for restore.
+
+### Fixed
+
+- **A backup with media no longer copies the whole media volume into the panel pod first.**
+  Large media stores would have filled the pod's ephemeral storage and got it evicted. Media
+  now go into the archive file by file (archive format 3); older archives still restore.
+
 ## [0.1.126] — 2026-10-12
 
 ### Fixed

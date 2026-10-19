@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -66,10 +65,14 @@ type FullOptions struct {
 	// Sealed is the encrypted secrets part: signing key, macaroon, MAS encryption
 	// secret. Nil leaves it out. Encrypted because whoever holds it holds the
 	// homeserver; included by default because without it a restore keeps no sessions.
-	Sealed     []byte
-	ConfigRepo string
-	AppVersion string
-	ESS        Release
+	Sealed []byte
+	// PlainSecrets is the same secrets part without the seal. For an archive that is
+	// encrypted as a whole (etappe 120) a second, inner key would be a second thing to
+	// lose and protect nothing the outer one does not. Set at most one of the two.
+	PlainSecrets []byte
+	ConfigRepo   string
+	AppVersion   string
+	ESS          Release
 }
 
 func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
@@ -128,7 +131,10 @@ func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
 		full.NotIncluded = append(full.NotIncluded,
 			"Die hochgeladenen Dateien — beim Erstellen nicht ausgewählt.")
 	}
-	if len(opts.Sealed) > 0 {
+	if len(opts.Sealed) > 0 && len(opts.PlainSecrets) > 0 {
+		return fmt.Errorf("Geheimnisse entweder versiegelt oder im Klartext, nicht beides")
+	}
+	if len(opts.Sealed) > 0 || len(opts.PlainSecrets) > 0 {
 		full.Parts = append(full.Parts, "secrets/")
 	} else {
 		full.NotIncluded = append(full.NotIncluded,
@@ -169,55 +175,37 @@ func CreateFull(ctx context.Context, opts FullOptions, w io.Writer) error {
 		}
 	}
 
-	// Part four: the uploaded files, streamed straight through. They are already a tar
-	// coming out of the Synapse pod, so they are stored as one member rather than
-	// unpacked and repacked — on a large install that is the difference between a
-	// stream and a disk.
+	// Part four: the uploaded files, streamed straight through. They come out of the
+	// Synapse pod as a tar and go in as one member per file (format 3), because each
+	// inner header already knows its size. The single-member layout needed a temporary
+	// file to learn that size, and on a large install that file evicted the pod.
 	if opts.Media != nil {
-		if err := writeStream(tw, "media/media.tar", opts.Media, full.CreatedAt); err != nil {
+		if _, err := writeMedia(tw, opts.Media, full.CreatedAt); err != nil {
 			return fmt.Errorf("media: %w", err)
 		}
 	}
 
 	// Part five: the sealed secrets.
 	if len(opts.Sealed) > 0 {
-		if err := writeFile(tw, "secrets/sealed.bin", opts.Sealed, 0o600, full.CreatedAt); err != nil {
+		if err := writeFile(tw, SealedSecretsMember, opts.Sealed, 0o600, full.CreatedAt); err != nil {
+			return fmt.Errorf("secrets: %w", err)
+		}
+	}
+	if len(opts.PlainSecrets) > 0 {
+		if err := writeFile(tw, PlainSecretsMember, opts.PlainSecrets, 0o600, full.CreatedAt); err != nil {
 			return fmt.Errorf("secrets: %w", err)
 		}
 	}
 	return nil
 }
 
-// writeStream copies a reader into the archive without holding it in memory.
-//
-// tar needs the size in the header before the body, and a stream does not know it — so
-// it is buffered to a temporary file first, which is still not the whole archive in RAM
-// and is the only honest way to tar something of unknown length.
-func writeStream(tw *tar.Writer, name string, r io.Reader, at time.Time) error {
-	tmp, err := os.CreateTemp("", "mxctrl-part-*")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-	}()
-
-	n, err := io.Copy(tmp, r)
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if err := tw.WriteHeader(&tar.Header{
-		Name: name, Mode: 0o644, Size: n, ModTime: at, Typeflag: tar.TypeReg,
-	}); err != nil {
-		return err
-	}
-	_, err = io.Copy(tw, tmp)
-	return err
-}
+// SealedSecretsMember and PlainSecretsMember are where the keys sit in an archive. A
+// restore looks for both: the first needs the recovery key, the second lives inside an
+// archive that was already encrypted as a whole.
+const (
+	SealedSecretsMember = "secrets/sealed.bin"
+	PlainSecretsMember  = "secrets/ess-generated.yaml"
+)
 
 // configRestores and schemaNote are shared with Create so the two archives describe the
 // same contents in the same words (rule 3).

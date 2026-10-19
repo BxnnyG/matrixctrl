@@ -155,3 +155,21 @@ func TestStopProgressIsIdempotent(t *testing.T) {
 	stop()
 	stop() // a second call must not panic on a closed channel
 }
+
+// The UI offers "Ohne Backup fortfahren" only when the backup was the reason the
+// upgrade ended; a failed Helm run ends with the same status "failed" (etappe 120).
+func TestDoneFrameMarksBackupFailure(t *testing.T) {
+	s := &upgradeStream{status: "running"}
+	s.failBackup()
+	f := s.doneFrame("failed")
+	if f["status"] != "failed" || f["backup_failed"] != true {
+		t.Fatalf("backup failure not marked: %v", f)
+	}
+
+	h := &upgradeStream{status: "running"}
+	h.finish("failed")
+	f = h.doneFrame("failed")
+	if _, has := f["backup_failed"]; has {
+		t.Fatalf("a plain failure must not carry backup_failed: %v", f)
+	}
+}

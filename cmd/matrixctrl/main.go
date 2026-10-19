@@ -18,6 +18,7 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
 	"github.com/bxnnyg/matrixctrl/internal/audit"
 	"github.com/bxnnyg/matrixctrl/internal/auth"
+	"github.com/bxnnyg/matrixctrl/internal/backup/offsite"
 	"github.com/bxnnyg/matrixctrl/internal/config"
 	"github.com/bxnnyg/matrixctrl/internal/db"
 	"github.com/bxnnyg/matrixctrl/internal/dnshealth"
@@ -216,6 +217,22 @@ func main() {
 	// process's own database, both of which are local (etappe 68).
 	statusHandler.SetBackup(pool, configRepoPath, version.Version)
 	hooksHandler := handlers.NewHooksHandler(pool, engine)
+
+	// Automatic backups to S3 (etappe 120). The access keys sit in a Secret next to the
+	// other secrets MatrixCtrl keeps in the managed namespace (the only one its Role
+	// may write); without a cluster they cannot be stored, and the service says so.
+	var offCreds offsite.CredStore
+	if k8sClient != nil {
+		offCreds = offsite.NewK8sCreds(k8sClient, essNS)
+	}
+	offsiteSvc := offsite.NewService(offsite.Deps{
+		Settings: offsite.NewPGSettings(pool),
+		Creds:    offCreds,
+		Runs:     offsite.NewPGRuns(pool),
+		Build:    statusHandler.WriteOffsiteArchive,
+	})
+	statusHandler.SetOffsite(offsiteSvc)
+	go offsiteSvc.RunSchedule(context.Background())
 	driftHandler := handlers.NewDriftHandler(pool, k8sClient, essNS)
 	if helmClient != nil {
 		driftHandler.SetManifestSource(func() (string, error) { return helmClient.ReleaseManifest(essRelease) })
@@ -224,6 +241,7 @@ func main() {
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
+	helmHandler.SetPreUpgradeBackup(handlers.UpgradeBackup{Svc: offsiteSvc})
 
 	// Rooms (E36). Synapse is reached in-cluster rather than through the public
 	// hostname: the admin API would otherwise leave the cluster, cross the ingress and
@@ -401,6 +419,7 @@ func main() {
 		Mail:           mailHandler,
 		TLSDNS:         tlsdnsHandler,
 		SelfUpdate:     selfUpdateHandler,
+		Offsite:        handlers.NewOffsiteHandler(offsiteSvc),
 		Roles:          roles,
 
 		AuditSink: auditStore,
