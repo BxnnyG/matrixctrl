@@ -1,6 +1,9 @@
 # MatrixCtrl — rules for AI agents
 
 **Before any change: read and follow [docs/PROZESS.md](docs/PROZESS.md).**
+**Working mode: @ORCHESTRATOR.md — keep the main context small, delegate to `scout`/`worker`.
+Start of a session: `git fetch` and compare with `origin/master` (the repo may have moved on
+elsewhere), then read [HANDOFF.md](HANDOFF.md).**
 No feature without an entry in [docs/DESIGN.md](docs/DESIGN.md).
 
 MatrixCtrl is an AGPL Day-2 admin layer for self-hosted Matrix / Element Server
@@ -67,3 +70,26 @@ Go lives at `/usr/local/go/bin/go` and is **not** on the default PATH.
 - Instance Helm values (`deploy/helm/matrixctrl/values.*.yaml`) are gitignored and
   excluded from the packaged chart. The repo is public: no secrets, no IPs, no
   personal names (§4.8).
+
+## Shipping and verifying (learned the hard way)
+
+- **Ship by tag**: bump `deploy/helm/matrixctrl/Chart.yaml` (version = appVersion), CHANGELOG
+  entry, `make check`, commit, `git tag vX.Y.Z`, push branch and tag.
+- **No `gh` CLI here.** Release run status: `curl -s https://api.github.com/repos/BxnnyG/matrixctrl/actions/runs?per_page=8`
+  (it answers empty now and then — retry). Then `scripts/check-published.sh X.Y.Z` must say
+  "the registry holds what this release claims". GHCR pages tag lists (100 per page); every
+  reader goes through `internal/ociregistry`.
+- **Self-update proof** on the test cluster: `RUN_LIVE=1 SELFUPDATE_TO=X.Y.Z go test ./internal/k8s/ -run TestLiveSelfUpdateJob`.
+- **Two clusters**: the local one (kubectl here) is a playground the operator released for
+  any test. Production is read-only for the assistant — diagnose, never write; give the
+  operator the commands instead.
+- **Counter-probes**: every important test is broken on purpose once and must fail. When a
+  probe does not fail, check first that the edit actually hit (shell quoting has fooled us),
+  then whether the test is missing a case.
+- **Never copy data from operator screenshots** (IDs, names, hosts) into code, tests or docs.
+- ESS upgrades run **without** `--atomic`; only MatrixCtrl's self-update is atomic.
+- The call server (SFU) on the host network cannot roll on one node without freeing its
+  ports first — handled in `rolloutProbe` → `k8s.UnblockHostPortRollouts` (P2-23, §4.126).
+- Old installs pin chart images in their values (matrix-tools, `redis.image` feeding Valkey);
+  a raw `helm upgrade` with stored values fails on them. Go through MatrixCtrl, or override.
+
