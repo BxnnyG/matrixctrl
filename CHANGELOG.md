@@ -32,6 +32,13 @@ matching image, so a version identifies one exact pair
 - **A backup with media no longer copies the whole media volume into the panel pod first.**
   Large media stores would have filled the pod's ephemeral storage and got it evicted. Media
   now go into the archive file by file (archive format 3); older archives still restore.
+- **Media in a backup could arrive cut short and still count as a success.** When the
+  process exporting the media in the Synapse pod finished before MatrixCtrl had read
+  everything, the cluster dropped the rest of the stream and the exec still reported
+  success. A slow reader lost the last 4–7 MB of 96 MB in three of four runs. The export
+  now stays alive until the end of the archive has been read, and pod commands use
+  WebSocket like kubectl. Browser downloads with media made before this release may be
+  incomplete.
 
 ## [0.1.126] — 2026-10-12
 

@@ -240,3 +240,44 @@ func TestMediaOldFormatStillRead(t *testing.T) {
 		t.Error("an archive without media claimed to have some")
 	}
 }
+
+// notifyingSource records the end-of-archive signal and how much of the padding after
+// the end marker was read.
+type notifyingSource struct {
+	r        io.Reader
+	notified bool
+	afterEnd int
+}
+
+func (s *notifyingSource) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if s.notified {
+		s.afterEnd += n
+	}
+	return n, err
+}
+
+func (s *notifyingSource) EndOfArchive() { s.notified = true }
+
+// A held producer is released at the end marker, and what follows the marker is read to
+// the end — left unread, it kept the exec blocked forever.
+func TestWriteMediaReleasesAndDrains(t *testing.T) {
+	var inner bytes.Buffer
+	tw := tar.NewWriter(&inner)
+	_ = tw.WriteHeader(&tar.Header{Name: "./a", Typeflag: tar.TypeReg, Size: 3, Mode: 0o644})
+	_, _ = tw.Write([]byte("abc"))
+	_ = tw.Close()
+	inner.Write(make([]byte, 8192)) // tar's record padding after the end marker
+
+	src := &notifyingSource{r: &inner}
+	var outer bytes.Buffer
+	if _, err := writeMedia(tar.NewWriter(&outer), src, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if !src.notified {
+		t.Error("the producer was never released")
+	}
+	if inner.Len() != 0 {
+		t.Errorf("%d bytes after the end marker left unread", inner.Len())
+	}
+}

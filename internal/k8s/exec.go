@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 	"sigs.k8s.io/yaml"
@@ -37,7 +38,22 @@ func (c *Client) execInPod(ctx context.Context, namespace, pod, container string
 			Stderr:    true,
 		}, scheme.ParameterCodec)
 
-	exec, err := remotecommand.NewSPDYExecutor(c.rest, "POST", req.URL())
+	// WebSocket first, SPDY only when the server cannot upgrade — what kubectl does since
+	// 1.31. Over SPDY a reader slower than the stream lost the tail of it after ~45 s
+	// and the call still returned nil: 89 of 96 MB, no error (TestLiveTarFromPodSlowReader,
+	// the playground's first offsite backups, 2026-10-20). A truncated archive that
+	// reports success is the worst result a backup can have.
+	spdy, err := remotecommand.NewSPDYExecutor(c.rest, "POST", req.URL())
+	if err != nil {
+		return "", fmt.Errorf("exec into %s/%s: %w", namespace, pod, err)
+	}
+	ws, err := remotecommand.NewWebSocketExecutor(c.rest, "GET", req.URL().String())
+	if err != nil {
+		return "", fmt.Errorf("exec into %s/%s: %w", namespace, pod, err)
+	}
+	exec, err := remotecommand.NewFallbackExecutor(ws, spdy, func(err error) bool {
+		return httpstream.IsUpgradeFailure(err) || httpstream.IsHTTPSProxyError(err)
+	})
 	if err != nil {
 		return "", fmt.Errorf("exec into %s/%s: %w", namespace, pod, err)
 	}
@@ -65,13 +81,35 @@ func (c *Client) execInPod(ctx context.Context, namespace, pod, container string
 //
 // The operator was asked before this existed, because it widens what MatrixCtrl does
 // inside the cluster (etappe 102).
-func (c *Client) TarFromPod(ctx context.Context, namespace, pod, container, dir string, out io.Writer) error {
+func (c *Client) TarFromPod(ctx context.Context, namespace, pod, container, dir string, out io.Writer, release <-chan struct{}) error {
 	// `-C dir .` rather than tarring an absolute path: the archive then contains
 	// relative names and unpacks into whatever directory it is given, which is what a
 	// restore onto a differently-laid-out pod needs.
+	if release == nil {
+		_, err := c.execInPod(ctx, namespace, pod, container,
+			[]string{"tar", "-cf", "-", "-C", dir, "."}, nil, out)
+		return err
+	}
+	// Held open until the reader has the whole archive. When the process in the pod
+	// exits while the reader is still behind, the exec stream drops what was not yet
+	// read and reports success anyway: a reader at 2 MB/s got 89 of 96 MB and a nil
+	// error (TestLiveTarFromPodSlowReader; first offsite backups on the playground
+	// failed the same way, 2026-10-20). So after tar, the process waits for stdin to
+	// close, and stdin closes only when release does.
 	_, err := c.execInPod(ctx, namespace, pod, container,
-		[]string{"tar", "-cf", "-", "-C", dir, "."}, nil, out)
+		// Shell builtins for the wait, nothing from the image: `exec cat` ended at once
+		// in the Synapse container while `read` held until release (2026-10-20).
+		[]string{"sh", "-c", `tar -cf - -C "$1" . && while read -r _; do :; done`, "tar", dir},
+		waitReader(release), out)
 	return err
+}
+
+// waitReader is a stdin that sends nothing and ends when release is closed.
+type waitReader <-chan struct{}
+
+func (w waitReader) Read([]byte) (int, error) {
+	<-w
+	return 0, io.EOF
 }
 
 // TarIntoPod streams a tar back in, unpacking it in the container.

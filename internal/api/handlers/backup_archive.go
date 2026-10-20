@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 
@@ -110,12 +111,20 @@ func (h *StatusHandler) assembleArchive(ctx context.Context, media bool, secrets
 	if media && h.k8s != nil {
 		if pod, perr := h.synapsePod(ctx); perr == nil {
 			pr, pw := io.Pipe()
-			closers = append(closers, func() { _ = pr.Close() })
-			go func() {
-				err := h.k8s.TarFromPod(context.Background(), h.essNS, pod, "synapse", "/media", pw)
-				_ = pw.CloseWithError(err)
-			}()
-			opts.Media = pr
+			release := make(chan struct{})
+			m := &mediaSource{r: pr, release: release}
+			closers = append(closers, func() { m.EndOfArchive(); _ = pr.Close() })
+			// Started on the first read, not here: the media are the last large part,
+			// and there is no reason to hold an exec open behind the database dumps.
+			// Held open after tar until the end marker is read — see TarFromPod for the
+			// stream that otherwise drops its tail and reports success.
+			m.start = func() {
+				go func() {
+					err := h.k8s.TarFromPod(context.Background(), h.essNS, pod, "synapse", "/media", pw, release)
+					_ = pw.CloseWithError(err)
+				}()
+			}
+			opts.Media = m
 		} else {
 			log.Printf("full backup: no synapse pod for the media, continuing without them: %v", perr)
 		}
@@ -133,3 +142,20 @@ func (h *StatusHandler) WriteOffsiteArchive(ctx context.Context, media bool, w i
 	defer cleanup()
 	return backup.CreateFull(ctx, opts, w)
 }
+
+// mediaSource starts the media exec on the first read and releases it once the archive's
+// end marker has been read (backup.EndOfArchiveNotifier).
+type mediaSource struct {
+	r        io.Reader
+	start    func()
+	started  sync.Once
+	release  chan struct{}
+	released sync.Once
+}
+
+func (m *mediaSource) Read(p []byte) (int, error) {
+	m.started.Do(m.start)
+	return m.r.Read(p)
+}
+
+func (m *mediaSource) EndOfArchive() { m.released.Do(func() { close(m.release) }) }

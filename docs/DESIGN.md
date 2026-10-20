@@ -4877,6 +4877,18 @@ Gigabyte wäre der Pod evicted worden, beim Browser-Download schon seit E102. Je
 Eintrag des Pod-tar als eigener Member übernommen, denn dessen Größe steht im Header. Restore
 liest beide Formate.
 
+**Ein abgeschnittener Medienstrom meldete Erfolg.** Die ersten Offsite-Läufe auf der
+Spielwiese brachen mitten in den Medien ab („unexpected EOF"). Nachgestellt mit dem
+eigenen Code-Pfad gegen `/usr/lib` im Synapse-Pod, nicht gegen Nutzerdaten: Ein Leser mit
+2 MB/s bekam in drei von vier Läufen nur 89–95 von 96 MB, und der Exec gab `nil` zurück.
+Endet der Prozess im Pod, verwirft die Strecke, was noch unterwegs ist. Ein `sleep` nach tar
+machte den Strom vollständig. Deshalb hält `TarFromPod` den Prozess jetzt mit einer
+Shell-Schleife auf stdin offen, bis `writeMedia` die Endmarke gelesen hat; in vier von vier
+Läufen kam dann alles an. `exec cat` taugte dafür nicht, es endete im Synapse-Container
+sofort. Exec spricht jetzt WebSocket, wie kubectl, mit SPDY als Rückfall. Ein Abriss kommt
+dann wenigstens als Fehler an. Der Browser-Download hatte denselben Weg; frühere Archive mit
+Medien können unvollständig sein.
+
 Bewusst offen: Restore spoolt das Archiv weiter auf die Platte, also braucht ein Restore
 *mit* Medien lokal Platz in Archivgröße. Nur ein Ziel und nur S3. Benachrichtigung bei
 Fehlschlag kommt mit der Etappe „Benachrichtigungen" (über `offsite_runs`).

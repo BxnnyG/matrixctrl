@@ -58,7 +58,7 @@ func TestLiveTarFromPod(t *testing.T) {
 	t.Logf("media directory: %.1f MB", float64(size)/1024/1024)
 
 	var buf bytes.Buffer
-	if err := c.TarFromPod(ctx, "ess", pod, "synapse", "/media", &buf); err != nil {
+	if err := c.TarFromPod(ctx, "ess", pod, "synapse", "/media", &buf, nil); err != nil {
 		t.Fatalf("streaming the media out: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func assertExecIsRefusedForOthers(ctx context.Context, t *testing.T, admin *Clie
 	if err != nil {
 		t.Fatalf("cannot build a client for %q: %v", powerless, err)
 	}
-	err = other.TarFromPod(ctx, "ess", pod, "synapse", "/media", io.Discard)
+	err = other.TarFromPod(ctx, "ess", pod, "synapse", "/media", io.Discard, nil)
 	if err == nil {
 		t.Fatalf("%s streamed the media out of the pod.\n"+
 			"It holds no role, so this cannot be true: the impersonation is not reaching\n"+

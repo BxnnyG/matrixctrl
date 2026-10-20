@@ -87,6 +87,11 @@ func cleanMediaPath(name string) (string, error) {
 	return c, nil
 }
 
+// EndOfArchiveNotifier is a media source that waits to be told the archive's end marker
+// has been read before it lets its producer finish (k8s.Client.TarFromPod with a
+// release channel).
+type EndOfArchiveNotifier interface{ EndOfArchive() }
+
 // writeMedia copies an inner tar into the outer archive as one member per entry.
 //
 // Regular files and directories are kept. Links are skipped, not followed and not
@@ -99,6 +104,11 @@ func writeMedia(tw *tar.Writer, src io.Reader, at time.Time) (MediaStats, error)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
+			// The end marker is in: a source held open until now may let its producer
+			// finish, or the padding drained below would never end.
+			if n, ok := src.(EndOfArchiveNotifier); ok {
+				n.EndOfArchive()
+			}
 			break
 		}
 		if err != nil {
