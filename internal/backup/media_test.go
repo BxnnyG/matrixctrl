@@ -281,3 +281,21 @@ func TestWriteMediaReleasesAndDrains(t *testing.T) {
 		t.Errorf("%d bytes after the end marker left unread", inner.Len())
 	}
 }
+
+// A broken-off stream says where in the stream, never whose file.
+func TestWriteMediaErrorHidesPath(t *testing.T) {
+	var inner bytes.Buffer
+	tw := tar.NewWriter(&inner)
+	_ = tw.WriteHeader(&tar.Header{Name: "./media_store/remote_content/other.example/ab/cd/xyz", Typeflag: tar.TypeReg, Size: 100, Mode: 0o644})
+	_, _ = tw.Write([]byte("only a part"))
+	_, err := writeMedia(tar.NewWriter(io.Discard), bytes.NewReader(inner.Bytes()), time.Now())
+	if err == nil {
+		t.Fatal("a truncated stream was accepted")
+	}
+	if strings.Contains(err.Error(), "other.example") || strings.Contains(err.Error(), "xyz") {
+		t.Errorf("message shows the path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Datei 1") || !strings.Contains(err.Error(), "anderer Server") {
+		t.Errorf("message does not say where: %v", err)
+	}
+}

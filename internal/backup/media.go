@@ -143,7 +143,12 @@ func writeMedia(tw *tar.Writer, src io.Reader, at time.Time) (MediaStats, error)
 			}
 			n, err := io.Copy(tw, tr)
 			if err != nil {
-				return st, fmt.Errorf("%s: %w", rel, err)
+				// The path stays in the server log. The message shown in the panel
+				// names where in the stream, not whose file: remote_content is named
+				// after other homeservers, and the operator does not want those names
+				// on screen (2026-10-20).
+				log.Printf("backup: media stream broke off at %s: %v", rel, err)
+				return st, fmt.Errorf("abgebrochen bei Datei %d (%s): %w", st.Files+1, mediaArea(rel), err)
 			}
 			st.Files++
 			st.Bytes += n
@@ -276,4 +281,18 @@ func (p *pipeMedia) Close() error {
 		err = p.closer.Close()
 	})
 	return err
+}
+
+// mediaArea names the part of Synapse's media store a path lies in, without the path.
+func mediaArea(rel string) string {
+	switch {
+	case strings.Contains(rel, "remote_content/"), strings.Contains(rel, "remote_thumbnail/"):
+		return "Medien-Cache anderer Server"
+	case strings.Contains(rel, "local_thumbnails/"):
+		return "Vorschaubilder"
+	case strings.Contains(rel, "local_content/"):
+		return "hochgeladene Dateien"
+	default:
+		return "Medien"
+	}
 }
