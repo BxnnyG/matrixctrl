@@ -8,7 +8,7 @@ ARG GIT_COMMIT=unknown
 # an emulated Node build is punishingly slow — the first arm64 release took over
 # 40 minutes, nearly all of it here. The output is JavaScript and CSS, identical
 # for every architecture, so building it more than once was waste on top of that.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend
 WORKDIR /app
 COPY web/package*.json ./
 RUN npm ci
