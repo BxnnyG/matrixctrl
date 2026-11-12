@@ -12,11 +12,9 @@ Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 - Orchestrator-Modus eingerichtet (ORCHESTRATOR.md, .claude/agents/).
 
 ## Offen / Nächster Schritt
-**In Arbeit: Etappe 120 Automatische Backups** — Plan `docs/plans/etappe-120-automatische-backups.md`, DESIGN §4.129. Gebaut und geprüft (Go-Tests, vitest, make check; Live-Test gegen SeaweedFS-S3 `internal/backup/offsite/s3_live_test.go` mit Gegenprobe; DB-Rundreise gegen Postgres). Noch nicht veröffentlicht. Offen: Abnahme auf der Spielwiese gegen einen echten Bucket (Zeitplan-Lauf, Restore aus Bucket, Upgrade mit Vorab-Backup, Upgrade mit falschem Zugang muss sperren), dann Release.
-Danach:
-2. Benachrichtigungen bei Problemen (DNS, Zertifikat, Update, hängender Pod, Föderation) — per Hookshot-Webhook in einen Admin-Raum oder E-Mail.
-3. Einladungs-Codes (MAS-Registrierungstokens).
-Weiter: Bridge aus dem Panel anmelden; Schalter `externalTrafficPolicy` für die Anruf-Ports (Aufgaben-Feld mit mehreren Pfaden); Server-Mitteilung an alle; Speicherplatz/Aufräumen; englische UI (P3-2); Restore-Probe gegen live ESS (§4.106); Audit-Aufbewahrung (Betreiber-Entscheidung, P2-19).
+**Maßgeblich: `docs/plans/programm-2026-11.md`** (Pakete A–M in fester Reihenfolge, Betreiber-Auftrag 2026-11-11).
+- **A läuft: E120 Backups** — gebaut, vier Commits lokal (seit 2026-11-11 auf master gepusht, ohne Tag). Offen: Abnahme auf dem Testcluster gegen einen echten Bucket (Zeitplan-Lauf, Restore aus Bucket, Upgrade mit Vorab-Backup, Upgrade mit falschem Zugang muss sperren), dann Release. Plan `etappe-120-automatische-backups.md`, DESIGN §4.129.
+- Danach B (E121 Oberflächen-Test), C (Release-Takt), D (Benachrichtigungen) … siehe Programm.
 Noch nicht in Produktion bewiesen: Port-Blockade-Auflösung (119c), MAS-Sitzungs-Aufräumen (119d), Föderations-Gegenstellen.
 
 ## Entscheidungen (mit Kurzbegründung)
