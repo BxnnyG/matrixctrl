@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -188,6 +190,11 @@ func Prune(ctx context.Context, st Store, prefix string, now time.Time, p Policy
 			continue
 		}
 		deleted = append(deleted, e.Key)
+	}
+	// Said in the log: a backup that disappears without a line anywhere is how an
+	// operator finds out during a restore.
+	if len(deleted) > 0 {
+		log.Printf("offsite: retention removed %d backup(s): %s", len(deleted), strings.Join(deleted, ", "))
 	}
 	return deleted, first
 }

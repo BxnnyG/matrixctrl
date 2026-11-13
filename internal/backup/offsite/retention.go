@@ -13,13 +13,16 @@ type Policy struct {
 	// Weekly keeps the newest backup of each of the Weekly most recent ISO weeks that
 	// have one.
 	Weekly int
-	// Upgrade is how long a backup taken before a version change is kept. They are
-	// outside the daily/weekly rhythm: they exist to undo one particular step.
+	// Upgrade is how long a backup taken before a version change — or by hand — is
+	// kept. They are outside the daily/weekly rhythm: they exist to undo one particular
+	// step. A manual backup used to count as "today's", so the scheduled run later the
+	// same day deleted it, silently: the one backup someone took on purpose before a
+	// risky change (acceptance of etappe 120, 2026-11-12).
 	Upgrade time.Duration
 }
 
 // DefaultPolicy is the operator's decision (etappe 120): 7 daily, 4 weekly, and every
-// pre-upgrade backup for 30 days.
+// pre-upgrade and every manual backup for 30 days.
 var DefaultPolicy = Policy{Daily: 7, Weekly: 4, Upgrade: 30 * 24 * time.Hour}
 
 // Retain splits entries into those to keep and those to delete. A pure function: no
@@ -40,7 +43,7 @@ func Retain(entries []Entry, now time.Time, p Policy) (keep, drop []Entry) {
 	days := map[string]bool{}
 	weeks := map[string]bool{}
 	for _, e := range sorted {
-		if e.IsUpgrade() {
+		if e.IsUpgrade() || e.IsManual() {
 			if now.Sub(e.Time) <= p.Upgrade {
 				keep = append(keep, e)
 			} else {

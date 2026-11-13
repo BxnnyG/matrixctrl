@@ -4,7 +4,7 @@
 MatrixCtrl: Day-2-Admin-Schicht für ESS. Alle Roadmap-Seiten (Phase 1–5) sind gebaut; jetzt
 Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 
-## Erledigt (Stand 0.1.126, 2026-10-12)
+## Erledigt (Stand 0.1.127, 2026-11-12)
 - 116–116d: Update aus dem Panel (Job, atomic), Update-Karte + „Jetzt prüfen", Matrix-Login nach Umzug, Notzugang-Hinweise.
 - 117 Föderation · 118 Worker-Insights · 119 Bridges (Hookshot + Appservices).
 - 119a DNS-Überwachung · 119b Hooks überspringen, wenn das Chart sie abdeckt · 119c SFU-Port-Blockade beim Upgrade · 119d MAS-Sitzungen aufräumen.
@@ -13,7 +13,9 @@ Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 
 ## Offen / Nächster Schritt
 **Maßgeblich: `docs/plans/programm-2026-11.md`** (Pakete A–M in fester Reihenfolge, Betreiber-Auftrag 2026-11-11).
-- **A läuft: E120 Backups** — gebaut, vier Commits lokal (seit 2026-11-11 auf master gepusht, ohne Tag). Offen: Abnahme auf dem Testcluster gegen einen echten Bucket (Zeitplan-Lauf, Restore aus Bucket, Upgrade mit Vorab-Backup, Upgrade mit falschem Zugang muss sperren), dann Release. Plan `etappe-120-automatische-backups.md`, DESIGN §4.129.
+- **A erledigt: E120 Backups, v0.1.127.** Abnahme auf dem Testcluster bestanden (Probe, Lauf, Entschlüsseln mit Gegenprobe, Zeitplan, Upgrade sperrt bei falschem Zugang, Restore-Vorschau; kein echter Restore). Dabei behoben: manuelles Backup wurde vom Zeitplan-Lauf desselben Tages gelöscht → jetzt 30 Tage wie Vor-Upgrade; Aufbewahrung protokolliert. Offen daraus: Zeitplan läuft im Panel-Prozess (verpasster Lauf wird nicht nachgeholt); keine Vorschau direkt aus dem Bucket; ungeklärt: ESS-Upgrade startete zweimal kurz nacheinander ohne 409.
+- Testcluster-Zustand: matrixctrl läuft mit lokalem Image 0.1.127-e120 (Helm rev 98) — beim nächsten Release per Selbst-Update-Test auf das veröffentlichte Image bringen. S3-Testdienst in Namespace `e120-s3`. Sitzung ohne Browser: OIDC per Helm-Wert aus → Notzugang → danach wieder an (so für Paket B nutzbar).
+- **Als Nächstes B: E121 Oberflächen-Test gegen den Testcluster.**
 - Danach B (E121 Oberflächen-Test), C (Release-Takt), D (Benachrichtigungen) … siehe Programm.
 Noch nicht in Produktion bewiesen: Port-Blockade-Auflösung (119c), MAS-Sitzungs-Aufräumen (119d), Föderations-Gegenstellen.
 

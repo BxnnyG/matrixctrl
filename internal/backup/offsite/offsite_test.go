@@ -466,3 +466,21 @@ func TestObjectNameSanitizesVersion(t *testing.T) {
 		t.Fatalf("not parseable back: %q", n)
 	}
 }
+
+// A backup taken by hand before a risky change must still be there after the scheduled
+// run of the same day. It used to count as "today's" and lose to the newer one —
+// deleted without a log line (acceptance of etappe 120).
+func TestAManualBackupSurvivesTheScheduledRunOfTheSameDay(t *testing.T) {
+	now := time.Date(2026, 11, 12, 9, 15, 0, 0, time.UTC)
+	manual := Entry{Time: time.Date(2026, 11, 12, 9, 5, 0, 0, time.UTC), Occasion: "manuell"}
+	scheduled := Entry{Time: time.Date(2026, 11, 12, 9, 10, 0, 0, time.UTC), Occasion: "zeitplan"}
+	keep, drop := Retain([]Entry{manual, scheduled}, now, DefaultPolicy)
+	if len(keep) != 2 || len(drop) != 0 {
+		t.Fatalf("keep=%v drop=%v", keep, drop)
+	}
+	// Not for ever: after the 30 days it goes, like a pre-upgrade backup.
+	old := Entry{Time: now.Add(-31 * 24 * time.Hour), Occasion: "manuell"}
+	if _, drop := Retain([]Entry{old, scheduled}, now, DefaultPolicy); len(drop) != 1 || drop[0].Occasion != "manuell" {
+		t.Fatalf("an old manual backup is kept for ever: drop=%v", drop)
+	}
+}

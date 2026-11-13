@@ -71,6 +71,9 @@ type Entry struct {
 // IsUpgrade is true for the backups taken before a version change.
 func (e Entry) IsUpgrade() bool { return strings.HasPrefix(e.Occasion, occUpgrade) }
 
+// IsManual is true for a backup the operator started by hand.
+func (e Entry) IsManual() bool { return e.Occasion == occManual }
+
 // ParseName reads a file name written by ObjectName. ok is false for everything else.
 func ParseName(name string) (t time.Time, occasion string, ok bool) {
 	m := nameRe.FindStringSubmatch(name)

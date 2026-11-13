@@ -15,13 +15,17 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.127] — 2026-11-12
+
 ### Added
 
 - **Automatic off-site backups** (etappe 120): daily at a set time and before every ESS
   version upgrade, streamed straight to any S3-compatible store (Hetzner, Backblaze, Wasabi,
   AWS, MinIO, SeaweedFS). The whole archive is encrypted with an age public key; the private
   key is shown once and never stored, so the server can write backups but not read them.
-  Retention keeps 7 daily, 4 weekly and pre-upgrade backups for 30 days. The backup page
+  Retention keeps 7 daily, 4 weekly, and pre-upgrade and manual backups for 30 days (a
+  manual backup no longer loses to the scheduled run of the same day), and says in the log
+  what it removed. The backup page
   lists the bucket and restores from it directly.
 - **Upgrade stops when its pre-upgrade backup fails**; „Ohne Backup fortfahren" runs it
   anyway, and the upgrade history records which way it went.

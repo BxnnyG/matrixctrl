@@ -4892,3 +4892,15 @@ Medien können unvollständig sein.
 Bewusst offen: Restore spoolt das Archiv weiter auf die Platte, also braucht ein Restore
 *mit* Medien lokal Platz in Archivgröße. Nur ein Ziel und nur S3. Benachrichtigung bei
 Fehlschlag kommt mit der Etappe „Benachrichtigungen" (über `offsite_runs`).
+
+**Nachtrag 0.1.127 zu §4.129: Abnahme auf dem Testcluster (2026-11-12).** Gegen einen
+S3-Dienst im Cluster: Probe mit richtigem und falschem Zugang; Lauf von Hand, Objekt
+entschlüsselt (Gegenprobe: falscher/kein Schlüssel); Lauf nach Zeitplan; Upgrade mit
+falschem Zugang endet, bevor Helm etwas anfasst (keine neue Revision); Upgrade mit richtigem
+Zugang sichert zuerst; Restore-Vorschau des heruntergeladenen Objekts. Kein echter Restore.
+Ein Befund: Ein Backup von Hand galt als „das von heute" und wurde vom Zeitplan-Lauf
+desselben Tages gelöscht, ohne Logzeile. Jetzt zählt es wie ein Vor-Upgrade-Backup (30
+Tage, außerhalb des Tagesrhythmus), und die Aufbewahrung protokolliert, was sie entfernt.
+Bewusst offen: Der Zeitplan läuft im Panel-Prozess — steht der Pod zur Uhrzeit nicht, fällt
+der Lauf aus und wird nicht nachgeholt; eine Vorschau direkt aus dem Bucket gibt es nicht.
+
