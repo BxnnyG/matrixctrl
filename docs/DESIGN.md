@@ -184,6 +184,10 @@ after a deploy — **fourteen** since E49 — failing on console errors, an unmo
 root, or a route it never rendered. Run it with `make verify-ui BASE=…`; without
 `MATRIXCTRL_TOKEN` it checks only `/auth/login` and exits non-zero, because until
 2026-08-17 that same run exited 0 having skipped ten of eleven routes (§4.48).
+`make e2e BASE=…` (E121, §4.130) goes further against a *test* cluster: it logs in through
+the form, opens every route read from the router's generated table (not from a list), changes
+"Name der App", applies it through the panel, proves the effect on the cluster and puts the
+old value back. The page check itself is shared (`web/scripts/lib/ui-check.mjs`).
 ✅ **Done (E13, 2026-07-31):** the definition of done is now enforced outside the
 agent's memory. Did *not* solve: component/snapshot tests (deliberately omitted —
 they break on every intentional design change), and the greenfield path (S6),
@@ -4903,4 +4907,42 @@ desselben Tages gelöscht, ohne Logzeile. Jetzt zählt es wie ein Vor-Upgrade-Ba
 Tage, außerhalb des Tagesrhythmus), und die Aufbewahrung protokolliert, was sie entfernt.
 Bewusst offen: Der Zeitplan läuft im Panel-Prozess — steht der Pod zur Uhrzeit nicht, fällt
 der Lauf aus und wird nicht nachgeholt; eine Vorschau direkt aus dem Bucket gibt es nicht.
+
+### §4.130 — A run that behaves like the operator: `make e2e` (2026-11-14, agent, etappe 121)
+The worst defects of the last releases were found by the operator from a screenshot, not by
+a test. `verify-ui.mjs` opened a hand-kept list of routes (it had drifted by eight of them),
+skipped the login form by injecting a token, and never changed anything. `make e2e` is the
+missing run, for a test cluster only.
+
+**Decision:** (1) The page check moved to `web/scripts/lib/ui-check.mjs`; `verify-ui` and
+`e2e` both use it, one copy. (2) The routes are read from `FileRoutesByFullPath` in
+`routeTree.gen.ts` (`web/scripts/lib/routes.mjs`), by `e2e` *and* `verify-ui`. A route with
+a parameter needs a resolver in `e2e.mjs` (how to find a real id) or an exclusion with a
+reason; a route with neither fails the run, so a new screen cannot go unopened. `verify-ui`
+opens every route without a parameter (22 instead of 11; `/federation` and `/tls-dns` now
+also face its sensitive scan) and names the parameter routes it leaves to `e2e`. (3) Login goes through the form with the bootstrap admin; the run says so
+and stops when Matrix login is on, instead of timing out. (4) Write step: "Name der App" ->
+Übernehmen -> wait for the panel's own success line -> Helm revision +1, the setting read
+back, and, when `E2E_ELEMENT_URL` is set, Element Web's `config.json` -> old value back and
+applied, in a `finally`, with an API fallback. (5) It refuses to start while changes are
+pending: a test must not apply someone else's work. `E2E_READONLY=1` skips the write step.
+
+**Counter-probes (each must turn the run red):** a page that throws while rendering (a real
+local build served in front of the test cluster's API); a new parameterised route without
+resolver; a wrong password; an apply without effect. Screenshots of a private cluster are
+withheld when the sensitive scan fires, but the page still counts (`sensitiveFails: false`);
+`verify-ui` keeps failing on it, because its images are meant to be published.
+
+**Findings of the first runs on the test cluster:** the "reset to default" button was picked
+with `.first()` and reset another switch (TURN) instead of the brand — now scoped to the row;
+the preview ("Prüfe…") can take minutes while pods settle, so the wait for "Übernehmen" is
+180 s; and a public Element name may point at a different cluster, so `E2E_ELEMENT_URL` is
+never derived from the ingress (the cluster's own ConfigMap showed the test value; the
+public name did not). Without it the proof is Helm revision +1 plus the setting read back.
+Restore failures end the run non-zero and name the value left on the cluster.
+Counter-probe 4 was done by expecting revision +2 (the apply itself ran): red, as it must be.
+Run time against the test cluster: 11 minutes, almost all of it rollouts.
+
+Not covered: OIDC login (needs a test IdP), the rooms detail screen in a bootstrap session
+(the room list is closed to it by design; reported as SKIP with the reason), CI (no cluster).
 

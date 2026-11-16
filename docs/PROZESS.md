@@ -87,6 +87,11 @@ helm upgrade matrixctrl deploy/helm/matrixctrl -n matrixctrl \
 kubectl -n matrixctrl rollout status deploy/matrixctrl --timeout=180s
 ```
 
+After the rollout on a test cluster: `make e2e BASE=<panel url>` (§4.130) logs in through the
+form, opens every route, changes one setting through the panel, proves it on the cluster and
+restores it. Needs bootstrap login (Matrix login off) and no pending config changes;
+`E2E_READONLY=1` skips the write step. Never against production.
+
 > **`-b` is not optional either.** `web/tsconfig.json` carries `"files": []` and
 > nothing but project references, so plain `tsc --noEmit` type-checks *zero files*
 > and exits 0 no matter what is broken. It was the documented command here and in

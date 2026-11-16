@@ -14,7 +14,7 @@ GO         ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 GOFLAGS    :=
 BUILD_DIR  := bin
 
-.PHONY: all build test check lint verify-ui web-build web-dev dev clean docker
+.PHONY: all build test check lint verify-ui e2e web-build web-dev dev clean docker
 
 all: web-build build
 
@@ -103,6 +103,24 @@ verify-ui:
 		$(if $(ROOM_ID),--room-id "$(ROOM_ID)") \
 		$(if $(OUT),--out "$(OUT)") \
 		$(VERIFY_FLAGS)
+
+# End-to-end run against the TEST cluster (etappe 121, DESIGN §4.130): logs in through the
+# form, opens every route the router knows, changes "Name der App", applies it, proves it
+# reached the cluster, puts the old value back. Needs Matrix login off (bootstrap login).
+#
+#   make e2e BASE=https://panel.example.com
+#   E2E_READONLY=1 make e2e BASE=…        # login + routes only, writes nothing
+#
+# The password comes from MATRIXCTRL_ADMIN_PASSWORD, else from the chart secret of the
+# local cluster (kubectl is fine in a Makefile; the Go code never shells out). Never run
+# this against production: it redeploys Element Web twice. E2E_ELEMENT_URL is not derived
+# from the ingress: a public name may point at another cluster (it did on the playground),
+# and the run would then read a foreign config.json. Set it only for the test cluster.
+e2e:
+	@test -n "$(BASE)" || (echo "BASE is required, e.g. make e2e BASE=https://panel.example.com" && exit 2)
+	@cd web && \
+	PW="$${MATRIXCTRL_ADMIN_PASSWORD:-$$(kubectl get secret matrixctrl-secret -n matrixctrl -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d)}" && \
+	MATRIXCTRL_ADMIN_PASSWORD="$$PW" node scripts/e2e.mjs --base "$(BASE)" $(if $(OUT),--out "$(OUT)")
 
 clean:
 	rm -rf $(BUILD_DIR) web/dist

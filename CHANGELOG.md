@@ -15,6 +15,13 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+### Added
+
+- **`make e2e`** (etappe 121): a browser run against a test cluster that logs in through the
+  form, opens every route read from the router, changes "Name der App", applies it, proves
+  the effect and restores the old value. `verify-ui` and `e2e` share one page check and
+  read their routes from the router; `verify-ui` no longer misses eight screens.
+
 ## [0.1.127] — 2026-11-12
 
 ### Added
