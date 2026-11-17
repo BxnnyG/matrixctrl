@@ -72,8 +72,8 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 |---|---|---|
 | S1 Config management | ✅ (E4, E5, E8, E107) | Comment-preserving, git-backed, schema-validated — **against the running chart since E107** (was a compiled-in 26.5.x while 26.8.0 ran). Help text belongs to its own key; memory/CPU editable and searchable. The task-oriented redesign is planned as E108–E111 (§4.109) |
 | S2 Helm release & versions | ✅ (E2, E12, E14) | Version list fixed 2026-07-31; stream survives Helm's silent phase and recovers from a drop (E14); an upgrade whose process dies is reconciled to `interrupted` at startup instead of reading as running forever (P2-16) |
-| S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21) |
-| S4 Cluster observability | ✅ (E3, E12, E14, E20) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20) |
+| S3 Post-upgrade hooks | ✅ (E2, E12, E21) | Engine + built-ins + editor; enable/disable per deployment. Since E21 the product also reports whether each hook's patch is **still in effect** — `enabled` and `applied` are different questions (§4.21). Still no alert on `hooks-failed` — E123 left it as a later one-line check (§4.132) |
+| S4 Cluster observability | ✅ (E3, E12, E14, E20, E123) | Health, events, pod drill-down with restart cause; `/status` ~3.2 s → ~0.18 s warm (E14), cold 4.7 s → ~0.5 s with no staleness window (E20). **Alerting since E123:** DNS outage, certificate < 14 days, update, pod stuck > 10 min, failed off-site backup → webhook and/or e-mail, with reminder and resolution (§4.132) |
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ✅ (E15, E116a, E116b) | Greenfield deploy proven on an empty cluster after fixing 4 defects. **Connect-OIDC proven 2026-09-30** on a real server after a move — which took three fixes to the path around it (a reader that could never read the registration, Setup evicting its own upgrade, a login state frozen at startup; §4.119, §4.121). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
@@ -4984,3 +4984,18 @@ restart never re-sends; a failed delivery is not recorded as sent. A check that 
 its source (timeout, no ESS) reports *unknown* — neither an alert nor a resolution.
 Certificates are read from the Ingress TLS secrets, not probed over the public name.
 Plan: [etappe-123](plans/etappe-123-benachrichtigungen.md).
+
+**Nachtrag 0.1.129 zu §4.132: Abnahme und zwei Befunde (2026-11-17).** Auf dem Testcluster mit
+eigenem Webhook-Empfänger und Mailpit live ausgelöst: DNS-Ausfall (CoreDNS auf 0 → Problem nach
+~100 s, Entwarnung ~2 min nach Rückkehr), gescheitertes Off-Site-Backup (S3 weg → Problem, nächster
+guter Lauf → Entwarnung), hängender Pod (Element Web mit falschem Image → Alarm nach genau 10 min,
+Entwarnung nach Rücknahme). Zertifikat und Update durch Tests. rc.1 zeigte: (1) „gesendet" galt,
+sobald *ein* Kanal zugestellt hatte — beim DNS-Ausfall erreichte der Webhook (per IP) sein Ziel,
+die E-Mail (Mailserver per Name) nicht, und der E-Mail-Empfänger bekam später nur eine Entwarnung.
+Seit rc.2 wird die Zustellung **je Kanal** geführt (Migration 021): ein gescheiterter Kanal holt
+nur seine Nachricht nach, live belegt (Mailpit weg → Webhook zugestellt, E-Mail `pending` → Mailpit
+zurück → E-Mail nachgeholt, Webhook nicht doppelt). (2) „E-Mail über MAS" wurde angenommen, obwohl
+MAS kein SMTP hatte — jetzt 422. Grundsätzlich: Während eines Cluster-DNS-Ausfalls erreicht eine
+Benachrichtigung ihr Ziel nur ohne Namensauflösung im Cluster; die Seite sagt das. Nicht live
+belegt: Zustellung über Hookshot in einen echten Admin-Raum (auf der Spielwiese lief kein Hookshot;
+gleiches JSON-Format `{"text","html"}` gegen eigenen Empfänger).
