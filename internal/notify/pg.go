@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,7 +59,7 @@ type pgStore struct{ db *pgxpool.Pool }
 func NewPGStore(db *pgxpool.Pool) Store { return &pgStore{db: db} }
 
 func (p *pgStore) Rows(ctx context.Context) ([]Row, error) {
-	rows, err := p.db.Query(ctx, `SELECT key, kind, title, detail, once, since, last_sent, resolved_at FROM notify_state`)
+	rows, err := p.db.Query(ctx, `SELECT key, kind, title, detail, once, since, sent_by, resolved_by, resolved_at FROM notify_state`)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (p *pgStore) Rows(ctx context.Context) ([]Row, error) {
 	var out []Row
 	for rows.Next() {
 		var r Row
-		if err := rows.Scan(&r.Key, &r.Trigger, &r.Title, &r.Detail, &r.Once, &r.Since, &r.LastSent, &r.Resolved); err != nil {
+		if err := rows.Scan(&r.Key, &r.Trigger, &r.Title, &r.Detail, &r.Once, &r.Since, &r.Sent, &r.ResolvedSent, &r.Resolved); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -76,11 +77,11 @@ func (p *pgStore) Rows(ctx context.Context) ([]Row, error) {
 
 func (p *pgStore) SaveRow(ctx context.Context, r Row) error {
 	_, err := p.db.Exec(ctx, `
-		INSERT INTO notify_state(key, kind, title, detail, once, since, last_sent, resolved_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO notify_state(key, kind, title, detail, once, since, sent_by, resolved_by, resolved_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (key) DO UPDATE SET kind=EXCLUDED.kind, title=EXCLUDED.title, detail=EXCLUDED.detail,
-			once=EXCLUDED.once, last_sent=EXCLUDED.last_sent, resolved_at=EXCLUDED.resolved_at`,
-		r.Key, r.Trigger, r.Title, r.Detail, r.Once, r.Since, r.LastSent, r.Resolved)
+			once=EXCLUDED.once, sent_by=EXCLUDED.sent_by, resolved_by=EXCLUDED.resolved_by, resolved_at=EXCLUDED.resolved_at`,
+		r.Key, r.Trigger, r.Title, r.Detail, r.Once, r.Since, orEmpty(r.Sent), orEmpty(r.ResolvedSent), r.Resolved)
 	return err
 }
 
@@ -113,4 +114,12 @@ func (p *pgStore) SaveChannel(ctx context.Context, c ChannelStatus) error {
 			last_error=EXCLUDED.last_error, last_error_at=EXCLUDED.last_error_at`,
 		c.Channel, c.LastSentAt, c.LastError, c.LastErrorAt)
 	return err
+}
+
+// orEmpty keeps a nil map from being stored as JSON null (the columns are NOT NULL).
+func orEmpty(m map[string]time.Time) map[string]time.Time {
+	if m == nil {
+		return map[string]time.Time{}
+	}
+	return m
 }

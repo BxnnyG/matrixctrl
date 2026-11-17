@@ -20,13 +20,13 @@ export interface NotifySettings {
 }
 interface ChannelState { lastSentAt: string | null; lastError: string; lastErrorAt: string | null }
 export interface NotifyState {
-  alerts: { key: string; trigger: string; title: string; detail: string; since: string; lastSent: string | null }[];
+  alerts: { key: string; trigger: string; title: string; detail: string; since: string; lastSent: string | null; pending?: string[] }[];
   channels: Record<string, ChannelState | undefined>;
   lastRun: null | { at: string; unknown: string[]; error?: string };
 }
 
 const TRIGGERS: { id: string; label: string; hint: string }[] = [
-  { id: "dns", label: "DNS-Ausfall", hint: "Ein Name deines Servers löst nicht mehr auf." },
+  { id: "dns", label: "DNS-Ausfall", hint: "Ein Name deines Servers löst im Cluster nicht mehr auf. Während eines solchen Ausfalls kommt die Nachricht nur an, wenn Webhook bzw. Mailserver ohne Namensauflösung im Cluster erreichbar sind (z. B. per IP); sonst wird sie danach nachgeholt." },
   { id: "cert", label: "Zertifikat läuft ab", hint: "Ein Zertifikat ist in weniger als 14 Tagen nicht mehr gültig." },
   { id: "update", label: "Neues MatrixCtrl-Update", hint: "Es gibt eine neuere Version von MatrixCtrl." },
   { id: "pod", label: "Pod hängt", hint: "Ein Pod startet seit über 10 Minuten nicht richtig." },
@@ -131,6 +131,11 @@ export function NotificationsPage() {
               <div><b>{a.title}</b> <Badge size="sm">{TRIGGERS.find((t) => t.id === a.trigger)?.label ?? a.trigger}</Badge></div>
               {a.detail && <div style={{ color: "var(--text-dim)" }}>{a.detail}</div>}
               <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Seit {fmt(a.since)} · zuletzt gemeldet: {a.lastSent ? fmt(a.lastSent) : "noch nicht"}</div>
+              {a.pending && a.pending.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--warn, var(--text-dim))" }}>
+                  {a.pending.map((c) => (c === "email" ? "E-Mail" : c === "webhook" ? "Webhook" : c)).join(" und ")} noch nicht zugestellt
+                </div>
+              )}
             </div>
           </div>
         ))}

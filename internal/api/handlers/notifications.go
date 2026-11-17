@@ -166,6 +166,10 @@ func (h *NotificationsHandler) PutSettings(w http.ResponseWriter, r *http.Reques
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	if set.EmailEnabled && set.SMTPSource != notify.SMTPOwn && !notify.MASAvailable(ctx, h.mas) {
+		Error(w, http.StatusUnprocessableEntity, "E-Mail über den Matrix-Zugang: auf der E-Mail-Seite ist noch kein SMTP eingerichtet. Dort einrichten oder einen eigenen Zugang wählen.")
+		return
+	}
 	if next != sec {
 		if h.secrets == nil {
 			Error(w, http.StatusServiceUnavailable, "Ohne Cluster-Zugriff lassen sich Webhook-URL und Passwort nicht ablegen.")
@@ -209,7 +213,8 @@ type notifyAlertBody struct {
 	Title    string     `json:"title"`
 	Detail   string     `json:"detail"`
 	Since    time.Time  `json:"since"`
-	LastSent *time.Time `json:"lastSent"`
+	LastSent *time.Time `json:"lastSent"` // latest delivery over any channel
+	Pending  []string   `json:"pending"`  // channels still lacking the current message
 }
 
 type notifyChannelBody struct {
@@ -227,8 +232,12 @@ func (h *NotificationsHandler) State(w http.ResponseWriter, r *http.Request) {
 	}
 	alerts := []notifyAlertBody{}
 	for _, a := range snap.Alerts {
+		pending := snap.Pending[a.Key]
+		if pending == nil {
+			pending = []string{}
+		}
 		alerts = append(alerts, notifyAlertBody{Key: a.Key, Trigger: a.Trigger, Title: a.Title,
-			Detail: a.Detail, Since: a.Since, LastSent: a.LastSent})
+			Detail: a.Detail, Since: a.Since, LastSent: a.LastSent(), Pending: pending})
 	}
 	chans := map[string]notifyChannelBody{}
 	for name, c := range snap.Channels {

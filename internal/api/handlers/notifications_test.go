@@ -103,3 +103,15 @@ func TestNotificationsStateShape(t *testing.T) {
 		}
 	}
 }
+
+// E-mail through the MAS account is refused while MAS has no SMTP (found on the test cluster,
+// rc.1 accepted it and the first notification would have failed silently until a run).
+func TestNotificationsEmailViaMASRequiresMASSMTP(t *testing.T) {
+	h, _, _ := notifyRig()
+	if code, out := put(t, h, `{"email":{"enabled":true},"recipients":["ops@example.org"],"smtpSource":"mas"}`); code != 422 || !strings.Contains(out, "E-Mail-Seite") {
+		t.Fatalf("email via MAS without MAS SMTP must be refused: %d %s", code, out)
+	}
+	if code, _ := put(t, h, `{"email":{"enabled":false},"recipients":["ops@example.org"],"smtpSource":"mas"}`); code != 200 {
+		t.Fatalf("email off via MAS must still save: %d", code)
+	}
+}

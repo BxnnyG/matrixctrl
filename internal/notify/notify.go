@@ -59,11 +59,25 @@ type Row struct {
 	Detail  string
 	Once    bool
 	Since   time.Time
-	// LastSent is when the problem (or its latest reminder) was delivered; nil while
-	// nothing was delivered yet.
-	LastSent *time.Time
+	// Sent is, per channel, when the problem (or its latest reminder) was delivered
+	// there; a channel without an entry has not received it yet.
+	Sent map[string]time.Time
+	// ResolvedSent is, per channel, when the "resolved" message arrived.
+	ResolvedSent map[string]time.Time
 	// Resolved is set when the alert is gone but the "resolved" message is still owed.
 	Resolved *time.Time
+}
+
+// LastSent is the latest delivery over any channel, nil when none.
+func (r Row) LastSent() *time.Time {
+	var out *time.Time
+	for _, t := range r.Sent {
+		t := t
+		if out == nil || t.After(*out) {
+			out = &t
+		}
+	}
+	return out
 }
 
 // ChannelStatus is what the page shows per channel.

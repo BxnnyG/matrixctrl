@@ -36,6 +36,11 @@ Auftreten, auf Wunsch als Erinnerung, und mit Entwarnung, wenn es vorbei ist.
      `notify_state` (Migration 020) — ein Neustart verschickt nichts doppelt.
    - Versand gescheitert → Zustand **nicht** als gesendet markieren, nächster Lauf
      versucht erneut; letzter Fehler je Kanal wird gehalten und angezeigt.
+     Zustellung gilt **je Kanal** (Migration 021, `sent_by`/`resolved_by`): ein gescheiterter
+     Kanal holt nur seine fehlende Nachricht nach, ein funktionierender bekommt nichts doppelt;
+     war das Problem behoben, bevor ein Kanal es bekam, erhält er nur die Entwarnung. Erinnerung
+     ab dem letzten Versand des Kanals; die Zeile fällt, wenn alle aktiven Kanäle die Entwarnung
+     haben. Die Entwarnung nennt „Bestand von <Erkennung> bis <jetzt>", nicht den Problemtext.
    - Prüfer: **DNS** (aus `dnshealth`) · **Zertifikat** < 14 Tage (TLS-Secrets der Ingresses
      im ESS-Namespace über client-go lesen und x509 parsen — kein Netz, keine öffentlichen
      Namen) · **Update** (einmal je neuer `Latest`; Entwarnung entfällt, „erledigt" wenn

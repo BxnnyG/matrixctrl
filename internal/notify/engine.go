@@ -162,63 +162,94 @@ func (e *Engine) Once(ctx context.Context) {
 	sort.Strings(run.Unknown)
 }
 
+func cloneTimes(m map[string]time.Time) map[string]time.Time {
+	out := make(map[string]time.Time, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// channelNames lists the active channels in a fixed order.
+func channelNames(senders map[string]Sender) []string {
+	var out []string
+	for _, n := range []string{ChannelWebhook, ChannelEmail} {
+		if senders[n] != nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// Delivery is kept per channel: every message (problem, reminder, all-clear) counts for
+// each channel on its own. A channel that failed retries only its own missing message; a
+// channel that worked is never sent the same thing twice.
 func (e *Engine) alertSeen(ctx context.Context, a Alert, row Row, set Settings, senders map[string]Sender, instance string, now time.Time) {
 	exists := row.Key != ""
 	if !exists {
 		row = Row{Key: a.Key, Trigger: a.Trigger, Since: now}
 	}
 	changed := !exists || row.Title != a.Title || row.Detail != a.Detail || row.Once != a.Once || row.Resolved != nil
-	row.Title, row.Detail, row.Once, row.Resolved = a.Title, a.Detail, a.Once, nil
-
-	var kind string
-	switch {
-	case row.LastSent == nil:
-		kind = "problem"
-	case !a.Once && set.Interval() > 0 && now.Sub(*row.LastSent) >= set.Interval():
-		kind = "reminder"
+	row.Title, row.Detail, row.Once = a.Title, a.Detail, a.Once
+	if row.Resolved != nil {
+		// Back again before the all-clear arrived everywhere: a new episode.
+		row.Resolved, row.ResolvedSent = nil, nil
 	}
-	if kind != "" && e.deliver(ctx, senders, compose(kind, instance, row, now), now) {
-		t := now
-		row.LastSent = &t
-		changed = true
+	sent := cloneTimes(row.Sent)
+	for _, ch := range channelNames(senders) {
+		var kind string
+		last, has := sent[ch]
+		switch {
+		case !has:
+			kind = "problem"
+		case !a.Once && set.Interval() > 0 && now.Sub(last) >= set.Interval():
+			kind = "reminder"
+		}
+		if kind != "" && e.sendOne(ctx, ch, senders[ch], compose(kind, instance, row, now), now) == nil {
+			sent[ch] = now
+			changed = true
+		}
 	}
+	row.Sent = sent
 	if changed {
 		_ = e.d.Store.SaveRow(ctx, row)
 	}
 }
 
 func (e *Engine) alertGone(ctx context.Context, r Row, senders map[string]Sender, instance string, now time.Time) {
-	// Never announced, or a notice rather than a fault: nothing to take back.
-	if r.Once || r.LastSent == nil || len(senders) == 0 {
+	names := channelNames(senders)
+	// Never announced anywhere, or a notice rather than a fault: nothing to take back.
+	if r.Once || len(r.Sent) == 0 || len(names) == 0 {
 		_ = e.d.Store.DeleteRow(ctx, r.Key)
 		return
 	}
-	if e.deliver(ctx, senders, compose("resolved", instance, r, now), now) {
+	done := cloneTimes(r.ResolvedSent)
+	open := 0
+	changed := false
+	for _, ch := range names {
+		if _, ok := done[ch]; ok {
+			continue
+		}
+		if e.sendOne(ctx, ch, senders[ch], compose("resolved", instance, r, now), now) == nil {
+			done[ch] = now
+			changed = true
+		} else {
+			open++
+		}
+	}
+	if open == 0 {
 		_ = e.d.Store.DeleteRow(ctx, r.Key)
 		return
 	}
+	r.ResolvedSent = done
 	if r.Resolved == nil {
 		t := now
 		r.Resolved = &t
+		changed = true
+	}
+	if changed {
 		_ = e.d.Store.SaveRow(ctx, r)
 	}
-}
-
-// deliver sends over every enabled channel and records each outcome. It counts as
-// delivered when at least one channel took it: with two channels, one dead webhook
-// must not mean an e-mail every minute.
-func (e *Engine) deliver(ctx context.Context, senders map[string]Sender, m Message, now time.Time) bool {
-	ok := false
-	for _, name := range []string{ChannelWebhook, ChannelEmail} {
-		s := senders[name]
-		if s == nil {
-			continue
-		}
-		if err := e.sendOne(ctx, name, s, m, now); err == nil {
-			ok = true
-		}
-	}
-	return ok
 }
 
 func (e *Engine) sendOne(ctx context.Context, name string, s Sender, m Message, now time.Time) error {
@@ -273,7 +304,9 @@ func (e *Engine) Test(ctx context.Context, channel string) error {
 
 // Snapshot is what the state route shows.
 type Snapshot struct {
-	Alerts   []Row
+	Alerts []Row
+	// Pending lists per alert key the active channels that still lack the current message.
+	Pending  map[string][]string
 	Channels map[string]ChannelStatus
 	LastRun  *LastRun
 }
@@ -287,12 +320,19 @@ func (e *Engine) Snapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	out := Snapshot{Channels: map[string]ChannelStatus{
+	set, _ := e.d.Settings.Load(ctx)
+	names := channelNames(e.senders(set.Normalize()))
+	out := Snapshot{Pending: map[string][]string{}, Channels: map[string]ChannelStatus{
 		ChannelWebhook: {Channel: ChannelWebhook}, ChannelEmail: {Channel: ChannelEmail},
 	}, LastRun: e.LastRun()}
 	for _, r := range rows {
 		if r.Resolved == nil {
 			out.Alerts = append(out.Alerts, r)
+			for _, ch := range names {
+				if _, ok := r.Sent[ch]; !ok {
+					out.Pending[r.Key] = append(out.Pending[r.Key], ch)
+				}
+			}
 		}
 	}
 	sort.Slice(out.Alerts, func(i, j int) bool { return out.Alerts[i].Since.Before(out.Alerts[j].Since) })
@@ -321,18 +361,29 @@ func compose(kind, instance string, r Row, now time.Time) Message {
 		title += " (behoben)"
 	}
 	text := fmt.Sprintf("[%s] %s: %s", instance, head, title)
-	if r.Detail != "" {
-		text += "\n" + r.Detail
+	var extra string // the line under the title
+	switch kind {
+	case "resolved":
+		// Not the problem text as if it still held: when it was, and what was said last.
+		extra = fmt.Sprintf("Bestand von %s bis %s.", r.Since.UTC().Format("02.01. 15:04 UTC"), now.UTC().Format("02.01. 15:04 UTC"))
+		if r.Detail != "" {
+			extra += "\nZuletzt gemeldet: " + r.Detail
+		}
+	default:
+		extra = r.Detail
+		if kind == "reminder" {
+			if extra != "" {
+				extra += "\n"
+			}
+			extra += fmt.Sprintf("Besteht seit %s (%s).", r.Since.UTC().Format("02.01. 15:04 UTC"), since(now.Sub(r.Since)))
+		}
 	}
-	if kind == "reminder" {
-		text += fmt.Sprintf("\nBesteht seit %s (%s).", r.Since.UTC().Format("02.01. 15:04 UTC"), since(now.Sub(r.Since)))
-	}
-	if kind == "resolved" {
-		text += fmt.Sprintf("\nBestand seit %s.", r.Since.UTC().Format("02.01. 15:04 UTC"))
+	if extra != "" {
+		text += "\n" + extra
 	}
 	h := "<b>" + html.EscapeString(fmt.Sprintf("[%s] %s:", instance, head)) + "</b> " + html.EscapeString(title)
-	if r.Detail != "" {
-		h += "<br>" + strings.ReplaceAll(html.EscapeString(r.Detail), "\n", "<br>")
+	if extra != "" {
+		h += "<br>" + strings.ReplaceAll(html.EscapeString(extra), "\n", "<br>")
 	}
 	return Message{Subject: fmt.Sprintf("[%s] %s: %s", instance, head, title), Text: text, HTML: h}
 }
