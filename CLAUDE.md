@@ -73,8 +73,10 @@ Go lives at `/usr/local/go/bin/go` and is **not** on the default PATH.
 
 ## Shipping and verifying (learned the hard way)
 
-- **Ship by tag**: bump `deploy/helm/matrixctrl/Chart.yaml` (version = appVersion), CHANGELOG
-  entry, `make check`, commit, `git tag vX.Y.Z`, push branch and tag.
+- **Ship by tag, candidate first**: bump `deploy/helm/matrixctrl/Chart.yaml` (version = appVersion
+  = final X.Y.Z), CHANGELOG entry, `make check`, commit, `git tag vX.Y.Z-rc.N`, push branch and tag.
+  Test cluster (channel edge) self-updates, `make e2e` + four S11 checks, then `git tag vX.Y.Z`
+  on the **same commit** and push it (docs/RELEASING.md).
 - **No `gh` CLI here.** Release run status: `curl -s https://api.github.com/repos/BxnnyG/matrixctrl/actions/runs?per_page=8`
   (it answers empty now and then — retry). Then `scripts/check-published.sh X.Y.Z` must say
   "the registry holds what this release claims". GHCR pages tag lists (100 per page); every

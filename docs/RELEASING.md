@@ -40,29 +40,51 @@ expected case and passes.
 
 ## Cutting a release
 
-1. Make sure `master` is green — the release workflow does not re-run the tests.
+Two channels (etappe 122). A tag `vX.Y.Z-rc.N` publishes a **release candidate** to
+`edge`; the tag `vX.Y.Z` on the **same commit**, cut only after the candidate was
+accepted, publishes `stable`. Installations on the default channel never see a
+candidate.
 
-2. Bump both fields in `deploy/helm/matrixctrl/Chart.yaml`:
+| Tag | Image / chart tags | `:latest` | GitHub release |
+|---|---|---|---|
+| `vX.Y.Z-rc.N` | `X.Y.Z-rc.N`, `edge` | untouched | pre-release |
+| `vX.Y.Z` | `X.Y.Z`, `latest`, `edge` | moves | normal |
 
-   ```yaml
-   version: 0.1.15
-   appVersion: "0.1.15"
-   ```
+The tag rules live in `scripts/release-meta.sh` (tested by `scripts/test-release-meta.sh`,
+part of `make check`). For a candidate, `Chart.yaml`, doc pins and the CHANGELOG section
+are checked against the **base** version `X.Y.Z`, which is what lets stable be cut from
+the same commit.
 
-3. Nothing to change in the README — it pins no version. (If you added one
-   deliberately, the release will check it against the tag.)
+1. Make sure `master` is green (`make check`) — the release workflow does not re-run the tests.
 
-4. Commit, then tag and push:
+2. Bump both fields in `deploy/helm/matrixctrl/Chart.yaml` to the **final** version
+   (`version: 0.1.15`, `appVersion: "0.1.15"`) and write the `## [0.1.15]` CHANGELOG
+   section. The README pins no version.
+
+3. Commit, then tag the candidate and push:
 
    ```bash
    git commit -am "release: 0.1.15"
-   git tag v0.1.15
+   git tag v0.1.15-rc.1
    git push origin master --tags
    ```
 
-5. Watch the run under **Actions → Release**. It builds the frontend, rebuilds the
-   embedded assets, pushes a multi-arch image, and packages a chart pinned to that
-   exact image tag.
+4. Prove it on the test cluster, which runs with `updateCheck.channel=edge`: it offers
+   the candidate; update through the panel's Self-Update. Then `make e2e` and the four
+   regression checks (DESIGN S11). A fix means a new candidate (`-rc.2`) from a new
+   commit.
+
+5. Accepted: tag the **same commit** as stable and push the tag:
+
+   ```bash
+   git tag v0.1.15
+   git push origin v0.1.15
+   ```
+
+   The stable image is rebuilt from that commit (it reports the same commit hash, and
+   version `0.1.15`).
+
+6. Watch the run under **Actions → Release**, then verify as below — for both tags.
 
 ## Verifying afterwards
 
@@ -79,6 +101,11 @@ helm show values oci://ghcr.io/bxnnyg/charts/matrixctrl --version "$V" | grep -A
 # And what a new user actually gets — no --version, newest chart:
 helm show chart oci://ghcr.io/bxnnyg/charts/matrixctrl | grep -E '^version|^appVersion'
 ```
+
+For a candidate (`V=0.1.15-rc.1`) the last command must still show the **previous
+stable** chart — Helm skips pre-releases unless `--devel` is given, and that is the
+proof that a fresh install does not get the candidate. `scripts/check-published.sh "$V"`
+checks the same for the image: an rc is `:edge` and not `:latest`; a final release is both.
 
 The released chart pins `image.tag` to its own version, so
 `helm install --version X` is reproducible. The committed default stays `latest`

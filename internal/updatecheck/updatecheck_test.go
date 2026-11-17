@@ -217,3 +217,52 @@ func TestRefreshSeesAReleaseTheCacheWouldHide(t *testing.T) {
 		t.Errorf("tag list fetched %d times after the floor, want 3", calls)
 	}
 }
+
+func TestStableChannelDoesNotOfferReleaseCandidates(t *testing.T) {
+	c := checker(t, "0.1.127", []string{"0.1.127", "0.1.128-rc.1", "latest"})
+	got := c.Check(context.Background())
+	if got.Channel != "stable" || got.Available || got.Latest != "0.1.127" {
+		t.Errorf("stable must ignore rc: %+v", got)
+	}
+}
+
+func TestEdgeChannelOffersReleaseCandidates(t *testing.T) {
+	c := checker(t, "0.1.127", []string{"0.1.127", "0.1.128-rc.1", "latest"}).WithChannel("edge")
+	got := c.Check(context.Background())
+	if got.Channel != "edge" || !got.Available || got.Latest != "0.1.128-rc.1" {
+		t.Errorf("edge must offer rc: %+v", got)
+	}
+}
+
+func TestReleaseCandidateIsOlderThanItsFinal(t *testing.T) {
+	c := checker(t, "0.1.128-rc.1", []string{"0.1.128-rc.1", "0.1.128"}).WithChannel("edge")
+	got := c.Check(context.Background())
+	if got.Latest != "0.1.128" || !got.Available {
+		t.Errorf("final must beat its rc: %+v", got)
+	}
+}
+
+func TestInstalledRCOnStableSeesNoUpdateNoError(t *testing.T) {
+	c := checker(t, "0.1.128-rc.1", []string{"0.1.127", "0.1.128-rc.1"})
+	got := c.Check(context.Background())
+	if got.Error != "" || got.Available {
+		t.Errorf("rc installed, only older final: no update, no error: %+v", got)
+	}
+}
+
+func TestOnlyRCTagsOnStableIsNoUpdate(t *testing.T) {
+	c := checker(t, "0.1.127", []string{"0.1.128-rc.1"})
+	got := c.Check(context.Background())
+	if got.Available {
+		t.Errorf("only rc tags on stable must not offer: %+v", got)
+	}
+}
+
+func TestParseChannel(t *testing.T) {
+	if ch, ok := ParseChannel("edge"); ch != "edge" || !ok {
+		t.Error("edge")
+	}
+	if ch, ok := ParseChannel("beta"); ch != "stable" || ok {
+		t.Error("unknown must be stable and flagged")
+	}
+}

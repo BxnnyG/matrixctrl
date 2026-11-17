@@ -364,7 +364,11 @@ func main() {
 
 	var updates *updatecheck.Checker
 	if env("MATRIXCTRL_UPDATE_CHECK", "1") != "0" {
-		updates = updatecheck.New(version.Version)
+		channel, known := updatecheck.ParseChannel(env("MATRIXCTRL_UPDATE_CHANNEL", "stable"))
+		if !known {
+			log.Printf("unknown MATRIXCTRL_UPDATE_CHANNEL %q, using stable", env("MATRIXCTRL_UPDATE_CHANNEL", ""))
+		}
+		updates = updatecheck.New(version.Version).WithChannel(channel)
 	} else {
 		log.Printf("update check disabled by MATRIXCTRL_UPDATE_CHECK=0")
 	}

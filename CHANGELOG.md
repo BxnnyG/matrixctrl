@@ -15,12 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.128] — 2026-11-17
+
 ### Added
 
+- **Release channels `stable` and `edge`** (etappe 122): a release is first published as a
+  candidate `vX.Y.Z-rc.N` (image and chart `X.Y.Z-rc.N` plus `:edge`, GitHub pre-release,
+  `:latest` untouched), proven on a test cluster, and only then tagged `vX.Y.Z` from the same
+  commit. Helm value `updateCheck.channel` (`stable` by default, or `edge`); the update card
+  shows the channel. Self-update accepts a candidate as its target.
 - **`make e2e`** (etappe 121): a browser run against a test cluster that logs in through the
   form, opens every route read from the router, changes "Name der App", applies it, proves
   the effect and restores the old value. `verify-ui` and `e2e` share one page check and
   read their routes from the router; `verify-ui` no longer misses eight screens.
+
+### Fixed
+
+- **The stable channel offered release candidates.** The update check took the highest
+  semver tag of any kind; a `-rc` tag would have been offered to every installation.
+- **Released images named no commit.** The release build never passed `GIT_COMMIT`, so the
+  start-up line read `MatrixCtrl 0.1.127 (unknown)`. It now names the commit, which is how a
+  stable release is shown to be the candidate that was accepted.
 
 ## [0.1.127] — 2026-11-12
 

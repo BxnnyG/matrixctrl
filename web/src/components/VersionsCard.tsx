@@ -32,7 +32,7 @@ export function VersionsCard({ components, chartVersion }: { components: Compone
   // Same keys as the rail and the update page: one request, three readers.
   const { data: mc } = useQuery({
     queryKey: ["version"],
-    queryFn: () => api.get<{ version: string; update?: { latest?: string; available: boolean } }>("/api/v1/version"),
+    queryFn: () => api.get<{ version: string; update?: { latest?: string; available: boolean; channel?: string } }>("/api/v1/version"),
     staleTime: 10 * 60_000,
   });
   const { data: ess } = useQuery({
@@ -60,7 +60,7 @@ export function VersionsCard({ components, chartVersion }: { components: Compone
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
         <Headline label="ESS (Element Server Suite)" version={running} behind={essBehind} newest={newest}
           onUpdate={() => navigate({ to: "/helm" })} />
-        <Headline label="MatrixCtrl" version={mc?.version?.replace(/^v/, "")} behind={mcBehind} newest={mc?.update?.latest?.replace(/^v/, "")} />
+        <Headline label={mc?.update?.channel ? `MatrixCtrl · Kanal: ${mc.update.channel}` : "MatrixCtrl"} version={mc?.version?.replace(/^v/, "")} behind={mcBehind} newest={mc?.update?.latest?.replace(/^v/, "")} />
       </div>
 
       {rows.length > 0 && (

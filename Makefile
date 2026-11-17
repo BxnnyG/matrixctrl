@@ -72,6 +72,7 @@ check:
 	# had no tests until 2026-09-20 — after two of its defects had reached production
 	# (§4.86, §4.103). Both were a second's worth of test.
 	./scripts/test-install.sh
+	./scripts/test-release-meta.sh
 	./scripts/check-sensitive.sh
 	./scripts/check-changelog.sh
 	./scripts/check-commands.sh

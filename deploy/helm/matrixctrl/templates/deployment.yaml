@@ -125,6 +125,8 @@ spec:
             - name: MATRIXCTRL_UPDATE_CHECK
               value: "0"
             {{- end }}
+            - name: MATRIXCTRL_UPDATE_CHANNEL
+              value: {{ .Values.updateCheck.channel | default "stable" | quote }}
             {{- if .Values.oidc.enabled }}
             - name: MATRIXCTRL_OIDC_ISSUER
               value: {{ .Values.oidc.issuer | quote }}

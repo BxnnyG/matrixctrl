@@ -177,7 +177,7 @@ interface VersionResp {
    *  the rail already asks this endpoint on every page load, so the answer costs no
    *  extra request (etappe 100). */
   may_write?: boolean;
-  update?: { current: string; latest?: string; available: boolean; checked_at?: string; error?: string };
+  update?: { current: string; latest?: string; available: boolean; channel?: string; checked_at?: string; error?: string };
 }
 
 interface StatusResp { release?: { chart_version?: string }; components?: { status: string }[] }

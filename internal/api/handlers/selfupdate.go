@@ -76,7 +76,7 @@ func (h *SelfUpdateHandler) Get(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, out)
 }
 
-var semverRE = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+var semverRE = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$`)
 
 // POST /api/v1/self-update {version}
 func (h *SelfUpdateHandler) Start(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +89,7 @@ func (h *SelfUpdateHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	target := strings.TrimPrefix(strings.TrimSpace(req.Version), "v")
 	if !semverRE.MatchString(target) {
-		Error(w, http.StatusBadRequest, "Version wie 0.1.113 erwartet")
+		Error(w, http.StatusBadRequest, "Version wie 0.1.113 oder 0.1.113-rc.1 erwartet")
 		return
 	}
 	if h.k8s == nil {

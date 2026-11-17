@@ -40,18 +40,24 @@ jobs:
         id: v
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+            TAG="${{ inputs.version }}"
           else
-            VERSION="${GITHUB_REF_NAME#v}"
+            TAG="${GITHUB_REF_NAME}"
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing $VERSION"
+          # All tag logic (rc vs. stable, image tags) is in this script, which has its
+          # own test (scripts/test-release-meta.sh). Nothing below re-derives it.
+          scripts/release-meta.sh "$TAG" | tee -- "$RUNNER_TEMP/meta"
+          while IFS= read -r line; do
+            k="${line%%=*}"; echo "${k,,}=${line#*=}" >> "$GITHUB_OUTPUT"
+          done < "$RUNNER_TEMP/meta"
 
       # A tag that disagrees with the chart means one of the two is a lie. Stop
       # rather than publish it and find out later which one.
+      # For a release candidate the chart carries the base version X.Y.Z, so the stable
+      # tag can later be cut from the very same commit (etappe 122).
       - name: Chart version must match the tag
         env:
-          VERSION: ${{ steps.v.outputs.version }}
+          VERSION: ${{ steps.v.outputs.base }}
         run: |
           CHART=$(grep '^version:' deploy/helm/matrixctrl/Chart.yaml | awk '{print $2}')
           APP=$(grep '^appVersion:' deploy/helm/matrixctrl/Chart.yaml | awk '{print $2}' | tr -d '"')
@@ -68,7 +74,7 @@ jobs:
       # No pinned version is the expected case and passes.
       - name: Any version pinned in the docs must match the tag
         env:
-          VERSION: ${{ steps.v.outputs.version }}
+          VERSION: ${{ steps.v.outputs.base }}
         run: |
           FOUND=$(grep -ohE '\-\-version [0-9]+\.[0-9]+\.[0-9]+' README.md docs/*.md 2>/dev/null | awk '{print $2}' | sort -u)
           if [ -z "$FOUND" ]; then
@@ -85,7 +91,7 @@ jobs:
       # reported after the fact.
       - name: CHANGELOG must have a section for this version
         env:
-          VERSION: ${{ steps.v.outputs.version }}
+          VERSION: ${{ steps.v.outputs.base }}
         run: |
           awk -v v="## [$VERSION]" '
             index($0, v) == 1 { found = 1; next }
@@ -113,6 +119,17 @@ jobs:
         run: |
           cd web && npm ci && npm run build
           cd .. && rm -rf cmd/matrixctrl/dist && cp -r web/dist cmd/matrixctrl/dist
+
+      - name: Image tags
+        id: tags
+        env:
+          IMAGE_TAGS: ${{ steps.v.outputs.image_tags }}
+        run: |
+          {
+            echo "list<<EOF"
+            for t in $IMAGE_TAGS; do echo "ghcr.io/bxnnyg/matrixctrl:$t"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # No setup-qemu: nothing is emulated any more.
       - uses: docker/setup-buildx-action@v3
@@ -165,9 +182,8 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VERSION=${{ steps.v.outputs.version }}
-          tags: |
-            ghcr.io/bxnnyg/matrixctrl:${{ steps.v.outputs.version }}
-            ghcr.io/bxnnyg/matrixctrl:latest
+            GIT_COMMIT=${{ github.sha }}
+          tags: ${{ steps.tags.outputs.list }}
 
       # Both architectures, pushed as one manifest list (etappe 66, P2-7).
       #
@@ -188,9 +204,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ steps.v.outputs.version }}
-          tags: |
-            ghcr.io/bxnnyg/matrixctrl:${{ steps.v.outputs.version }}
-            ghcr.io/bxnnyg/matrixctrl:latest
+            GIT_COMMIT=${{ github.sha }}
+          tags: ${{ steps.tags.outputs.list }}
 
       # The chart's default image tag is "latest", which is how a chart pinned to
       # one version ends up pulling a different build months later. Pin the
@@ -222,13 +237,17 @@ jobs:
       - name: Publish GitHub Release
         env:
           VERSION: ${{ steps.v.outputs.version }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A release candidate is a GitHub pre-release; never "Latest".
+          FLAG=()
+          [ "$PRERELEASE" = "true" ] && FLAG=(--prerelease)
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "Release v$VERSION exists — updating notes."
-            gh release edit "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md
+            gh release edit "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md "${FLAG[@]}"
           else
-            gh release create "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md
+            gh release create "v$VERSION" --title "MatrixCtrl $VERSION" --notes-file release-notes.md "${FLAG[@]}"
           fi
 
       # Ask the registry what actually arrived.

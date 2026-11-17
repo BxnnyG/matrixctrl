@@ -13,7 +13,7 @@ import { Badge, Button, Card, Icon, Spinner } from "@/components/mc";
 interface Job { name: string; version: string; state: "running" | "succeeded" | "failed"; log?: string }
 interface Status { current: string; ready: boolean; missing?: string[]; job?: Job }
 /** Mirrors internal/updatecheck.Result. */
-interface UpdateResult { current: string; latest?: string; available: boolean; checked_at?: string; error?: string }
+interface UpdateResult { current: string; latest?: string; available: boolean; channel?: string; checked_at?: string; error?: string }
 export interface VersionInfo { version: string; commit: string; update?: UpdateResult; may_write: boolean }
 
 /** The documented upgrade path, verbatim. A command shown to be run must be one that
@@ -218,6 +218,7 @@ export function MatrixCtrlUpdateCard() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: "var(--text-faint)", marginTop: 2 }}>
               <span style={{ fontFamily: "var(--mono)" }}>installiert {v?.version ?? "…"}</span>
               {latest && <><span>·</span><span style={{ fontFamily: "var(--mono)" }}>neueste {latest}</span></>}
+              {u?.channel && <><span>·</span><span>Kanal: {u.channel}</span></>}
               <span>·</span><span>geprüft {since(u?.checked_at)}</span>
             </div>
           </div>

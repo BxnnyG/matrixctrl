@@ -30,9 +30,11 @@ import (
 // network call to a third party decide whether it responds at all is how a dashboard
 // ends up blank because something optional was unreachable (§4.78).
 type Result struct {
-	Current   string    `json:"current"`
-	Latest    string    `json:"latest,omitempty"`
-	Available bool      `json:"available"`
+	Current   string `json:"current"`
+	Latest    string `json:"latest,omitempty"`
+	Available bool   `json:"available"`
+	// Channel is "stable" (no pre-releases) or "edge" (release candidates too).
+	Channel   string    `json:"channel"`
 	CheckedAt time.Time `json:"checked_at,omitempty"`
 	// Why there is no answer, in words. Empty when the check succeeded.
 	Error string `json:"error,omitempty"`
@@ -44,6 +46,7 @@ type Checker struct {
 	registry string // https://ghcr.io, overridable for tests
 	repo     string // bxnnyg/charts/matrixctrl
 	current  string
+	channel  string // ChannelStable or ChannelEdge
 	client   *http.Client
 	ttl      time.Duration
 	now      func() time.Time
@@ -54,11 +57,37 @@ type Checker struct {
 	hasValue bool
 }
 
+// Update channels. stable offers only final releases; edge also offers release
+// candidates (X.Y.Z-rc.N) that are being proven on the test cluster (etappe 122).
+const (
+	ChannelStable = "stable"
+	ChannelEdge   = "edge"
+)
+
+// ParseChannel maps an operator-supplied value to a channel. ok is false for
+// anything unknown, in which case the channel is stable.
+func ParseChannel(s string) (channel string, ok bool) {
+	switch s {
+	case "", ChannelStable:
+		return ChannelStable, true
+	case ChannelEdge:
+		return ChannelEdge, true
+	}
+	return ChannelStable, false
+}
+
+// WithChannel selects the channel; unknown values fall back to stable.
+func (c *Checker) WithChannel(ch string) *Checker {
+	c.channel, _ = ParseChannel(ch)
+	return c
+}
+
 func New(current string) *Checker {
 	return &Checker{
 		registry: "https://ghcr.io",
 		repo:     "bxnnyg/charts/matrixctrl",
 		current:  current,
+		channel:  ChannelStable,
 		client:   &http.Client{Timeout: 8 * time.Second},
 		// One hour, was six. With six, a release published an hour after the panel
 		// started stayed invisible for the rest of the afternoon, and nothing on
@@ -113,7 +142,7 @@ func (c *Checker) within(ctx context.Context, maxAge time.Duration) Result {
 }
 
 func (c *Checker) fetch(ctx context.Context) Result {
-	out := Result{Current: c.current, CheckedAt: c.now().UTC()}
+	out := Result{Current: c.current, Channel: c.channel, CheckedAt: c.now().UTC()}
 
 	// A development build has no version to compare against, and inventing one would
 	// mean telling a developer their working copy is out of date.
@@ -134,6 +163,9 @@ func (c *Checker) fetch(ctx context.Context) Result {
 		v, err := semver.NewVersion(t)
 		if err != nil {
 			continue // "latest" and anything else that is not a release
+		}
+		if c.channel != ChannelEdge && v.Prerelease() != "" {
+			continue // stable never offers a release candidate
 		}
 		if newest == nil || v.GreaterThan(newest) {
 			newest = v

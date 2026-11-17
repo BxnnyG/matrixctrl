@@ -77,7 +77,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S5 Auth (bootstrap + OIDC) | ✅ (E6) | Admin-only via MAS Admin API, runtime switch |
 | S6 Setup & onboarding | ✅ (E15, E116a, E116b) | Greenfield deploy proven on an empty cluster after fixing 4 defects. **Connect-OIDC proven 2026-09-30** on a real server after a move — which took three fixes to the path around it (a reader that could never read the registration, Setup evicting its own upgrade, a login state frozen at startup; §4.119, §4.121). **Re-verified 2026-09-03:** all 17 migrations apply from zero, and a fresh install converges on the *same* 104-column schema as the grown one — no drift after eight migrations added since E15 |
 | S7 UI shell & design system | ✅ (E11) | Tokens + `mc.tsx`; all functional screens migrated |
-| S8 Packaging & release | ✅ (E16, E18) | A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
+| S8 Packaging & release | ✅ (E16, E18, E122) | **Since E122 two channels:** `vX.Y.Z-rc.N` publishes a candidate to `:edge` (never `:latest`), `vX.Y.Z` from the same commit after acceptance on the test cluster; installs pick the channel with `updateCheck.channel` (§4.131). A tag publishes image, chart **and** the GitHub Release, whose notes the workflow cuts from `CHANGELOG.md` itself (§4.17, P2-18). `0.1.16` released, deployed and verified; repo topics, description and tabs configured, homepage deliberately empty |
 | S9 Verification & CI | ✅ (E13, E14, E18, E20, E49, E53) | CI on push/PR; **411 Go test functions across 23 packages, 40 frontend tests** (counted 2026-09-25); headless-browser route check that now *fails* on a skipped route rather than passing (E49); gofmt gate in `make check` as well as CI (E53). **E105:** `make check` also rejects `auth can-i <verb> <type>/<subresource>`, and the two live checks that matter most carry a counter-check that must come back denied — a check that cannot fail proves nothing (§4.105) |
 | S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
@@ -4946,3 +4946,18 @@ Run time against the test cluster: 11 minutes, almost all of it rollouts.
 Not covered: OIDC login (needs a test IdP), the rooms detail screen in a bootstrap session
 (the room list is closed to it by design; reported as SKIP with the reason), CI (no cluster).
 
+
+### §4.131 — Release channels: `edge` and `stable`, tag only after acceptance (2026-11-17, operator, etappe 122)
+Every tag `vX.Y.Z` became `:latest` at once and was offered to every install; acceptance came
+afterwards. The update check would even have offered a pre-release, since it took the highest
+semver tag of any kind.
+
+**Decision (operator, 2026-11-17):** (1) An edge release is a tag `vX.Y.Z-rc.N`: image and
+chart `X.Y.Z-rc.N` plus the moving tag `:edge`, a GitHub pre-release, `:latest` untouched.
+(2) After acceptance on the test cluster (self-update to the rc, `make e2e`, the four S11
+checks), `vX.Y.Z` is tagged **on the same commit** and rebuilt — the binary names `X.Y.Z` and
+the same commit hash; no retagging of the rc digest, which would name the rc version.
+Chart.yaml and doc pins carry the base version `X.Y.Z`, which is what the rc checks compare
+against. (3) The install's channel is the Helm value `updateCheck.channel` (`stable` default,
+`edge`); the update card only shows it. `stable` never offers a pre-release; `edge` offers
+both. Plan: [etappe-122](plans/etappe-122-release-takt.md).

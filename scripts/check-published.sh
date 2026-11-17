@@ -111,7 +111,44 @@ else
   done
 fi
 
+# ── the moving tags (etappe 122) ─────────────────────────────────────────────
+# A release candidate must be :edge and must NOT be :latest; a final release is both.
+digest() {
+  curl -fsSL -I -H "Authorization: Bearer $IMAGE_TOKEN" \
+    -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json" \
+    "$REGISTRY/v2/$IMAGE_REPO/manifests/$1" 2>/dev/null \
+    | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p' | head -1 || true
+  # A missing tag is a 404, i.e. an empty answer here, not the end of the script:
+  # under set -e/pipefail it used to stop the check silently with curl's exit 22.
+}
+mine=$(digest "$VERSION")
+edge=$(digest edge)
+latest=$(digest latest)
 echo
+if [ -z "$mine" ]; then
+  echo "  ✗ could not read the digest of $VERSION"
+  fail=1
+elif [ "$edge" = "$mine" ]; then
+  echo "  ✓ :edge is $VERSION"
+else
+  echo "  ✗ :edge does not point at $VERSION"
+  fail=1
+fi
+case "$VERSION" in
+  *-rc.*)
+    if [ -z "$latest" ]; then
+      echo "  · no :latest yet — nothing to confuse"
+    elif [ "$latest" = "$mine" ]; then
+      echo "  ✗ :latest points at the release candidate — every installation would pull it"
+      fail=1
+    else
+      echo "  ✓ :latest is not the release candidate"
+    fi ;;
+  *)
+    if [ "$latest" = "$mine" ]; then echo "  ✓ :latest is $VERSION"
+    else echo "  ✗ :latest does not point at $VERSION"; fail=1; fi ;;
+esac
+
 if [ "$fail" != 0 ]; then
   echo "✗ what was pushed and what the registry holds do not agree."
   exit 1
