@@ -4970,3 +4970,17 @@ der Testcluster bot es im Kanal `edge` über der rc an, das Update lief über
 `POST /api/v1/self-update`, und die Startzeile nennt denselben Commit wie die rc. Zwei
 Befunde unterwegs: Release-Images trugen nie einen Commit (`GIT_COMMIT` fehlte im Workflow),
 und `check-published.sh` brach bei einem fehlenden Tag stumm mit curls Exit 22 ab.
+
+### §4.132 — Notifications: the panel speaks up instead of waiting to be looked at (2026-11-17, operator, etappe 123)
+A DNS outage, a certificate about to expire, a looping pod or a failed off-site backup was only
+visible to someone who opened the panel (S3/S4 "no alerting"; §4.129 deferred backup failures
+to this etappe). **Decision (operator, 2026-11-17):** (1) the Matrix channel is an *incoming
+webhook URL* — Hookshot into the admin room, or anything that takes `{"text"}` (Slack, ntfy);
+no bot account, so encrypted rooms are not MatrixCtrl's problem. (2) E-mail uses the MAS SMTP
+account by default and can be switched to an account of its own in MatrixCtrl. (3) While a
+problem persists, a reminder goes out at a configurable interval (off / 6 h / 24 h); every
+problem gets exactly one "resolved" message. State lives in Postgres (`notify_state`) so a
+restart never re-sends; a failed delivery is not recorded as sent. A check that cannot read
+its source (timeout, no ESS) reports *unknown* — neither an alert nor a resolution.
+Certificates are read from the Ingress TLS secrets, not probed over the public name.
+Plan: [etappe-123](plans/etappe-123-benachrichtigungen.md).
