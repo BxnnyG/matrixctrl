@@ -28,6 +28,7 @@ const NAV: NavGroup[] = [
   ] },
   { group: "Betrieb", items: [
     { id: "system", label: "System", icon: "cpu", to: "/system" },
+    { id: "notifications", label: "Benachrichtigungen", icon: "bell", to: "/notifications" },
     { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
     { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
   ] },
@@ -67,6 +68,7 @@ const TITLES: Record<string, [string, string]> = {
   "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
   "/system": ["System", "Node, PVCs, Pods & Metriken"],
   "/backup": ["Backup", "Konfiguration und Datenbank sichern und zurückspielen"],
+  "/notifications": ["Benachrichtigungen", "Probleme melden — in den Admin-Raum oder per E-Mail"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],

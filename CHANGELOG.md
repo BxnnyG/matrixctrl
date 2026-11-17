@@ -15,6 +15,19 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.129] — 2026-11-17
+
+### Added
+
+- **Notifications** (etappe 123, new page "Benachrichtigungen"): MatrixCtrl reports a DNS
+  outage, a TLS certificate expiring in under 14 days (read from the Ingress secrets), a new
+  MatrixCtrl update, a pod stuck for more than 10 minutes (Deployments and StatefulSets) and a
+  failed off-site backup — once when it appears, optionally as a reminder (off / 6 h / 24 h),
+  and once when it is resolved. Channels: an incoming webhook URL (e.g. Hookshot into the
+  admin room) and e-mail, via the MAS SMTP account or one of its own. A test message per
+  channel; state is kept in Postgres, so a restart sends nothing twice, and a failed delivery
+  is retried on the next run.
+
 ## [0.1.128] — 2026-11-17
 
 ### Added

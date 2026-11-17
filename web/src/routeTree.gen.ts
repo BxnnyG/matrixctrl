@@ -17,6 +17,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as RtcRouteImport } from './routes/rtc'
 import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MailRouteImport } from './routes/mail'
 import { Route as LoginProvidersRouteImport } from './routes/login-providers'
 import { Route as FederationRouteImport } from './routes/federation'
@@ -74,6 +75,11 @@ const RoomsRoute = RoomsRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MailRoute = MailRouteImport.update({
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/federation': typeof FederationRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRouteWithChildren
   '/rtc': typeof RtcRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/federation'
     | '/login-providers'
     | '/mail'
+    | '/notifications'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -290,6 +300,7 @@ export interface FileRouteTypes {
     | '/federation'
     | '/login-providers'
     | '/mail'
+    | '/notifications'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/federation'
     | '/login-providers'
     | '/mail'
+    | '/notifications'
     | '/reports'
     | '/rooms'
     | '/rtc'
@@ -347,6 +359,7 @@ export interface RootRouteChildren {
   FederationRoute: typeof FederationRoute
   LoginProvidersRoute: typeof LoginProvidersRoute
   MailRoute: typeof MailRoute
+  NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
   RoomsRoute: typeof RoomsRouteWithChildren
   RtcRoute: typeof RtcRoute
@@ -423,6 +436,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mail': {
@@ -572,6 +592,7 @@ const rootRouteChildren: RootRouteChildren = {
   FederationRoute: FederationRoute,
   LoginProvidersRoute: LoginProvidersRoute,
   MailRoute: MailRoute,
+  NotificationsRoute: NotificationsRoute,
   ReportsRoute: ReportsRoute,
   RoomsRoute: RoomsRouteWithChildren,
   RtcRoute: RtcRoute,
