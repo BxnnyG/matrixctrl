@@ -183,3 +183,7 @@ func (h *MailHandler) Test(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
+
+// Settings is what MAS sends with, for the notification channel that shares it
+// (etappe 123).
+func (h *MailHandler) Settings(ctx context.Context) (mail.Settings, error) { return h.load(ctx) }

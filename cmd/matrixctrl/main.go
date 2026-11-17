@@ -29,7 +29,9 @@ import (
 	"github.com/bxnnyg/matrixctrl/internal/hooks"
 	builtin "github.com/bxnnyg/matrixctrl/internal/hooks/builtin"
 	"github.com/bxnnyg/matrixctrl/internal/k8s"
+	mailpkg "github.com/bxnnyg/matrixctrl/internal/mail"
 	"github.com/bxnnyg/matrixctrl/internal/nodehist"
+	"github.com/bxnnyg/matrixctrl/internal/notify"
 	"github.com/bxnnyg/matrixctrl/internal/rtc"
 	"github.com/bxnnyg/matrixctrl/internal/server"
 	"github.com/bxnnyg/matrixctrl/internal/synapse"
@@ -394,6 +396,60 @@ func main() {
 	go dnsChecker.Run(context.Background())
 	authHandler.SetDNSFailing(func() bool { return !dnsChecker.State().OK })
 	dnsHealthHandler := handlers.NewDNSHealthHandler(dnsChecker)
+
+	// Notifications (etappe 123): the panel reports DNS outages, expiring certificates,
+	// stuck pods, failed off-site backups and new versions by webhook and e-mail. Every
+	// cluster-reading checker is only built with a cluster; each call has a timeout in the
+	// engine and an unreadable source is "unknown", never an alarm.
+	notifySettings := notify.NewPGSettings(pool)
+	notifyEmail := &notify.EmailSender{Settings: notifySettings}
+	notifyDeps := notify.Deps{
+		Settings: notifySettings,
+		Store:    notify.NewPGStore(pool),
+		Instance: func(ctx context.Context) string {
+			if n := handlers.ServerName(ctx, configStore); n != "" {
+				return n
+			}
+			return "MatrixCtrl"
+		},
+	}
+	var notifySecrets notify.SecretStore
+	var masSettings func(ctx context.Context) (mailpkg.Settings, error)
+	if k8sClient != nil {
+		// MatrixCtrl's own namespace, where its Role may write Secrets; the managed one
+		// when that cannot be told (outside a cluster).
+		secretNS := k8s.CurrentNamespace()
+		if secretNS == "" {
+			secretNS = essNS
+		}
+		notifySecrets = notify.NewK8sSecrets(k8sClient, secretNS)
+		notifyEmail.Secrets = notifySecrets
+		notifyDeps.Webhook = &notify.WebhookSender{Secrets: notifySecrets}
+		if mailHandler != nil {
+			masSettings = mailHandler.Settings
+			notifyEmail.MAS = masSettings
+		}
+		notifyDeps.Email = notifyEmail
+	}
+	notifyDeps.Checkers = []notify.Checker{
+		notify.NewDNS(dnsChecker.State),
+		notify.NewUpdate(func(ctx context.Context) updatecheck.Result {
+			if updates == nil {
+				return updatecheck.Result{}
+			}
+			return updates.Check(ctx)
+		}),
+		notify.NewBackup(offsite.NewPGRuns(pool)),
+	}
+	if k8sClient != nil {
+		notifyDeps.Checkers = append(notifyDeps.Checkers,
+			notify.Cached(notify.NewCert(k8sClient, essNS, nil), time.Hour, nil),
+			notify.NewPod(k8sClient, essNS, nil))
+	}
+	notifyEngine := notify.New(notifyDeps)
+	go notifyEngine.Run(context.Background())
+	notificationsHandler := handlers.NewNotificationsHandler(notifyEngine, notifySettings, notifySecrets, masSettings,
+		func(ctx context.Context) bool { return notify.SettingsSaved(ctx, pool) })
 	var bridgesHandler *handlers.BridgesHandler
 	if k8sClient != nil {
 		bridgesHandler = handlers.NewBridgesHandler(k8sClient, configStore, essNS)
@@ -421,6 +477,7 @@ func main() {
 		DNSHealth:      dnsHealthHandler,
 		Bridges:        bridgesHandler,
 		Mail:           mailHandler,
+		Notifications:  notificationsHandler,
 		TLSDNS:         tlsdnsHandler,
 		SelfUpdate:     selfUpdateHandler,
 		Offsite:        handlers.NewOffsiteHandler(offsiteSvc),

@@ -37,10 +37,12 @@ type Deps struct {
 	// DNSHealth is the cluster's name resolution (etappe 119a).
 	DNSHealth *handlers.DNSHealthHandler
 	// Bridges: Hookshot and appservice registrations (etappe 119).
-	Bridges    *handlers.BridgesHandler
-	Mail       *handlers.MailHandler
-	TLSDNS     *handlers.TLSDNSHandler
-	SelfUpdate *handlers.SelfUpdateHandler
+	Bridges *handlers.BridgesHandler
+	Mail    *handlers.MailHandler
+	// Notifications (etappe 123). Nil in tests.
+	Notifications *handlers.NotificationsHandler
+	TLSDNS        *handlers.TLSDNSHandler
+	SelfUpdate    *handlers.SelfUpdateHandler
 	// Offsite is the automatic, encrypted backup to S3 (etappe 120). Nil in tests.
 	Offsite *handlers.OffsiteHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
@@ -296,6 +298,16 @@ func NewRouter(deps Deps) http.Handler {
 				r.Put("/", deps.Mail.Put)
 				r.Post("/probe", deps.Mail.Probe)
 				r.Post("/test", deps.Mail.Test)
+			})
+		}
+
+		// Notifications: webhook and e-mail (etappe 123). Nil in tests.
+		if deps.Notifications != nil {
+			r.Route("/api/v1/notifications", func(r chi.Router) {
+				r.Get("/settings", deps.Notifications.GetSettings)
+				r.Put("/settings", deps.Notifications.PutSettings)
+				r.Post("/test", deps.Notifications.Test)
+				r.Get("/state", deps.Notifications.State)
 			})
 		}
 

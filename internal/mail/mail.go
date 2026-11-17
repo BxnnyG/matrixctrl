@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -164,6 +165,14 @@ func Probe(ctx context.Context, s Settings) error {
 
 // Send delivers one real message: the only proof that arrives in an inbox.
 func Send(ctx context.Context, s Settings, to string) error {
+	return SendMessage(ctx, s, to, "Testnachricht von MatrixCtrl",
+		"Diese Nachricht bestätigt, dass dein Matrix-Server E-Mails versenden kann.\r\n"+
+			"Sie wurde in den Einstellungen unter „E-Mail\" ausgelöst.\r\n")
+}
+
+// SendMessage delivers one plain-text message (etappe 123: notifications). Line endings
+// in body may be \n; they are converted for SMTP.
+func SendMessage(ctx context.Context, s Settings, to, subject, body string) error {
 	addr, err := mail.ParseAddress(to)
 	if err != nil {
 		return fmt.Errorf("%q ist keine E-Mail-Adresse", to)
@@ -188,11 +197,11 @@ func Send(ctx context.Context, s Settings, to string) error {
 	if err != nil {
 		return err
 	}
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Testnachricht von MatrixCtrl\r\n"+
-		"Date: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"+
-		"Diese Nachricht bestätigt, dass dein Matrix-Server E-Mails versenden kann.\r\n"+
-		"Sie wurde in den Einstellungen unter „E-Mail\" ausgelöst.\r\n",
-		s.From, addr.Address, time.Now().Format(time.RFC1123Z))
+	body = strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\n", "\r\n")
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n"+
+		"Date: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s",
+		s.From, addr.Address, mime.QEncoding.Encode("utf-8", subject),
+		time.Now().Format(time.RFC1123Z), body)
 	if _, err := w.Write([]byte(msg)); err != nil {
 		return err
 	}
