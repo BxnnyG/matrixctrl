@@ -4961,3 +4961,12 @@ Chart.yaml and doc pins carry the base version `X.Y.Z`, which is what the rc che
 against. (3) The install's channel is the Helm value `updateCheck.channel` (`stable` default,
 `edge`); the update card only shows it. `stable` never offers a pre-release; `edge` offers
 both. Plan: [etappe-122](plans/etappe-122-release-takt.md).
+
+**Nachtrag 0.1.128 zu §4.131: der erste Release auf dem neuen Weg (2026-11-17).** `v0.1.128-rc.1`
+veröffentlicht: `:edge` = rc, `:latest` blieb 0.1.127, Helm ohne `--version` lieferte 0.1.127,
+GitHub-Pre-Release. Testcluster per Self-Update-Job auf die rc (0.1.127 kannte noch kein
+rc-Ziel), Kanal `edge`; `make e2e` grün, S11 geprüft. Dann `v0.1.128` auf demselben Commit:
+der Testcluster bot es im Kanal `edge` über der rc an, das Update lief über
+`POST /api/v1/self-update`, und die Startzeile nennt denselben Commit wie die rc. Zwei
+Befunde unterwegs: Release-Images trugen nie einen Commit (`GIT_COMMIT` fehlte im Workflow),
+und `check-published.sh` brach bei einem fehlenden Tag stumm mit curls Exit 22 ab.

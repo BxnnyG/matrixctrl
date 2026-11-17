@@ -4,24 +4,26 @@
 MatrixCtrl: Day-2-Admin-Schicht für ESS. Alle Roadmap-Seiten (Phase 1–5) sind gebaut; jetzt
 Lücken schließen und Betreiber-Bedürfnisse (siehe „Offen").
 
-## Erledigt (Stand 0.1.127 + E121, 2026-11-16)
+## Erledigt (Stand 0.1.128, 2026-11-17)
 - 116–116d: Update aus dem Panel (Job, atomic), Update-Karte + „Jetzt prüfen", Matrix-Login nach Umzug, Notzugang-Hinweise.
 - 117 Föderation · 118 Worker-Insights · 119 Bridges (Hookshot + Appservices).
 - 119a DNS-Überwachung · 119b Hooks überspringen, wenn das Chart sie abdeckt · 119c SFU-Port-Blockade beim Upgrade · 119d MAS-Sitzungen aufräumen.
 - 0.1.126: Hookshot-Anleitung nach erstem echten Durchlauf (Gruppenraum, Moderator, Adresse im Direktchat). Webhook Ende-zu-Ende auf dem Testcluster bestätigt.
+- **C erledigt: E122 Release-Takt, v0.1.128.** `vX.Y.Z-rc.N` → `:edge`, nach Abnahme `vX.Y.Z` vom selben Commit (docs/RELEASING.md). Erster Durchlauf komplett: rc.1 → Testcluster → e2e/S11 → 0.1.128 per Self-Update, gleicher Commit.
 - Orchestrator-Modus eingerichtet (ORCHESTRATOR.md, .claude/agents/).
 - **B erledigt: E121 `make e2e`** (kein Release nötig, nur Werkzeug): Login übers Formular, alle Routen aus dem Router (`web/scripts/lib/routes.mjs`, auch für verify-ui), „Name der App" übernehmen → Helm-Revision +1 → zurück. Grün auf dem Testcluster (11 min); vier Gegenproben rot.
 
 ## Offen / Nächster Schritt
 **Maßgeblich: `docs/plans/programm-2026-11.md`** (Pakete A–M in fester Reihenfolge, Betreiber-Auftrag 2026-11-11).
-- A (E120 Backups, v0.1.127) und B (E121 `make e2e`) erledigt. Offen aus A: Zeitplan läuft im Panel-Prozess (verpasster Lauf wird nicht nachgeholt); keine Vorschau direkt aus dem Bucket; ungeklärt: ESS-Upgrade startete zweimal kurz nacheinander ohne 409.
-- **Als Nächstes C: E122 Release-Takt** (`edge`/`stable`, Tag erst nach Abnahme), dann D … siehe Programm.
-- Testcluster: matrixctrl 0.1.127, OIDC an. Backup-Ziel der Spielwiese ist der S3-Dienst in Namespace `s3test` (`e120-s3` gelöscht 2026-11-16). `make e2e` braucht OIDC aus (Helm-Wert `oidc.enabled=false`, danach wieder an) und einen leeren `config/diff`.
+- A (E120 Backups, v0.1.127), B (E121 `make e2e`) und C (E122 Release-Takt, v0.1.128) erledigt. Offen aus A: Zeitplan läuft im Panel-Prozess (verpasster Lauf wird nicht nachgeholt); keine Vorschau direkt aus dem Bucket; ungeklärt: ESS-Upgrade startete zweimal kurz nacheinander ohne 409.
+- **Als Nächstes D: E123 Benachrichtigungen**, dann E … siehe Programm. Ab jetzt jeder Release über rc (RELEASING.md).
+- Testcluster: matrixctrl 0.1.128, OIDC an, `updateCheck.channel=edge`. Produktion bleibt `stable` (Standard) — bekommt rc nie angeboten. Backup-Ziel der Spielwiese ist der S3-Dienst in Namespace `s3test` (`e120-s3` gelöscht 2026-11-16). `make e2e` braucht OIDC aus (Helm-Wert `oidc.enabled=false`, danach wieder an) und einen leeren `config/diff`.
 - Öffentliche Namen der Spielwiesen-Ingresses führen nicht zwingend zur Spielwiese: im Test immer cluster-intern prüfen (port-forward), nie über den öffentlichen Namen.
 - Bekannt aus E121: Die Fehlermeldung bei falschem Passwort im Login-Formular zeigt nicht die Servermeldung.
 Noch nicht in Produktion bewiesen: Port-Blockade-Auflösung (119c), MAS-Sitzungs-Aufräumen (119d), Föderations-Gegenstellen.
 
 ## Entscheidungen (mit Kurzbegründung)
+- Release-Kanäle (Betreiber 2026-11-17): rc-Tags statt Builds pro Push; stable wird vom selben Commit neu gebaut statt umetikettiert (Binary nennt sonst die rc-Version); Kanal nur per Helm-Wert (§4.131).
 - Hooks abgelöst statt für alle eingeschaltet — ESS setzt hostNetwork/ETP selbst (§4.125).
 - Git-Historie nicht umgeschrieben (ID-Präfix in v0.1.123-Test): würde zwei Release-Tags versetzen und Versionen neu veröffentlichen; GitHub behält den Commit ohnehin.
 - Worker-Urteil am 95. Perzentil einer Woche, nicht am Schnitt (§4.123).
