@@ -25,6 +25,7 @@ export const NAV: NavGroup[] = [
   ] },
   { group: "Menschen", items: [
     { id: "users", label: "Benutzer", icon: "users", to: "/users" },
+    { id: "invites", label: "Einladungen", icon: "plus", to: "/invites" },
     { id: "rooms", label: "Räume", icon: "room", to: "/rooms" },
     { id: "moderation", label: "Moderation", icon: "shield", to: "/reports" },
   ] },
@@ -60,6 +61,7 @@ const TITLES: Record<string, [string, string]> = {
   "/notifications": ["Benachrichtigungen", "Probleme melden — in den Admin-Raum oder per E-Mail"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
+  "/invites": ["Einladungen", "Codes, mit denen sich Leute auf diesem Server registrieren können"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
   "/federation": ["Föderation", "Erreichen dich andere Server, und mit wem redet deiner?"],
   "/workers": ["Auslastung", "Wie viel Synapse arbeitet — und ob Worker sich lohnen"],

@@ -76,3 +76,21 @@ func TestInviteMASErrorsMapToStatuses(t *testing.T) {
 		}
 	}
 }
+
+// A code is an access: a session that may only look must not read it from the list.
+func TestInviteListHidesCodesFromReadOnlySessions(t *testing.T) {
+	list := `{"data":[{"id":"T1","attributes":{"token":"geheim","valid":true,"times_used":0}}],"meta":{"count":1},"links":{}}`
+	for name, tc := range map[string]struct {
+		may    func(string) bool
+		hidden bool
+	}{"writer": {func(string) bool { return true }, false}, "reader": {func(string) bool { return false }, true}, "no roles": {nil, false}} {
+		h := NewInvitesHandler(func() *mas.Client { return masStub(t, 200, list) })
+		h.MayWrite = tc.may
+		rec := httptest.NewRecorder()
+		h.List(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		body := rec.Body.String()
+		if strings.Contains(body, "geheim") == tc.hidden || strings.Contains(body, `"token_hidden":true`) != tc.hidden {
+			t.Errorf("%s: hidden=%v but body %s", name, tc.hidden, body)
+		}
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authmw "github.com/bxnnyg/matrixctrl/internal/api/middleware"
 	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
@@ -22,6 +23,9 @@ type InvitesHandler struct {
 	// A function for the same reason as UsersHandler: the MAS client appears at
 	// runtime when the connect-OIDC flow completes.
 	client func() *mas.Client
+	// MayWrite decides who sees the codes themselves: a code is an access, so a session
+	// that may only look gets the list without it. Nil means everybody (no role set).
+	MayWrite func(userID string) bool
 }
 
 func NewInvitesHandler(client func() *mas.Client) *InvitesHandler {
@@ -35,6 +39,7 @@ func inviteJSON(t mas.RegistrationToken) map[string]any {
 	return map[string]any{
 		"id":           t.ID,
 		"token":        t.Token,
+		"token_hidden": false,
 		"valid":        t.Valid,
 		"state":        t.State(), // valid | used | expired | revoked
 		"usage_limit":  t.UsageLimit,
@@ -61,9 +66,14 @@ func (h *InvitesHandler) List(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	hide := h.MayWrite != nil && !h.MayWrite(authmw.UserIDFromContext(r.Context()))
 	out := make([]map[string]any, 0, len(list))
 	for _, t := range list {
-		out = append(out, inviteJSON(t))
+		j := inviteJSON(t)
+		if hide {
+			j["token"], j["token_hidden"] = "", true
+		}
+		out = append(out, j)
 	}
 	JSON(w, http.StatusOK, map[string]any{"configured": true, "invites": out})
 }

@@ -379,6 +379,7 @@ func main() {
 	// Who may change things. Empty means everybody, which is what every installation
 	// did before roles existed — an upgrade must not silently demote anyone.
 	roles := auth.ParseRoles(env("MATRIXCTRL_ADMIN_USERS", ""))
+	invitesHandler.MayWrite = roles.MayWrite
 	if roles.Restricted() {
 		log.Printf("write access is restricted to the users named in MATRIXCTRL_ADMIN_USERS (plus the local admin)")
 	}

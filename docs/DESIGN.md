@@ -5031,7 +5031,7 @@ wraps `/api/admin/v1/user-registration-tokens` (list over all pages, create, edi
 fields always sent so `null` clears, revoke/unrevoke). State word, strongest first: revoked,
 expired, used up, valid. (2) API `GET/POST /api/v1/invites`, `PUT /api/v1/invites/{id}`,
 `POST /api/v1/invites/{id}/revoke|unrevoke`; writes sit in the `RequireWrite` group, so a read-only
-role may read the list (codes included) but not change it. No MAS client: 503 with plain text.
+role may read the list but gets no codes (`token` empty, `token_hidden: true`): a code is an access. No MAS client: 503 with plain text.
 The audit trail records the path (MAS id) and no body, so a code never reaches it. (3) Task field
 `mas.registration_token_required` "Registrierung nur mit Einladungs-Code" next to
 `mas.password_registration`. **Key by MAS version:** from 1.20 `account.password_registration_token_required`,

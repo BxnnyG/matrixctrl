@@ -20,6 +20,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MailRouteImport } from './routes/mail'
 import { Route as LoginProvidersRouteImport } from './routes/login-providers'
+import { Route as InvitesRouteImport } from './routes/invites'
 import { Route as FederationRouteImport } from './routes/federation'
 import { Route as BridgesRouteImport } from './routes/bridges'
 import { Route as BackupRouteImport } from './routes/backup'
@@ -90,6 +91,11 @@ const MailRoute = MailRouteImport.update({
 const LoginProvidersRoute = LoginProvidersRouteImport.update({
   id: '/login-providers',
   path: '/login-providers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesRoute = InvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FederationRoute = FederationRouteImport.update({
@@ -179,6 +185,7 @@ export interface FileRoutesByFullPath {
   '/backup': typeof BackupRoute
   '/bridges': typeof BridgesRoute
   '/federation': typeof FederationRoute
+  '/invites': typeof InvitesRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/notifications': typeof NotificationsRoute
@@ -208,6 +215,7 @@ export interface FileRoutesByTo {
   '/backup': typeof BackupRoute
   '/bridges': typeof BridgesRoute
   '/federation': typeof FederationRoute
+  '/invites': typeof InvitesRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/notifications': typeof NotificationsRoute
@@ -238,6 +246,7 @@ export interface FileRoutesById {
   '/backup': typeof BackupRoute
   '/bridges': typeof BridgesRoute
   '/federation': typeof FederationRoute
+  '/invites': typeof InvitesRoute
   '/login-providers': typeof LoginProvidersRoute
   '/mail': typeof MailRoute
   '/notifications': typeof NotificationsRoute
@@ -269,6 +278,7 @@ export interface FileRouteTypes {
     | '/backup'
     | '/bridges'
     | '/federation'
+    | '/invites'
     | '/login-providers'
     | '/mail'
     | '/notifications'
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/backup'
     | '/bridges'
     | '/federation'
+    | '/invites'
     | '/login-providers'
     | '/mail'
     | '/notifications'
@@ -327,6 +338,7 @@ export interface FileRouteTypes {
     | '/backup'
     | '/bridges'
     | '/federation'
+    | '/invites'
     | '/login-providers'
     | '/mail'
     | '/notifications'
@@ -357,6 +369,7 @@ export interface RootRouteChildren {
   BackupRoute: typeof BackupRoute
   BridgesRoute: typeof BridgesRoute
   FederationRoute: typeof FederationRoute
+  InvitesRoute: typeof InvitesRoute
   LoginProvidersRoute: typeof LoginProvidersRoute
   MailRoute: typeof MailRoute
   NotificationsRoute: typeof NotificationsRoute
@@ -457,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/login-providers'
       fullPath: '/login-providers'
       preLoaderRoute: typeof LoginProvidersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invites': {
+      id: '/invites'
+      path: '/invites'
+      fullPath: '/invites'
+      preLoaderRoute: typeof InvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/federation': {
@@ -590,6 +610,7 @@ const rootRouteChildren: RootRouteChildren = {
   BackupRoute: BackupRoute,
   BridgesRoute: BridgesRoute,
   FederationRoute: FederationRoute,
+  InvitesRoute: InvitesRoute,
   LoginProvidersRoute: LoginProvidersRoute,
   MailRoute: MailRoute,
   NotificationsRoute: NotificationsRoute,
