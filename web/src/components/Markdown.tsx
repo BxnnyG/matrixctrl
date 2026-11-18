@@ -6,7 +6,15 @@
  *  Lifted out of routes/helm/upgrade.tsx when the version list gained inline notes
  *  and a second screen needed it (§3, E43). */
 export function Markdown({ text }: { text: string }) {
-  const lines = text.split("\n");
+  // A list item continues on the following indented lines (CHANGELOG wraps long
+  // items); fold those into the item instead of rendering them as stray rows.
+  const lines: string[] = [];
+  for (const raw of text.split("\n")) {
+    const prev = lines[lines.length - 1];
+    if (prev !== undefined && /^\s*[-*]\s+/.test(prev) && /^\s+\S/.test(raw) && !/^\s*[-*]\s+/.test(raw)) {
+      lines[lines.length - 1] = prev.trimEnd() + " " + raw.trim();
+    } else lines.push(raw);
+  }
   return (
     <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.65 }}>
       {lines.map((raw, i) => {
@@ -43,7 +51,7 @@ export function Markdown({ text }: { text: string }) {
  *  construct should look plain, never be interpreted as markup. */
 function inline(text: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
-  const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`/g;
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -56,6 +64,8 @@ function inline(text: string): React.ReactNode[] {
       out.push(<a key={key++} href={m[2]} target="_blank" rel="noreferrer noopener" style={{ color: "var(--accent)", textDecoration: "none" }}>{m[1]}</a>);
     } else if (m[1] !== undefined) {
       out.push(m[1]);
+    } else if (m[4] !== undefined) {
+      out.push(<strong key={key++} style={{ color: "var(--text)", fontWeight: 650 }}>{m[4]}</strong>);
     } else {
       out.push(<code key={key++} style={{ fontFamily: "var(--mono)", fontSize: 11.5, background: "var(--surface)", padding: "1px 4px", borderRadius: 3 }}>{m[3]}</code>);
     }

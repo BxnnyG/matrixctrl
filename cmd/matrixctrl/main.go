@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	matrixctrl "github.com/bxnnyg/matrixctrl"
 	"github.com/bxnnyg/matrixctrl/internal/api"
 	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
 	"github.com/bxnnyg/matrixctrl/internal/audit"
@@ -441,6 +442,10 @@ func main() {
 		}),
 		notify.NewBackup(offsite.NewPGRuns(pool)),
 	}
+	if helmClient != nil {
+		notifyDeps.Checkers = append(notifyDeps.Checkers,
+			notify.NewRelease(notify.HelmReleases{Client: helmClient, Name: essRelease}, nil))
+	}
 	if k8sClient != nil {
 		notifyDeps.Checkers = append(notifyDeps.Checkers,
 			notify.Cached(notify.NewCert(k8sClient, essNS, nil), time.Hour, nil),
@@ -478,6 +483,8 @@ func main() {
 		Bridges:        bridgesHandler,
 		Mail:           mailHandler,
 		Notifications:  notificationsHandler,
+		Alerts:         handlers.NewAlertsHandler(notifyEngine.Current),
+		WhatsNew:       handlers.NewWhatsNewHandler(matrixctrl.Changelog, version.Version),
 		TLSDNS:         tlsdnsHandler,
 		SelfUpdate:     selfUpdateHandler,
 		Offsite:        handlers.NewOffsiteHandler(offsiteSvc),

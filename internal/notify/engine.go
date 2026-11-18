@@ -38,6 +38,27 @@ type Engine struct {
 	mu      sync.Mutex // one pass at a time
 	lastMu  sync.Mutex
 	lastRun *LastRun
+	curMu   sync.Mutex
+	current Current
+}
+
+// Current is what is wrong right now, whether or not anyone is told (etappe 124): the
+// warning bar reads this. A switched-off trigger shows up here; it only sends nothing.
+type Current struct {
+	Alerts    []Alert
+	CheckedAt time.Time
+	// Unknown lists triggers whose source could not be read in the latest pass.
+	Unknown []string
+}
+
+// Current is the result of the latest pass; zero CheckedAt before the first.
+func (e *Engine) Current() Current {
+	e.curMu.Lock()
+	defer e.curMu.Unlock()
+	c := e.current
+	c.Alerts = append([]Alert{}, c.Alerts...)
+	c.Unknown = append([]string{}, c.Unknown...)
+	return c
 }
 
 const (
@@ -103,6 +124,43 @@ func (e *Engine) Once(ctx context.Context) {
 		e.lastMu.Unlock()
 	}()
 
+	// Every checker runs first, before anything that can fail on the database, so the
+	// warning bar never goes blind with the settings.
+	type result struct {
+		ck     Checker
+		alerts []Alert
+		err    error
+	}
+	var results []result
+	cur := Current{Alerts: []Alert{}, Unknown: []string{}, CheckedAt: e.d.Now().UTC()}
+	prev := e.Current()
+	for _, ck := range e.d.Checkers {
+		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+		alerts, err := ck.Check(cctx)
+		cancel()
+		for i := range alerts {
+			alerts[i] = alerts[i].withMeta()
+		}
+		results = append(results, result{ck, alerts, err})
+		if err != nil {
+			run.Unknown = append(run.Unknown, ck.Trigger())
+			cur.Unknown = append(cur.Unknown, ck.Trigger())
+			// Unknown is not "solved": keep what was known of this trigger.
+			for _, a := range prev.Alerts {
+				if a.Trigger == ck.Trigger() {
+					cur.Alerts = append(cur.Alerts, a)
+				}
+			}
+			continue
+		}
+		cur.Alerts = append(cur.Alerts, alerts...)
+	}
+	sort.Strings(run.Unknown)
+	sort.Strings(cur.Unknown)
+	e.curMu.Lock()
+	e.current = cur
+	e.curMu.Unlock()
+
 	set, err := e.d.Settings.Load(ctx)
 	if err != nil {
 		run.Error = "Einstellungen nicht lesbar: " + err.Error()
@@ -123,8 +181,8 @@ func (e *Engine) Once(ctx context.Context) {
 	now := e.d.Now()
 
 	handled := map[string]bool{} // triggers whose rows were dealt with
-	for _, ck := range e.d.Checkers {
-		trig := ck.Trigger()
+	for _, res := range results {
+		trig := res.ck.Trigger()
 		handled[trig] = true
 		if !set.Triggers[trig] {
 			// Switched off: forget silently. Switching on again announces afresh.
@@ -135,15 +193,11 @@ func (e *Engine) Once(ctx context.Context) {
 			}
 			continue
 		}
-		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
-		alerts, err := ck.Check(cctx)
-		cancel()
-		if err != nil {
-			run.Unknown = append(run.Unknown, trig)
+		if res.err != nil {
 			continue
 		}
 		current := map[string]bool{}
-		for _, a := range alerts {
+		for _, a := range res.alerts {
 			current[a.Key] = true
 			e.alertSeen(ctx, a, byKey[a.Key], set, senders, instance, now)
 		}
@@ -159,7 +213,6 @@ func (e *Engine) Once(ctx context.Context) {
 			_ = e.d.Store.DeleteRow(ctx, r.Key)
 		}
 	}
-	sort.Strings(run.Unknown)
 }
 
 func cloneTimes(m map[string]time.Time) map[string]time.Time {

@@ -152,7 +152,7 @@ function Setup() {
       <Card style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "var(--panel)" }}>
         <Icon name="info" size={16} style={{ color: "var(--text-faint)", flexShrink: 0, marginTop: 1 }} />
         <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.55 }}>
-          <strong style={{ color: "var(--text)" }}>Phase 1.5:</strong> Greenfield-Deploy (oben) seedet die Config aus den Chart-Defaults und installiert ESS. Noch offen: automatische OIDC-Client-Registrierung via MAS Admin API. Siehe <code style={{ fontFamily: "var(--mono)", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>docs/SETUP.md</code>.
+          Der Neuaufbau (oben) legt die Config aus den Chart-Standardwerten an und installiert ESS. Noch offen: automatische OIDC-Client-Registrierung via MAS Admin API. Siehe <code style={{ fontFamily: "var(--mono)", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>docs/SETUP.md</code>.
         </div>
       </Card>
     </div>

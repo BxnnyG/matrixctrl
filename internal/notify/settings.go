@@ -68,7 +68,11 @@ func (s Settings) Normalize() Settings {
 	}
 	t := map[string]bool{}
 	for _, k := range Triggers {
-		t[k] = s.Triggers[k]
+		v, ok := s.Triggers[k]
+		if !ok && k == TriggerRelease {
+			v = true // new in etappe 124: on unless the operator switched it off
+		}
+		t[k] = v
 	}
 	s.Triggers = t
 	return s

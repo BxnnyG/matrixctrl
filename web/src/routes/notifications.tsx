@@ -31,6 +31,7 @@ const TRIGGERS: { id: string; label: string; hint: string }[] = [
   { id: "update", label: "Neues MatrixCtrl-Update", hint: "Es gibt eine neuere Version von MatrixCtrl." },
   { id: "pod", label: "Pod hängt", hint: "Ein Pod startet seit über 10 Minuten nicht richtig." },
   { id: "backup", label: "Off-Site-Backup gescheitert", hint: "Die letzte Sicherung ins externe Ziel ist fehlgeschlagen." },
+  { id: "release", label: "ESS-Update gescheitert", hint: "Der Helm-Release des ESS steht auf „failed“ oder hängt seit über 10 Minuten in „pending“." },
 ];
 const REMINDERS: { value: Reminder; label: string }[] = [
   { value: "off", label: "Nicht erinnern" }, { value: "6h", label: "Alle 6 Stunden" }, { value: "24h", label: "Alle 24 Stunden" },

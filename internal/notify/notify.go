@@ -17,15 +17,16 @@ import (
 
 // Trigger names a kind of problem the operator can switch on or off.
 const (
-	TriggerDNS    = "dns"
-	TriggerCert   = "cert"
-	TriggerUpdate = "update"
-	TriggerPod    = "pod"
-	TriggerBackup = "backup"
+	TriggerDNS     = "dns"
+	TriggerCert    = "cert"
+	TriggerUpdate  = "update"
+	TriggerPod     = "pod"
+	TriggerBackup  = "backup"
+	TriggerRelease = "release"
 )
 
 // Triggers lists every trigger in display order.
-var Triggers = []string{TriggerDNS, TriggerCert, TriggerUpdate, TriggerPod, TriggerBackup}
+var Triggers = []string{TriggerDNS, TriggerCert, TriggerUpdate, TriggerPod, TriggerBackup, TriggerRelease}
 
 // Channel names.
 const (
@@ -40,6 +41,11 @@ type Alert struct {
 	Trigger string
 	Title   string
 	Detail  string
+	// Severity (error|warning|info) and Link (path of the page that deals with it) feed
+	// the global warning bar; the sent messages do not use them. Filled by the engine
+	// from the trigger when a checker leaves them empty.
+	Severity string
+	Link     string
 	// Once marks a notice rather than a fault (a new version): no reminder, and no
 	// "resolved" message when it goes away.
 	Once bool
@@ -107,4 +113,25 @@ type Message struct {
 // Sender delivers a message over one channel.
 type Sender interface {
 	Send(ctx context.Context, m Message) error
+}
+
+// Severity and page per trigger (the warning bar, etappe 124).
+var triggerMeta = map[string][2]string{
+	TriggerDNS:     {"error", "/tls-dns"},
+	TriggerCert:    {"warning", "/tls-dns"},
+	TriggerUpdate:  {"info", "/helm"},
+	TriggerPod:     {"error", "/system"},
+	TriggerBackup:  {"error", "/backup"},
+	TriggerRelease: {"error", "/helm"},
+}
+
+func (a Alert) withMeta() Alert {
+	m := triggerMeta[a.Trigger]
+	if a.Severity == "" {
+		a.Severity = m[0]
+	}
+	if a.Link == "" {
+		a.Link = m[1]
+	}
+	return a
 }

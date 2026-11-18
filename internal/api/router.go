@@ -41,8 +41,11 @@ type Deps struct {
 	Mail    *handlers.MailHandler
 	// Notifications (etappe 123). Nil in tests.
 	Notifications *handlers.NotificationsHandler
-	TLSDNS        *handlers.TLSDNSHandler
-	SelfUpdate    *handlers.SelfUpdateHandler
+	// Warning bar and "what's new" (etappe 124), any signed-in role. Nil in tests.
+	Alerts     *handlers.AlertsHandler
+	WhatsNew   *handlers.WhatsNewHandler
+	TLSDNS     *handlers.TLSDNSHandler
+	SelfUpdate *handlers.SelfUpdateHandler
 	// Offsite is the automatic, encrypted backup to S3 (etappe 120). Nil in tests.
 	Offsite *handlers.OffsiteHandler
 	// Roles decides who may change things. Nil means everybody may, which is what
@@ -166,6 +169,13 @@ func NewRouter(deps Deps) http.Handler {
 		// something a stranger needs from the outside.
 		if deps.Version != nil {
 			r.Get("/api/v1/version", deps.Version.Get)
+		}
+
+		if deps.Alerts != nil {
+			r.Get("/api/v1/alerts", deps.Alerts.Get)
+		}
+		if deps.WhatsNew != nil {
+			r.Get("/api/v1/whatsnew", deps.WhatsNew.Get)
 		}
 
 		r.Route("/api/v1/status", func(r chi.Router) {

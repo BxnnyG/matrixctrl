@@ -70,7 +70,7 @@ export function TweaksButton() {
             </div>
 
             <Sec label="Details" />
-            {([["gridBg", "Hintergrund-Raster"], ["monoLabels", "Nav-Labels monospace"], ["showPhaseTags", "Phasen-Tags zeigen"]] as const).map(([k, label]) => (
+            {([["gridBg", "Hintergrund-Raster"], ["monoLabels", "Nav-Labels monospace"]] as const).map(([k, label]) => (
               <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border-soft)" }}>
                 <span style={{ fontSize: 13, color: "var(--text-dim)" }}>{label}</span>
                 <Toggle checked={t[k]} onChange={(v) => setTweak(k, v)} />

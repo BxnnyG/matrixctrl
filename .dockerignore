@@ -28,3 +28,4 @@ web/dist
 *.env.local
 .claude/
 .DS_Store
+!CHANGELOG.md

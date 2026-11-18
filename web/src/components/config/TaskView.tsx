@@ -80,7 +80,7 @@ function TaskCard({ card, values, onSet, busy, verdict, focused }: {
           <Button variant="outline" size="sm" icon="key" onClick={() => navigate({ to: "/login-providers" })}>Google, GitHub, Zitadel …</Button>
         )}
         {card.id === "workers" && (
-          <Button variant="outline" size="sm" icon="activity" onClick={() => navigate({ to: "/workers" })}>Worker-Insights</Button>
+          <Button variant="outline" size="sm" icon="activity" onClick={() => navigate({ to: "/workers" })}>Auslastung</Button>
         )}
       </div>
       {plain.map((f, i) => (

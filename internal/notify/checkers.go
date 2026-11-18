@@ -331,3 +331,59 @@ func (c *backupChecker) Check(ctx context.Context) ([]Alert, error) {
 	}
 	return nil, nil
 }
+
+// ---- ESS release --------------------------------------------------------------
+
+// PendingGrace is how long a pending-* Helm status may last before it is a problem
+// (an upgrade in flight is normal for a few minutes).
+const PendingGrace = 10 * time.Minute
+
+// ReleaseSource reads the managed ESS release. A missing release is (nil, nil).
+type ReleaseSource interface {
+	Release(ctx context.Context) (*ReleaseState, error)
+}
+
+// ReleaseState is the part of the Helm release the check needs.
+type ReleaseState struct {
+	Name, Status string
+	Since        time.Time // when the revision was written
+}
+
+type releaseChecker struct {
+	src ReleaseSource
+	now func() time.Time
+}
+
+// NewRelease alerts when the ESS release is failed, or stuck in pending-* for longer
+// than PendingGrace. No release (greenfield) is nothing; a read error is unknown.
+func NewRelease(src ReleaseSource, now func() time.Time) Checker {
+	if now == nil {
+		now = time.Now
+	}
+	return &releaseChecker{src: src, now: now}
+}
+
+func (releaseChecker) Trigger() string { return TriggerRelease }
+
+func (c *releaseChecker) Check(ctx context.Context) ([]Alert, error) {
+	if c.src == nil {
+		return nil, nil
+	}
+	rel, err := c.src.Release(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rel == nil {
+		return nil, nil
+	}
+	mk := func(detail string) []Alert {
+		return []Alert{{Key: "release", Trigger: TriggerRelease, Title: "ESS-Release im Zustand " + rel.Status, Detail: detail}}
+	}
+	switch {
+	case rel.Status == "failed":
+		return mk(fmt.Sprintf("Der Helm-Release %q ist fehlgeschlagen; ein weiteres Update kann ihn reparieren.", rel.Name)), nil
+	case strings.HasPrefix(rel.Status, "pending") && !rel.Since.IsZero() && c.now().Sub(rel.Since) > PendingGrace:
+		return mk(fmt.Sprintf("Der Helm-Release %q hängt seit %d min in %s.", rel.Name, int(c.now().Sub(rel.Since).Minutes()), rel.Status)), nil
+	}
+	return nil, nil
+}

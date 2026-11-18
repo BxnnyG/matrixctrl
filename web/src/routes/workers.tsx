@@ -50,7 +50,7 @@ function WorkersPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 980 }}>
-      <SectionTitle icon="activity" sub="Braucht Synapse eigene Prozesse für Teile seiner Arbeit — und welchen?" right={right}>Worker-Insights</SectionTitle>
+      <SectionTitle icon="activity" sub="Braucht Synapse eigene Prozesse für Teile seiner Arbeit — und welchen?" right={right}>Auslastung</SectionTitle>
       {isLoading && <Card style={{ fontSize: 13, color: "var(--text-faint)" }}><Spinner size={13} /> Lade Messwerte…</Card>}
       {error && <Card style={{ fontSize: 13, color: "var(--status-err)" }}>{(error as Error).message}</Card>}
       {data && <WorkersView data={data} />}

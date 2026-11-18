@@ -7,53 +7,42 @@ import { useMatrixLogin } from "@/components/MatrixLoginMissing";
 import { signOut, useSession } from "@/lib/session";
 import { SelfUpdateDialog, UPDATE_COMMAND } from "@/components/SelfUpdate";
 import { Icon, StatusDot, Avatar, Kbd, useIsMobile, type IconName } from "@/components/mc";
+import { GlobalAlerts } from "@/components/GlobalAlerts";
+import { WhatsNew, WhatsNewDialog } from "@/components/WhatsNew";
 import { TweaksButton } from "@/components/layout/Tweaks";
 
-interface NavItem { id: string; label: string; icon: IconName; to?: string; phase?: string }
-interface NavGroup { group: string; phase?: string; items: NavItem[] }
+interface NavItem { id: string; label: string; icon: IconName; to?: string }
+interface NavGroup { group: string; items: NavItem[] }
 
-const NAV: NavGroup[] = [
+// Grouped by task, not by roadmap phase (etappe 124).
+export const NAV: NavGroup[] = [
   { group: "Übersicht", items: [{ id: "dashboard", label: "Dashboard", icon: "dashboard", to: "/" }] },
-  // One entrance to the history: the "Verlauf" button on the settings page. This entry
-  // led to the same page under a third name ("Versionen & Diff" beside "Verlauf" and
-  // "Änderungen"), which is two names too many for one thing (etappe 107).
-  { group: "Konfiguration", items: [
+  { group: "Server", items: [
     { id: "config", label: "Einstellungen", icon: "sliders", to: "/config" },
     { id: "login-providers", label: "Anmeldung", icon: "key", to: "/login-providers" },
     { id: "mail", label: "E-Mail", icon: "globe", to: "/mail" },
+    { id: "rtc", label: "Calls", icon: "phone", to: "/rtc" },
   ] },
-  { group: "Deployment", items: [
-    { id: "helm", label: "Updates", icon: "helm", to: "/helm" },
-    { id: "setup", label: "Setup", icon: "rocket", to: "/setup" },
-  ] },
-  { group: "Betrieb", items: [
-    { id: "system", label: "System", icon: "cpu", to: "/system" },
-    { id: "notifications", label: "Benachrichtigungen", icon: "bell", to: "/notifications" },
-    { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
-    { id: "rtc", label: "Calls / RTC", icon: "phone", to: "/rtc" },
-  ] },
-  // Users is real as of E27, rooms as of E36, moderation as of E46 — which completes
-  // the Verwaltung group and, with it, Phase 2's feature list.
-  { group: "Verwaltung", items: [
+  { group: "Menschen", items: [
     { id: "users", label: "Benutzer", icon: "users", to: "/users" },
     { id: "rooms", label: "Räume", icon: "room", to: "/rooms" },
     { id: "moderation", label: "Moderation", icon: "shield", to: "/reports" },
   ] },
-  // Future phases — shown as disabled roadmap entries (no backend yet).
-  { group: "Betrieb · Day-2", phase: "3", items: [
-    { id: "tls", label: "TLS & DNS", icon: "lock", to: "/tls-dns" }, { id: "backup", label: "Backup", icon: "database", to: "/backup" },
+  { group: "Vernetzung", items: [
+    { id: "federation", label: "Föderation", icon: "globe", to: "/federation" },
+    { id: "bridges", label: "Bridges", icon: "audit", to: "/bridges" },
   ] },
-  { group: "Netzwerk", phase: "4", items: [
-    { id: "federation", label: "Föderation", icon: "globe", to: "/federation" }, { id: "bridges", label: "Bridges", icon: "audit", to: "/bridges" },
+  { group: "Betrieb", items: [
+    { id: "system", label: "System", icon: "cpu", to: "/system" },
+    { id: "workers", label: "Auslastung", icon: "activity", to: "/workers" },
+    { id: "tls", label: "TLS & DNS", icon: "lock", to: "/tls-dns" },
+    { id: "backup", label: "Backup", icon: "database", to: "/backup" },
+    { id: "notifications", label: "Benachrichtigungen", icon: "bell", to: "/notifications" },
   ] },
-  { group: "Compliance", phase: "5", items: [
-    { id: "workers", label: "Worker-Insights", icon: "activity", to: "/workers" },
-  ] },
-  // Hooks were the answer to a chart that could not set the call server's network;
-  // it can now, and the built-in ones skip themselves. What remains is a tool for
-  // people who write their own — so it sits here, not between Updates and Setup
-  // (etappe 119b).
-  { group: "Erweitert", items: [
+  { group: "Wartung", items: [
+    { id: "helm", label: "Updates", icon: "helm", to: "/helm" },
+    { id: "audit", label: "Audit-Log", icon: "audit", to: "/audit" },
+    { id: "setup", label: "Setup", icon: "rocket", to: "/setup" },
     { id: "hooks", label: "Hooks", icon: "hook", to: "/hooks" },
   ] },
 ];
@@ -62,20 +51,20 @@ const TITLES: Record<string, [string, string]> = {
   "/": ["Dashboard", "Komponenten-Status & Cluster-Health"],
   "/config": ["Einstellungen", "Was dein Server tut — versioniert, jede Änderung rückgängig machbar"],
   "/config/history": ["Verlauf", "Jede gespeicherte Version der Einstellungen · Zurückspringen"],
-  "/helm": ["Updates", "MatrixCtrl und ESS aktualisieren — mit Patch-erhaltenden Hooks"],
+  "/helm": ["Updates", "MatrixCtrl und ESS aktualisieren"],
   "/helm/history": ["Upgrade-Verlauf", "Vergangene Upgrades · Revision & Hook-Ergebnis"],
   "/hooks": ["Hooks", "Eigene Korrekturen nach jedem ESS-Update — für Fortgeschrittene"],
-  "/setup": ["Setup", "Onboarding · Deploy · Adopt · Matrix-Login"],
-  "/system": ["System", "Node, PVCs, Pods & Metriken"],
+  "/setup": ["Setup", "Einrichten, bestehende Installation übernehmen, Matrix-Login"],
+  "/system": ["System", "Knoten, Speicher, Pods und Messwerte"],
   "/backup": ["Backup", "Konfiguration und Datenbank sichern und zurückspielen"],
   "/notifications": ["Benachrichtigungen", "Probleme melden — in den Admin-Raum oder per E-Mail"],
   "/audit": ["Audit-Log", "Wer hat was geändert · nur ändernde Zugriffe"],
   "/users": ["Benutzer", "Konten aus dem Matrix Authentication Service"],
   "/rooms": ["Räume", "Räume auf diesem Homeserver, aus der Synapse-Admin-API"],
   "/federation": ["Föderation", "Erreichen dich andere Server, und mit wem redet deiner?"],
-  "/workers": ["Worker-Insights", "Wie viel Synapse arbeitet, und ob Worker sich lohnen"],
+  "/workers": ["Auslastung", "Wie viel Synapse arbeitet — und ob Worker sich lohnen"],
   "/bridges": ["Bridges", "Hookshot und andere Bridges"],
-  "/rtc": ["Calls / RTC", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
+  "/rtc": ["Calls", "Was Calling braucht — und was von hier aus nicht prüfbar ist"],
 };
 
 function Logo() {
@@ -140,11 +129,10 @@ function Sidebar({ path, onNavigate }: { path: string; onNavigate?: () => void }
     <aside style={{ width: "var(--rail-w)", flexShrink: 0, background: "var(--rail)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100dvh", position: "sticky", top: 0, paddingTop: "env(safe-area-inset-top)" }}>
       <div style={{ padding: "18px 16px 14px" }}><Logo /></div>
       <nav className="mc-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 2 }}>
-        {NAV.filter((g) => !g.phase || t.showPhaseTags).map((g) => (
+        {NAV.map((g) => (
           <div key={g.group} style={{ marginTop: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 10px 6px" }}>
               <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-faint)" }}>{g.group}</span>
-              {g.phase && <span style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 5px", borderRadius: 4, background: "var(--surface-2)", color: "var(--text-faint)", fontFamily: "var(--mono)" }}>P{g.phase}</span>}
             </div>
             {g.items.map((it) => <NavRow key={it.id} item={it} active={cur === it.id} mono={t.monoLabels} navigate={go} />)}
           </div>
@@ -200,8 +188,8 @@ const isDegraded = (s: string) => s === "degraded" || s === "down";
  *  or not this endpoint answers, and a hook belongs somewhere it cannot end up behind
  *  an early return (§4.79). */
 function VersionFooter() {
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState(false);
   const { data } = useQuery({
     queryKey: ["version"],
     queryFn: () => api.get<VersionResp>("/api/v1/version"),
@@ -215,12 +203,13 @@ function VersionFooter() {
 
   return (
     <>
+      {notes && <WhatsNewDialog since="" onClose={() => setNotes(false)} />}
       <div style={{ padding: "8px 16px 10px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           {/* Leads to the updates page, where MatrixCtrl's own version has a card with
               "check now" and the one-click update — the pill on the right only appears
               once an update is known (etappe 116c). */}
-          <button onClick={() => navigate({ to: "/helm" })} title="Updates"
+          <button onClick={() => setNotes(true)} title="Was ist neu in dieser Version"
             style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, fontFamily: "var(--mono)", color: "var(--text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             MatrixCtrl {data?.version ?? "…"}
           </button>
@@ -331,6 +320,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
         <Topbar path={path} onMenu={mobile ? () => setDrawer(true) : undefined} />
+        <GlobalAlerts />
+        <WhatsNew />
         {fullBleed ? (
           <main style={{ flex: 1, overflow: "hidden" }}>{children}</main>
         ) : (

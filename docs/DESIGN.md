@@ -4999,3 +4999,26 @@ MAS kein SMTP hatte — jetzt 422. Grundsätzlich: Während eines Cluster-DNS-Au
 Benachrichtigung ihr Ziel nur ohne Namensauflösung im Cluster; die Seite sagt das. Nicht live
 belegt: Zustellung über Hookshot in einen echten Admin-Raum (auf der Spielwiese lief kein Hookshot;
 gleiches JSON-Format `{"text","html"}` gegen eigenen Empfänger).
+
+### §4.133 — Menu by task, one warning bar, what's new (2026-11-18, operator, etappe 124)
+The menu showed roadmap phases, and problems (DNS outage, a `failed` ESS release) were visible
+only on the dashboard or nowhere. **Decisions (operator, 2026-11-18):** (1) The menu is grouped
+by task (Overview, Server, People, Federation, Operations, Maintenance); phase badges and the
+`showPhaseTags` switch are gone. (2) One global warning bar above every page reads
+`GET /api/v1/alerts` (any signed-in role), polled every 60 s. (3) "What's new" shows the
+unchanged CHANGELOG sections `(last seen, running]` from `GET /api/v1/whatsnew?since=`; the file
+is embedded from the module root (`embed.go`, kept in the Docker build context), release
+candidates count as their target version, a dev build shows nothing.
+**Backend:** `Engine.Current()` is independent of delivery: every checker runs on every pass,
+before settings and state are loaded, so a database error cannot blank the bar; a switched-off
+trigger still appears there and merely sends nothing (its state rows are still dropped). A
+checker that cannot read its source is *unknown*: the previous alerts of that trigger stay and
+the trigger is listed in `unknown`. Alerts carry severity and the page that deals with them (dns
+/tls-dns error, cert /tls-dns warning, update /helm info, pod /system error, backup /backup
+error, release /helm error); sent messages are unchanged.
+**New `release` trigger (on by default):** the ESS Helm release `failed` is an alert;
+`pending-*` for more than 10 minutes is an alert (an upgrade in flight is normal); no release
+(greenfield) is nothing; a read error is unknown. It reads through `internal/helm` for the
+release name main.go resolved, including auto-discovery in another namespace. `hooks-failed` is
+deliberately not a release failure (PROZESS case 8) and stays out of this etappe.
+Plan: [etappe-124](plans/etappe-124-menue-warnleiste.md).

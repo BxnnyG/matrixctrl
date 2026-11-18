@@ -14,7 +14,6 @@ export interface Tweaks {
   density: Density;
   gridBg: boolean;
   monoLabels: boolean;
-  showPhaseTags: boolean;
 }
 
 export const DIRECTIONS: { id: Direction; label: string; blurb: string }[] = [
@@ -31,7 +30,6 @@ const DEFAULTS: Tweaks = {
   density: "regular",
   gridBg: true,
   monoLabels: false,
-  showPhaseTags: true,
 };
 
 const KEY = "matrixctrl_tweaks";
