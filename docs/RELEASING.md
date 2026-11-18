@@ -74,6 +74,24 @@ the same commit.
    regression checks (DESIGN S11). A fix means a new candidate (`-rc.2`) from a new
    commit.
 
+   `make e2e` needs the bootstrap login, so OIDC goes off for the run and on again after.
+   Toggle it with the **published** chart of the candidate, never the repo chart: the
+   repo's `values.yaml` says `tag: "latest"`, and `--reuse-values` keeps no tag, so the
+   panel silently drops back to the last stable release and the run tests the wrong
+   version (it did, 2026-11-18). Address both the panel and Element Web by ClusterIP —
+   reachable from the k3s host — not by port-forward: a forward is bound to one pod and
+   dies when e2e restarts Element, which reads as a failed `config.json` check.
+
+   ```bash
+   helm upgrade matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version X.Y.Z-rc.N \
+     -n matrixctrl --reuse-values --set oidc.enabled=false --wait
+   kubectl -n matrixctrl get deploy matrixctrl -o jsonpath='{..image}'   # must name the rc
+   E2E_ELEMENT_URL=http://$(kubectl -n ess get svc ess-element-web -o jsonpath='{.spec.clusterIP}') \
+     make e2e BASE=http://$(kubectl -n matrixctrl get svc matrixctrl -o jsonpath='{.spec.clusterIP}')
+   helm upgrade matrixctrl oci://ghcr.io/bxnnyg/charts/matrixctrl --version X.Y.Z-rc.N \
+     -n matrixctrl --reuse-values --set oidc.enabled=true --wait
+   ```
+
 5. Accepted: tag the **same commit** as stable and push the tag:
 
    ```bash

@@ -1170,3 +1170,13 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   requests exceed what the cluster can schedule. The panel writes those values; it is
   the last place that can catch the number before it becomes an outage at the next
   reboot.
+
+- **P2-35 · `turn-tls` of the call server loses the client address (S11 #4).** **Open (verified 2026-11-18).**
+  On the test cluster `ess-matrix-rtc-sfu-turn-tls` runs with
+  `externalTrafficPolicy: Cluster` while `-tcp`, `-muxed-udp` and `-turn` are `Local`; the
+  Calls page warns "Nicht alle RTC-Services erhalten die Client-Adresse". The ESS manifest
+  sets no policy for `turn-tls` at all (Kubernetes default) — already so in ESS revision 48,
+  so not a regression of etappe 124. Neither the chart (§4.125) nor the built-in RTC hook
+  (`internal/hooks/builtin/ess_rtc_patches.go`) covers it. To decide: is TURN over TLS
+  meant to keep the client address (then a chart value or a hook entry), or is the
+  warning wrong for this service?
