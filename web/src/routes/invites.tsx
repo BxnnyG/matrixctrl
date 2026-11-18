@@ -61,8 +61,9 @@ export function InvitesPage() {
   const mayWrite = version.data?.may_write !== false;
   const refresh = () => qc.invalidateQueries({ queryKey: ["invites"] });
 
-  // 503 is the calm "MAS not connected" case, not an error to shout about.
-  const noMAS = list.error instanceof ApiError && list.error.status === 503;
+  // "MAS not connected" is a calm state, not an error: the list answers configured:false
+  // (a 503 on page load would be a red console line); 503 is still honoured for safety.
+  const noMAS = list.data?.configured === false || (list.error instanceof ApiError && list.error.status === 503);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 960 }}>

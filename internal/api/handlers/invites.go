@@ -57,7 +57,10 @@ func inviteJSON(t mas.RegistrationToken) map[string]any {
 func (h *InvitesHandler) List(w http.ResponseWriter, r *http.Request) {
 	client := h.client()
 	if !client.Configured() {
-		Error(w, http.StatusServiceUnavailable, noMAS)
+		// 200 like the user list: not a failure the operator can retry away, and a 503
+		// on a page load is a red console line in every browser (make e2e caught it).
+		// Writes still answer 503.
+		JSON(w, http.StatusOK, map[string]any{"configured": false, "invites": []any{}, "register_url": ""})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)

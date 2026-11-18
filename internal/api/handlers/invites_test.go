@@ -29,9 +29,18 @@ func masStub(t *testing.T, status int, body string) *mas.Client {
 
 const oneToken = `{"data":{"id":"T1","attributes":{"token":"abc","valid":true,"usage_limit":2,"times_used":1,"created_at":"2026-01-02T03:04:05Z","expires_at":null,"revoked_at":null}}}`
 
-func TestInvitesWithoutMASAre503WithGermanText(t *testing.T) {
+func TestInvitesListWithoutMASIsCalm200(t *testing.T) {
 	h := NewInvitesHandler(func() *mas.Client { return nil })
-	for name, fn := range map[string]http.HandlerFunc{"list": h.List, "create": h.Create, "update": h.Update, "revoke": h.Revoke(false)} {
+	rec := httptest.NewRecorder()
+	h.List(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"configured":false`) {
+		t.Errorf("list without MAS: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInviteWritesWithoutMASAre503WithGermanText(t *testing.T) {
+	h := NewInvitesHandler(func() *mas.Client { return nil })
+	for name, fn := range map[string]http.HandlerFunc{"create": h.Create, "update": h.Update, "revoke": h.Revoke(false)} {
 		rec := httptest.NewRecorder()
 		fn(rec, httptest.NewRequest(http.MethodPost, "/x", strings.NewReader("{}")))
 		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "MAS") {

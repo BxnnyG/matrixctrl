@@ -29,9 +29,9 @@ const tasks = (password: boolean, needCode: boolean) => ({
   values: { "mas.password_registration": { value: password }, "mas.registration_token_required": { value: needCode } },
 });
 
-function show(o: { invites?: Invite[]; password?: boolean; needCode?: boolean; mayWrite?: boolean; registerUrl?: string; listError?: Error } = {}) {
+function show(o: { invites?: Invite[]; password?: boolean; needCode?: boolean; mayWrite?: boolean; registerUrl?: string; listError?: Error; notConfigured?: boolean } = {}) {
   get.mockImplementation((p: string) => {
-    if (p === "/api/v1/invites") return o.listError ? Promise.reject(o.listError) : Promise.resolve({ configured: true, invites: o.invites ?? [inv()], register_url: o.registerUrl });
+    if (p === "/api/v1/invites") return o.listError ? Promise.reject(o.listError) : Promise.resolve(o.notConfigured ? { configured: false, invites: [], register_url: "" } : { configured: true, invites: o.invites ?? [inv()], register_url: o.registerUrl });
     if (p === "/api/v1/config/tasks") return Promise.resolve(tasks(o.password ?? true, o.needCode ?? true));
     return Promise.resolve({ may_write: o.mayWrite ?? true });
   });
@@ -70,6 +70,12 @@ describe("InvitesPage", () => {
     show({ listError: new FakeApiError("Einladungen brauchen MAS-Zugang.", 503) });
     expect(await screen.findByText("MAS nicht verbunden")).toBeTruthy();
     expect(screen.queryByText(/Einladungen brauchen MAS-Zugang/)).toBeNull();
+  });
+
+  it("shows the calm state when the list says MAS is not configured", async () => {
+    show({ notConfigured: true });
+    expect(await screen.findByText("MAS nicht verbunden")).toBeTruthy();
+    expect(screen.queryByText(/Code anlegen/)).toBeNull();
   });
 
   it("warns when a code is required but password registration is off", async () => {
