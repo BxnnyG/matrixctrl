@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,21 @@ func TestInviteListHidesCodesFromReadOnlySessions(t *testing.T) {
 		body := rec.Body.String()
 		if strings.Contains(body, "geheim") == tc.hidden || strings.Contains(body, `"token_hidden":true`) != tc.hidden {
 			t.Errorf("%s: hidden=%v but body %s", name, tc.hidden, body)
+		}
+	}
+}
+
+func TestInviteListCarriesRegisterURL(t *testing.T) {
+	list := `{"data":[],"meta":{"count":0},"links":{}}`
+	for host, want := range map[string]string{"mas.example.org": "https://mas.example.org/register", "": ""} {
+		h := NewInvitesHandler(func() *mas.Client { return masStub(t, 200, list) })
+		h.MASHost = func(context.Context) string { return host }
+		rec := httptest.NewRecorder()
+		h.List(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		var got map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &got)
+		if got["register_url"] != want {
+			t.Errorf("host %q: %v", host, got["register_url"])
 		}
 	}
 }

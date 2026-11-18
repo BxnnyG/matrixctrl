@@ -400,6 +400,7 @@ func main() {
 	var mailHandler *handlers.MailHandler
 	if k8sClient != nil {
 		loginProviders = handlers.NewLoginProvidersHandler(k8sClient, configStore, essNS, essRelease)
+		invitesHandler.MASHost = loginProviders.MASHost
 		mailHandler = handlers.NewMailHandler(k8sClient, configStore, essNS, essRelease)
 	}
 	tlsdnsHandler := handlers.NewTLSDNSHandler(k8sClient, configStore, essNS)

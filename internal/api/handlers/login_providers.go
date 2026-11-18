@@ -138,6 +138,11 @@ func (h *LoginProvidersHandler) masHost(values map[string]interface{}) string {
 	return host
 }
 
+// MASHost is the public MAS host from the release values, "" when unreadable or unset.
+func (h *LoginProvidersHandler) MASHost(ctx context.Context) string {
+	return h.masHost(h.values(ctx))
+}
+
 func (h *LoginProvidersHandler) masDeployment() string {
 	return h.essRelease + "-matrix-authentication-service"
 }

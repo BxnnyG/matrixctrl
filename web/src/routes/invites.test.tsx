@@ -29,9 +29,9 @@ const tasks = (password: boolean, needCode: boolean) => ({
   values: { "mas.password_registration": { value: password }, "mas.registration_token_required": { value: needCode } },
 });
 
-function show(o: { invites?: Invite[]; password?: boolean; needCode?: boolean; mayWrite?: boolean; listError?: Error } = {}) {
+function show(o: { invites?: Invite[]; password?: boolean; needCode?: boolean; mayWrite?: boolean; registerUrl?: string; listError?: Error } = {}) {
   get.mockImplementation((p: string) => {
-    if (p === "/api/v1/invites") return o.listError ? Promise.reject(o.listError) : Promise.resolve({ configured: true, invites: o.invites ?? [inv()] });
+    if (p === "/api/v1/invites") return o.listError ? Promise.reject(o.listError) : Promise.resolve({ configured: true, invites: o.invites ?? [inv()], register_url: o.registerUrl });
     if (p === "/api/v1/config/tasks") return Promise.resolve(tasks(o.password ?? true, o.needCode ?? true));
     return Promise.resolve({ may_write: o.mayWrite ?? true });
   });
@@ -92,5 +92,15 @@ describe("InvitesPage", () => {
   it("offers write buttons with write permission", async () => {
     show({});
     expect(await screen.findByRole("button", { name: /Widerrufen/ })).toBeTruthy();
+  });
+
+  it("shows the registration address next to the code, and nothing when it is unknown", async () => {
+    show({ registerUrl: "https://mas.example.org/register" });
+    expect(await screen.findByText("https://mas.example.org/register")).toBeTruthy();
+    expect(screen.getByText(/Code im Formular eingeben/)).toBeTruthy();
+    cleanup();
+    show({});
+    await screen.findByText("willkommen");
+    expect(screen.queryByText(/Code im Formular eingeben/)).toBeNull();
   });
 });

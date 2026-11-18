@@ -22,7 +22,7 @@ export interface Invite {
   expires_at: string | null;
   revoked_at: string | null;
 }
-interface InvitesResp { configured: boolean; invites: Invite[] }
+interface InvitesResp { configured: boolean; invites: Invite[]; register_url?: string }
 interface TasksResp { values: Record<string, { value: unknown }> }
 interface VersionResp { may_write?: boolean }
 
@@ -76,8 +76,8 @@ export function InvitesPage() {
         <div style={{ fontSize: 13, color: "var(--status-err)" }}>{(list.error as Error).message}</div>
       ) : (
         <>
-          {mayWrite && <CreateCard onDone={refresh} />}
-          <InviteList invites={list.data?.invites ?? []} mayWrite={mayWrite} onChanged={refresh} />
+          {mayWrite && <CreateCard onDone={refresh} registerUrl={list.data?.register_url} />}
+          <InviteList invites={list.data?.invites ?? []} registerUrl={list.data?.register_url} mayWrite={mayWrite} onChanged={refresh} />
         </>
       )}
     </div>
@@ -108,7 +108,7 @@ function RegistrationState({ values }: { values?: TasksResp["values"] }) {
   );
 }
 
-function CreateCard({ onDone }: { onDone: () => void }) {
+function CreateCard({ onDone, registerUrl }: { onDone: () => void; registerUrl?: string }) {
   const [token, setToken] = useState("");
   const [limit, setLimit] = useState("");
   const [days, setDays] = useState("");
@@ -141,18 +141,28 @@ function CreateCard({ onDone }: { onDone: () => void }) {
         <div style={{ marginTop: 14, padding: 12, borderRadius: "var(--radius-sm)", background: "var(--surface-2)", fontSize: 13 }}>
           <div style={{ marginBottom: 6 }}>Code angelegt. Gib ihn weiter, zum Beispiel so:</div>
           <CopyText text={created.token} />
+          <RegisterAddress url={registerUrl} />
         </div>
       )}
     </Card>
   );
 }
 
-function CopyText({ text }: { text: string }) {
+function RegisterAddress({ url }: { url?: string }) {
+  if (!url) return null;
+  return (
+    <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-dim)" }}>
+      <CopyText text={url} label="Adresse kopieren" /> Registrierung hier, Code im Formular eingeben
+    </div>
+  );
+}
+
+function CopyText({ text, label = "Code kopieren" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <code style={{ fontFamily: "var(--mono)", fontSize: 12.5, padding: "2px 6px", borderRadius: 4, background: "var(--surface)", overflowWrap: "anywhere" }}>{text}</code>
-      <button type="button" title="Code kopieren" aria-label="Code kopieren"
+      <button type="button" title={label} aria-label={label}
         onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
         style={{ display: "inline-grid", placeItems: "center", border: "none", background: "transparent", cursor: "pointer", color: copied ? "var(--status-ok)" : "var(--text-faint)", padding: 2 }}>
         <Icon name={copied ? "check" : "copy"} size={13} />
@@ -161,7 +171,7 @@ function CopyText({ text }: { text: string }) {
   );
 }
 
-function InviteList({ invites, mayWrite, onChanged }: { invites: Invite[]; mayWrite: boolean; onChanged: () => void }) {
+function InviteList({ invites, registerUrl, mayWrite, onChanged }: { invites: Invite[]; registerUrl?: string; mayWrite: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState<Invite | null>(null);
   const [revoking, setRevoking] = useState<Invite | null>(null);
   const [limit, setLimit] = useState("");
@@ -197,6 +207,7 @@ function InviteList({ invites, mayWrite, onChanged }: { invites: Invite[]; mayWr
                 {inv.times_used} von {inv.usage_limit ?? "∞"} benutzt
                 {inv.expires_at && ` · läuft ab ${fmt(inv.expires_at)}`}
               </div>
+              <RegisterAddress url={registerUrl} />
             </div>
             <Badge tone={st.tone}>{st.label}</Badge>
             {mayWrite && (

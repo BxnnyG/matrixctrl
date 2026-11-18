@@ -26,6 +26,8 @@ type InvitesHandler struct {
 	// MayWrite decides who sees the codes themselves: a code is an access, so a session
 	// that may only look gets the list without it. Nil means everybody (no role set).
 	MayWrite func(userID string) bool
+	// MASHost returns the public MAS host ("" if unknown); nil means unknown.
+	MASHost func(ctx context.Context) string
 }
 
 func NewInvitesHandler(client func() *mas.Client) *InvitesHandler {
@@ -75,7 +77,7 @@ func (h *InvitesHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, j)
 	}
-	JSON(w, http.StatusOK, map[string]any{"configured": true, "invites": out})
+	JSON(w, http.StatusOK, map[string]any{"configured": true, "invites": out, "register_url": h.registerURL(ctx)})
 }
 
 type inviteBody struct {
@@ -189,4 +191,15 @@ func (h *InvitesHandler) fail(w http.ResponseWriter, err error) {
 		return
 	}
 	Error(w, http.StatusBadGateway, "MAS antwortet nicht: "+err.Error())
+}
+
+// registerURL is where an invited person registers; empty when the host is unknown.
+func (h *InvitesHandler) registerURL(ctx context.Context) string {
+	if h.MASHost == nil {
+		return ""
+	}
+	if host := h.MASHost(ctx); host != "" {
+		return "https://" + host + "/register"
+	}
+	return ""
 }
