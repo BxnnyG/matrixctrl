@@ -15,6 +15,27 @@ matching image, so a version identifies one exact pair
 
 ## [Unreleased]
 
+## [0.1.130] — 2026-11-18
+
+### Added
+
+- **Warning bar on every page** (etappe 124): DNS outage, ESS release `failed` or stuck in
+  `pending-*` for over 10 minutes, a stuck pod, an expiring certificate, a failed off-site
+  backup and an available MatrixCtrl update show up as one line each, with a link to the
+  page that deals with it; signing in via emergency access is shown there too. The bar reads
+  the same checks as the notifications, but always runs all of them — the trigger switches
+  only decide what is sent. Update notices can be dismissed per version, problems cannot.
+- **"What's new" after an update**: the panel shows the changelog sections of every version
+  installed since the last visit; clicking the version in the sidebar opens it again.
+- New notification trigger **"ESS-Update gescheitert"** (release `failed` / stuck `pending-*`),
+  on by default.
+
+### Changed
+
+- **Menu grouped by task** — Übersicht, Server, Menschen, Vernetzung, Betrieb, Wartung — with
+  no roadmap phase tags; the "Compliance" group is gone and Worker-Insights is now
+  "Auslastung". Page subtitles without roadmap jargon.
+
 ## [0.1.129] — 2026-11-17
 
 ### Added
