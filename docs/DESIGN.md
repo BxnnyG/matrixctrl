@@ -5043,3 +5043,16 @@ wins); writing removes the other name from MatrixCtrl's own block so switching o
 off. (4) The code requirement applies **only to password registration**; upstream providers
 (`internal/masupstream`) have their own switch and stay untouched; the field's help text says so.
 Frontend page `/invites` follows. Plan: [etappe-125](plans/etappe-125-einladungs-codes.md).
+
+### §4.135 — Chart value `hostAliases` for split horizon (2026-11-18, etappe 125)
+
+Found in the E125 live test: the panel reaches MAS through the OIDC issuer, i.e. the **public**
+MAS name. On the test cluster that name resolves to production, and production accepts the test
+panel's client credentials — so four registration tokens were created on production MAS (revoked
+the same day with the operator's consent; nothing used them). The local MAS log showed no admin
+call at all. Every MAS feature of the panel (users, sessions, invitation codes) is affected the
+same way wherever the public name does not lead to this cluster's MAS. Fix for such setups: chart
+value `hostAliases` (passed through to the pod spec, empty by default — renders nothing), pointing
+the MAS name at the local ingress. Rejected: a separate "internal MAS URL" setting — discovery
+returns the public token endpoint anyway, so a second URL would only move the problem.
+Test rule since then: a MAS write in a test is proven by the *local* MAS log, not by the API answer.

@@ -22,6 +22,10 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: matrixctrl
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       # NOTE: no wait-for-postgres initContainer — Postgres is a sidecar in this
       # same pod and cannot start until initContainers finish (would deadlock).
       # The matrixctrl container retries the DB connection on startup instead.

@@ -28,6 +28,9 @@ matching image, so a version identifies one exact pair
   `account.registration_token_required` otherwise. It only applies to password registration;
   sign-up through an external login provider is not affected, and the page says so. If codes
   are required while password registration is off, the page warns that the setting has no effect.
+- Chart value **`hostAliases`** for the panel pod. Use it when the public MAS name does not lead to
+  this cluster's MAS (for example a test cluster that still carries production's names): every MAS
+  call the panel makes goes to whatever that name serves. Empty by default, which changes nothing.
 
 ## [0.1.130] — 2026-11-18
 

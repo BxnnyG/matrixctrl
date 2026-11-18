@@ -38,6 +38,14 @@ alle. MAS kann Registrierung an einen Code binden — das Panel bietet es nicht 
    Kopieren von Code + Registrierungsadresse, Ablauf/Limit ändern, Widerrufen/Wiederherstellen.
    Oben: Zustand der Registrierung (aus/offen/nur mit Code) mit Link zur Einstellung.
 
+## Nachtrag 2026-11-18: Live-Test traf die Produktion
+
+Der MAS-Client des Panels nutzt den öffentlichen Issuer; auf der Spielwiese führt der zur
+Produktion, die die Zugangsdaten annimmt. Vier Codes landeten dort (mit Betreiber-Zustimmung
+widerrufen, unbenutzt). Betreiber-Entscheidung: Chart-Wert `hostAliases` (leer = keine Änderung),
+auf der Spielwiese MAS-Name → lokaler Ingress, dann Abnahme wiederholen. Beweis jeder MAS-Aktion
+im Test: lokales MAS-Log (DESIGN §4.135).
+
 ## Randfälle (PROZESS §1)
 
 1 Greenfield/kein MAS-Client → Seite sagt „MAS nicht verbunden", keine Fehlerflut ·

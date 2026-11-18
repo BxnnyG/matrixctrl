@@ -143,3 +143,13 @@ oidc:
 # Config seed — path inside the container that is copied into the
 # git config repo on first start.  Leave empty to start with no slices.
 configSeedPath: ""
+
+# Fixed name → address entries for the panel pod (/etc/hosts), passed through unchanged.
+# For split horizon: when the public MAS name does not lead to *this* cluster's MAS (a
+# test cluster that carries production's names, a public name behind a proxy that
+# the cluster cannot reach), point it at the local ingress, or every MAS call the panel
+# makes — users, sessions, invitation codes — lands on whatever the public name serves.
+#   hostAliases:
+#     - ip: 10.0.0.10            # the ingress controller's address in this cluster
+#       hostnames: [mas.example.com]
+hostAliases: []
