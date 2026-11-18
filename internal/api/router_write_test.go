@@ -81,7 +81,8 @@ func TestWithoutNamedAdminsNothingIsRefused(t *testing.T) {
 // Invitation codes (etappe 125): the routes exist, reach the handler for somebody who
 // may write, and are refused for a read-only session. Without a MAS client the handler
 // answers 503, never 500.
-func TestInviteRoutesAreGatedAndAnswer503WithoutMAS(t *testing.T) {
+// Without MAS the list answers a calm 200 (configured:false, like the user list); writes 503.
+func TestInviteRoutesAreGatedAndAnswerCalmlyWithoutMAS(t *testing.T) {
 	build := func(admins string) http.Handler {
 		return NewRouter(Deps{
 			Auth:    handlers.NewAuthHandler(anySession{user: "01MODERATOR"}, nil, nil, []byte("k")),
@@ -102,8 +103,8 @@ func TestInviteRoutesAreGatedAndAnswer503WithoutMAS(t *testing.T) {
 		{http.MethodPost, "/api/v1/invites/X/revoke"}, {http.MethodPost, "/api/v1/invites/X/unrevoke"},
 	}
 	readOnly, writer := build("01SOMEBODY-ELSE"), build("01MODERATOR")
-	if got := call(readOnly, http.MethodGet, "/api/v1/invites"); got != http.StatusServiceUnavailable {
-		t.Errorf("GET without MAS: %d, want 503", got)
+	if got := call(readOnly, http.MethodGet, "/api/v1/invites"); got != http.StatusOK {
+		t.Errorf("GET without MAS: %d, want 200 (configured:false)", got)
 	}
 	for _, w := range writes {
 		if got := call(readOnly, w[0], w[1]); got != http.StatusForbidden {
