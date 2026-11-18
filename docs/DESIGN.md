@@ -5034,8 +5034,8 @@ expired, used up, valid. (2) API `GET/POST /api/v1/invites`, `PUT /api/v1/invite
 role may read the list but gets no codes (`token` empty, `token_hidden: true`): a code is an access. No MAS client: 503 with plain text.
 The audit trail records the path (MAS id) and no body, so a code never reaches it. (3) Task field
 `mas.registration_token_required` "Registrierung nur mit Einladungs-Code" next to
-`mas.password_registration`. **Key by MAS version:** from 1.20 `account.password_registration_token_required`,
-before that or with an unknown version the old `account.registration_token_required` (understood by
+`mas.password_registration`. **Key by MAS version:** from 1.19 `account.password_registration_token_required` (MAS source: from 1.19 the old name gates upstream-provider sign-up too, the new one only password sign-up),
+before that or with an unknown version the old (fail closed: a stricter server rather than an open one) `account.registration_token_required` (understood by
 every version, deprecated but still read in 1.27). The version is the running MAS image tag
 (`ComponentHealth` of the MAS workload, `ConfigHandler.SetMASVersion`), else a pinned
 `matrixAuthenticationService.image.tag`, else unknown. Reading honours both names (true under either

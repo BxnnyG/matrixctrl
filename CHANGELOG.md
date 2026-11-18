@@ -24,7 +24,7 @@ matching image, so a version identifies one exact pair
   limit and expiry, revoke and restore them. Each code comes with the registration address to
   pass on. Users without write access see the list but not the codes themselves.
 - New setting **"Registrierung nur mit Code"** next to password registration. It writes
-  `account.password_registration_token_required` on MAS 1.20 and later and the older
+  `account.password_registration_token_required` on MAS 1.19 and later and the older
   `account.registration_token_required` otherwise. It only applies to password registration;
   sign-up through an external login provider is not affected, and the page says so. If codes
   are required while password registration is off, the page warns that the setting has no effect.

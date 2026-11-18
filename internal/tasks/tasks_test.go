@@ -280,14 +280,14 @@ func ownBlock(body string) string {
 	return "matrixAuthenticationService:\n  additional:\n    matrixctrl-tasks:\n      config: |\n" + body
 }
 
-// MAS renamed the key in 1.20. Newer versions get the new name, older and unknown ones
+// MAS renamed the key in 1.19. Newer versions get the new name, older and unknown ones
 // the name every version understands; the counter-probe is the same call for the other side.
 func TestRegistrationCodeKeyFollowsTheMASVersion(t *testing.T) {
 	cases := map[string]string{
 		"1.27.0":      "password_registration_token_required",
-		"v1.20.0":     "password_registration_token_required",
-		"1.20.0-rc.1": "password_registration_token_required",
-		"1.19.3":      "registration_token_required",
+		"v1.19.0":     "password_registration_token_required",
+		"1.19.0-rc.1": "password_registration_token_required",
+		"1.18.9":      "registration_token_required",
 		"":            "registration_token_required",
 		"latest":      "registration_token_required",
 	}

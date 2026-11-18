@@ -60,7 +60,7 @@ type Source struct {
 	JSON bool
 	// NewKey is the same setting under the name newer versions use: MAS renamed
 	// account.registration_token_required to account.password_registration_token_required
-	// in 1.20 and still reads the old one (deprecated). Key stays the old, universally
+	// in 1.19 and still reads the old one (deprecated) — but from 1.19 the old name also gates sign-up through upstream providers, the new one only password sign-up. Key stays the old, universally
 	// understood name; NewKey is written from NewSince on. Reading honours both.
 	NewKey   string
 	NewSince string
@@ -164,7 +164,7 @@ func Cards() []Card {
 				{ID: "mas.registration_token_required", Label: "Registrierung nur mit Einladungs-Code", Kind: Bool, Default: false,
 					Help:     "An: wer sich registrieren will, braucht einen Code (Seite „Einladungen\"). Wirkt nur, wenn die Registrierung mit Benutzername und Passwort an ist — externe Anbieter (Google, GitHub …) lassen sich damit nicht einschränken.",
 					Restarts: "Die Anmeldung startet neu.",
-					Source:   masSince("account.registration_token_required", "account.password_registration_token_required", "1.20")},
+					Source:   masSince("account.registration_token_required", "account.password_registration_token_required", "1.19")},
 				{ID: "mas.email_required", Label: "E-Mail-Adresse bei der Registrierung verlangen", Kind: Bool, Default: true,
 					Help:     "Wirkt nur bei Registrierung mit Passwort. Braucht einen eingerichteten E-Mail-Versand.",
 					Restarts: "Die Anmeldung startet neu.", Source: mas("account.password_registration_email_required")},

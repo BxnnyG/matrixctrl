@@ -14,7 +14,7 @@ alle. MAS kann Registrierung an einen Code binden — das Panel bietet es nicht 
   Anlegen: `token` (leer = zufällig), `usage_limit`, `expires_at`. Seit MAS 0.20 vorhanden.
 - Registrierungs-Schalter: Feld `mas.password_registration` in `internal/tasks/tasks.go:151`
   (→ `account.password_registration_enabled`). Code-Pflicht: `account.password_registration_token_required`
-  ab MAS 1.20; davor (und in 1.27 noch, veraltet) `account.registration_token_required`.
+  ab MAS 1.19; davor (und in 1.27 noch, veraltet) `account.registration_token_required`.
   Gilt **nur für Passwort-Registrierung**; Upstream-Anbieter haben eigenen Schalter
   (`masupstream.go:156`, bleibt unberührt).
 - Benutzer-Seite `web/src/routes/users.tsx`, Gruppe „Menschen"; Routen `internal/api/router.go`
@@ -30,7 +30,7 @@ alle. MAS kann Registrierung an einen Code binden — das Panel bietet es nicht 
    MAS nicht verbunden → 503 mit verständlichem Text, nie 500. Audit über Middleware;
    der Code selbst landet nicht im Audit.
 3. **Einstellung „Registrierung nur mit Code"** als Feld im Aufgaben-Katalog neben
-   `mas.password_registration`. Schlüssel nach MAS-Version: ≥ 1.20 → `password_registration_token_required`,
+   `mas.password_registration`. Schlüssel nach MAS-Version: ≥ 1.19 → `password_registration_token_required`,
    sonst `registration_token_required`, Version unbekannt → alter Schlüssel (gilt überall).
    Lesen beachtet beide. Hinweis im Feld: wirkt nur, wenn Passwort-Registrierung an ist.
 4. **Seite „Einladungen"** (`/invites`, Gruppe „Menschen"): Liste mit Status (gültig, benutzt
