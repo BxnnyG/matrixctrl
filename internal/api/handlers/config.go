@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -22,6 +23,9 @@ type ConfigHandler struct {
 	// (etappe 107). Nil outside a cluster, and then the embedded schema is used —
 	// visibly, see schemaFor.
 	deployedSchema func() ([]byte, string, error)
+	// masVersion reports the running MAS version (image tag), "" when unknown. Decides
+	// under which name renamed MAS settings are written (etappe 125).
+	masVersion func(ctx context.Context) string
 	// repoPath and seedPath answer "where does my configuration live" — a question the
 	// panel could not answer at all until etappe 71.
 	repoPath string
@@ -35,6 +39,10 @@ func NewConfigHandler(store *config.Store, git *gitpkg.Repo, essVersion, repoPat
 // SetDeployedSchema wires the reader for the running chart's schema. Separate from the
 // constructor so a handler without cluster access stays a valid handler.
 func (h *ConfigHandler) SetDeployedSchema(f func() ([]byte, string, error)) { h.deployedSchema = f }
+
+// SetMASVersion wires the reader for the running MAS version. Optional: without it the
+// pinned image tag in the config is used, and without that the oldest key.
+func (h *ConfigHandler) SetMASVersion(f func(ctx context.Context) string) { h.masVersion = f }
 
 // schemaSource says where the schema a response is based on came from, so the form can
 // say it too. A fallback that nobody can see is how the settings page validated against
@@ -345,7 +353,14 @@ func (h *ConfigHandler) SetTasks(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	plan, err := tasks.Write(values, tasks.AllFields(tasks.Cards()), req.Changes)
+	ver := ""
+	if h.masVersion != nil {
+		ver = h.masVersion(r.Context())
+	}
+	if ver == "" {
+		ver = tasks.MASVersion(values)
+	}
+	plan, err := tasks.WriteFor(ver, values, tasks.AllFields(tasks.Cards()), req.Changes)
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return

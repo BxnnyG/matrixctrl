@@ -273,3 +273,86 @@ func TestTheBridgeCardWritesWhereHookshotReadsIt(t *testing.T) {
 		}
 	}
 }
+
+const codeField = "mas.registration_token_required"
+
+func ownBlock(body string) string {
+	return "matrixAuthenticationService:\n  additional:\n    matrixctrl-tasks:\n      config: |\n" + body
+}
+
+// MAS renamed the key in 1.20. Newer versions get the new name, older and unknown ones
+// the name every version understands; the counter-probe is the same call for the other side.
+func TestRegistrationCodeKeyFollowsTheMASVersion(t *testing.T) {
+	cases := map[string]string{
+		"1.27.0":      "password_registration_token_required",
+		"v1.20.0":     "password_registration_token_required",
+		"1.20.0-rc.1": "password_registration_token_required",
+		"1.19.3":      "registration_token_required",
+		"":            "registration_token_required",
+		"latest":      "registration_token_required",
+	}
+	for ver, want := range cases {
+		plan, err := WriteFor(ver, values(t, "{}"), fields, map[string]interface{}{codeField: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, _ := plan.Set["matrixAuthenticationService.additional."+Block+".config"].(string)
+		wantLine := "  " + want + ": true"
+		if !strings.Contains(text, wantLine) || strings.Count(text, "registration_token_required") != 1 {
+			t.Errorf("version %q: want %s only, got:\n%s", ver, want, text)
+		}
+	}
+}
+
+// A pinned image tag in the config is the version when nobody tells Write better.
+func TestRegistrationCodeKeyUsesThePinnedTag(t *testing.T) {
+	v := values(t, "matrixAuthenticationService:\n  image:\n    tag: 1.27.0\n")
+	plan, _ := Write(v, fields, map[string]interface{}{codeField: true})
+	text, _ := plan.Set["matrixAuthenticationService.additional."+Block+".config"].(string)
+	if !strings.Contains(text, "password_registration_token_required: true") {
+		t.Errorf("pinned tag ignored:\n%s", text)
+	}
+}
+
+// Either name reads as set, in our block and in somebody else's; and the other name
+// does not survive a write, or switching off would not switch off.
+func TestRegistrationCodeReadsBothNamesAndDropsTheOther(t *testing.T) {
+	for _, key := range []string{"registration_token_required", "password_registration_token_required"} {
+		v := values(t, ownBlock("        account:\n          "+key+": true\n"))
+		if r := Read(v, fields)[codeField]; r.Value != true || r.IsDefault {
+			t.Errorf("%s in own block: %+v", key, r)
+		}
+		other := values(t, "matrixAuthenticationService:\n  additional:\n    0-custom:\n      config: |\n        account:\n          "+key+": true\n")
+		if r := Read(other, fields)[codeField]; r.Value != true || r.SetElsewhere != "0-custom" {
+			t.Errorf("%s elsewhere: %+v", key, r)
+		}
+	}
+	// Old key stored, newer MAS, switch on again with another change: only the new key remains.
+	v := values(t, ownBlock("        account:\n          registration_token_required: true\n          password_registration_enabled: true\n"))
+	plan, err := WriteFor("1.27.0", v, fields, map[string]interface{}{codeField: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := plan.Set["matrixAuthenticationService.additional."+Block+".config"].(string)
+	if strings.Count(text, "registration_token_required") != 1 || !strings.Contains(text, "password_registration_token_required: true") ||
+		!strings.Contains(text, "password_registration_enabled: true") {
+		t.Errorf("stale key or lost neighbour:\n%s", text)
+	}
+	// Switching off removes both names and, being the last key but one, keeps the neighbour.
+	plan, _ = WriteFor("1.27.0", v, fields, map[string]interface{}{codeField: false})
+	text, _ = plan.Set["matrixAuthenticationService.additional."+Block+".config"].(string)
+	if strings.Contains(text, "token_required") || !strings.Contains(text, "password_registration_enabled") {
+		t.Errorf("off must leave no code key:\n%s", text)
+	}
+}
+
+// Nothing in the config: default off, and the write touches only our block.
+func TestRegistrationCodeDefaultsOffAndTouchesOnlyOurBlock(t *testing.T) {
+	if r := Read(values(t, "{}"), fields)[codeField]; r.Value != false || !r.IsDefault {
+		t.Errorf("default: %+v", r)
+	}
+	plan, _ := WriteFor("1.27.0", values(t, "{}"), fields, map[string]interface{}{codeField: true})
+	if len(plan.Set) != 1 || len(plan.Remove) != 0 {
+		t.Errorf("plan: %+v", plan)
+	}
+}

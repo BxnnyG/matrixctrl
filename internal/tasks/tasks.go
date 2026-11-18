@@ -58,6 +58,12 @@ type Source struct {
 	// JSON marks a component whose additional blocks are JSON text directly under the
 	// key (Element Web), rather than YAML under `.config` (MAS, Synapse).
 	JSON bool
+	// NewKey is the same setting under the name newer versions use: MAS renamed
+	// account.registration_token_required to account.password_registration_token_required
+	// in 1.20 and still reads the old one (deprecated). Key stays the old, universally
+	// understood name; NewKey is written from NewSince on. Reading honours both.
+	NewKey   string
+	NewSince string
 }
 
 // Field is one setting as a person sees it.
@@ -90,6 +96,9 @@ type Card struct {
 	Fields []Field `json:"fields"`
 }
 
+func masSince(key, newKey, since string) Source {
+	return Source{Component: "matrixAuthenticationService", Key: key, NewKey: newKey, NewSince: since}
+}
 func mas(key string) Source     { return Source{Component: "matrixAuthenticationService", Key: key} }
 func synapse(key string) Source { return Source{Component: "synapse", Key: key} }
 func web(key string) Source     { return Source{Component: "elementWeb", Key: key, JSON: true} }
@@ -152,6 +161,10 @@ func Cards() []Card {
 					Help:     "An: jeder, der die Anmeldeseite findet, kann sich einen Account anlegen. Aus: Accounts legst du an — oder man registriert sich über einen externen Anbieter (Seite „Anmeldung\").",
 					Restarts: "Die Anmeldung startet neu.", Source: mas("account.password_registration_enabled"),
 					Warn: "Offene Registrierung ohne Captcha zieht erfahrungsgemäß Spam-Accounts an."},
+				{ID: "mas.registration_token_required", Label: "Registrierung nur mit Einladungs-Code", Kind: Bool, Default: false,
+					Help:     "An: wer sich registrieren will, braucht einen Code (Seite „Einladungen\"). Wirkt nur, wenn die Registrierung mit Benutzername und Passwort an ist — externe Anbieter (Google, GitHub …) lassen sich damit nicht einschränken.",
+					Restarts: "Die Anmeldung startet neu.",
+					Source:   masSince("account.registration_token_required", "account.password_registration_token_required", "1.20")},
 				{ID: "mas.email_required", Label: "E-Mail-Adresse bei der Registrierung verlangen", Kind: Bool, Default: true,
 					Help:     "Wirkt nur bei Registrierung mit Passwort. Braucht einen eingerichteten E-Mail-Versand.",
 					Restarts: "Die Anmeldung startet neu.", Source: mas("account.password_registration_email_required")},
@@ -307,6 +320,68 @@ func Read(values map[string]interface{}, fields []Field) map[string]Value {
 	return out
 }
 
+// MASVersion is the MAS version the configuration itself pins (image.tag), "" when it
+// follows the chart. Callers that know the running version pass it to WriteFor instead.
+func MASVersion(values map[string]interface{}) string {
+	v, _ := get(values, []string{"matrixAuthenticationService", "image", "tag"})
+	s, _ := v.(string)
+	return s
+}
+
+// atLeast reports whether version (1.27.0, v1.20.1-rc.1 …) is at least since (1.20).
+// An unreadable or empty version is "not known to be", so callers fall back to the
+// key every version understands.
+func atLeast(version, since string) bool {
+	parse := func(s string) ([]int, bool) {
+		s = strings.TrimPrefix(strings.TrimSpace(s), "v")
+		var out []int
+		for _, part := range strings.Split(s, ".") {
+			digits := part
+			if i := strings.IndexFunc(part, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+				digits = part[:i]
+			}
+			n := 0
+			if digits == "" {
+				break
+			}
+			if _, err := fmt.Sscanf(digits, "%d", &n); err != nil {
+				return nil, false
+			}
+			out = append(out, n)
+			if digits != part {
+				break
+			}
+		}
+		return out, len(out) > 0
+	}
+	a, ok1 := parse(version)
+	b, ok2 := parse(since)
+	if !ok1 || !ok2 {
+		return false
+	}
+	for i := 0; i < len(b); i++ {
+		x := 0
+		if i < len(a) {
+			x = a[i]
+		}
+		if x != b[i] {
+			return x > b[i]
+		}
+	}
+	return true
+}
+
+// keys returns the key to write for the given MAS version and every key to read.
+func (s Source) keys(masVersion string) (write string, all []string) {
+	if s.NewKey == "" {
+		return s.Key, []string{s.Key}
+	}
+	if atLeast(masVersion, s.NewSince) {
+		return s.NewKey, []string{s.NewKey, s.Key}
+	}
+	return s.Key, []string{s.Key, s.NewKey}
+}
+
 func read(values map[string]interface{}, f Field) Value {
 	if f.Source.Values != "" {
 		v, ok := get(values, strings.Split(f.Source.Values, "."))
@@ -319,20 +394,42 @@ func read(values map[string]interface{}, f Field) Value {
 		return Value{Value: v, IsDefault: f.Default != nil && fmt.Sprint(v) == fmt.Sprint(f.Default)}
 	}
 	blocks := additional(values, f.Source.Component)
-	key := strings.Split(f.Source.Key, ".")
-	// Another block first: if it sets the key, that is where the value comes from.
+	_, all := f.Source.keys("")
+	// Another block first: if it sets the key (under either name), that is where the
+	// value comes from. A true under one name wins over a false under the other:
+	// MAS requires the code if either says so.
 	for _, name := range sortedKeys(blocks) {
 		if name == Block {
 			continue
 		}
-		if v, ok := get(blocks[name], key); ok {
+		if v, ok := readAny(blocks[name], all); ok {
 			return Value{Value: v, SetElsewhere: name}
 		}
 	}
-	if v, ok := get(blocks[Block], key); ok {
+	if v, ok := readAny(blocks[Block], all); ok {
 		return Value{Value: v}
 	}
 	return Value{Value: f.Default, IsDefault: true}
+}
+
+// readAny reads a setting that may live under several names. With booleans, true under
+// any name wins; otherwise the first name present.
+func readAny(block map[string]interface{}, keys []string) (interface{}, bool) {
+	var found interface{}
+	have := false
+	for _, k := range keys {
+		v, ok := get(block, strings.Split(k, "."))
+		if !ok {
+			continue
+		}
+		if b, isBool := v.(bool); isBool && b {
+			return true, true
+		}
+		if !have {
+			found, have = v, true
+		}
+	}
+	return found, have
 }
 
 // additional parses every inline block under <component>.additional: YAML under
@@ -372,6 +469,12 @@ type Plan struct {
 // default": the setting is removed, not set to the default — a value written down is a
 // value that no longer follows the chart.
 func Write(values map[string]interface{}, fields []Field, changes map[string]interface{}) (Plan, error) {
+	return WriteFor(MASVersion(values), values, fields, changes)
+}
+
+// WriteFor is Write for a known MAS version (the running one); it decides which name a
+// renamed setting is written under.
+func WriteFor(masVersion string, values map[string]interface{}, fields []Field, changes map[string]interface{}) (Plan, error) {
 	byID := map[string]Field{}
 	for _, f := range fields {
 		byID[f.ID] = f
@@ -410,12 +513,20 @@ func Write(values map[string]interface{}, fields []Field, changes map[string]int
 			b = copyMap(additional(values, f.Source.Component)[Block])
 			blocks[f.Source.Component] = b
 		}
-		key := strings.Split(f.Source.Key, ".")
+		writeKey, allKeys := f.Source.keys(masVersion)
+		key := strings.Split(writeKey, ".")
 		// Our block holds only what differs from the service's default. Switching a
 		// setting on and back off must leave nothing behind — not a written-out default
 		// that keeps the pending-changes bar up for a change that changes nothing.
 		if v != nil && f.Default != nil && fmt.Sprint(v) == fmt.Sprint(f.Default) {
 			v = nil
+		}
+		// The other name of a renamed setting must not stay behind: it would keep
+		// requiring the code after the switch was turned off.
+		for _, k := range allKeys {
+			if k != writeKey {
+				del(b, strings.Split(k, "."))
+			}
 		}
 		if v == nil {
 			del(b, key)

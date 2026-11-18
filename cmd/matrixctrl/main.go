@@ -241,6 +241,7 @@ func main() {
 		driftHandler.SetManifestSource(func() (string, error) { return helmClient.ReleaseManifest(essRelease) })
 	}
 	usersHandler := handlers.NewUsersHandler(authHandler.MAS)
+	invitesHandler := handlers.NewInvitesHandler(authHandler.MAS)
 	rtcHandler := handlers.NewRTCHandler(k8sClient, configStore, essNS, essRelease, pool)
 	helmHandler := handlers.NewHelmHandler(helmClient, pool, engine, essRelease, configStore, k8sClient, essNS)
 	helmHandler.SetOIDCReloader(authHandler.ReloadOIDC)
@@ -351,6 +352,23 @@ func main() {
 	// release revision — not the one embedded in this binary (etappe 107).
 	if helmClient != nil {
 		configHandler.SetDeployedSchema(func() ([]byte, string, error) { return helmClient.DeployedSchema(essRelease) })
+	}
+	if k8sClient != nil {
+		// The running MAS version decides the name of renamed MAS settings (etappe 125).
+		configHandler.SetMASVersion(func(ctx context.Context) string {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			comps, err := k8sClient.ComponentHealth(ctx, essNS)
+			if err != nil {
+				return ""
+			}
+			for _, c := range comps {
+				if strings.HasSuffix(c.Name, "matrix-authentication-service") {
+					return c.Version
+				}
+			}
+			return ""
+		})
 	}
 	setupHandler := handlers.NewSetupHandler(helmClient, configStore, essRelease, essNS, authHandler.OIDCConfigured)
 
@@ -475,6 +493,7 @@ func main() {
 		Audit:          handlers.NewAuditHandler(auditStore),
 		RTC:            rtcHandler,
 		Users:          usersHandler,
+		Invites:        invitesHandler,
 		Rooms:          roomsHandler,
 		Reports:        reportsHandler,
 		Version:        handlers.NewVersionHandler(version.Version, version.Commit, updates, roles.MayWrite),

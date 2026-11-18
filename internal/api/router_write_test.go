@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bxnnyg/matrixctrl/internal/api/handlers"
 	"github.com/bxnnyg/matrixctrl/internal/auth"
+	"github.com/bxnnyg/matrixctrl/internal/mas"
 )
 
 // anySession accepts every token and calls the holder by one name.
@@ -73,5 +75,42 @@ func TestWithoutNamedAdminsNothingIsRefused(t *testing.T) {
 
 	if rec.Code == http.StatusForbidden {
 		t.Error("a deployment that named nobody must keep behaving exactly as before")
+	}
+}
+
+// Invitation codes (etappe 125): the routes exist, reach the handler for somebody who
+// may write, and are refused for a read-only session. Without a MAS client the handler
+// answers 503, never 500.
+func TestInviteRoutesAreGatedAndAnswer503WithoutMAS(t *testing.T) {
+	build := func(admins string) http.Handler {
+		return NewRouter(Deps{
+			Auth:    handlers.NewAuthHandler(anySession{user: "01MODERATOR"}, nil, nil, []byte("k")),
+			Status:  handlers.NewStatusHandler(nil, nil, "ess", "ess", http.NotFoundHandler()),
+			Invites: handlers.NewInvitesHandler(func() *mas.Client { return nil }),
+			Roles:   auth.ParseRoles(admins),
+		})
+	}
+	call := func(r http.Handler, method, path string) int {
+		req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer whatever")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	writes := [][2]string{
+		{http.MethodPost, "/api/v1/invites"}, {http.MethodPut, "/api/v1/invites/X"},
+		{http.MethodPost, "/api/v1/invites/X/revoke"}, {http.MethodPost, "/api/v1/invites/X/unrevoke"},
+	}
+	readOnly, writer := build("01SOMEBODY-ELSE"), build("01MODERATOR")
+	if got := call(readOnly, http.MethodGet, "/api/v1/invites"); got != http.StatusServiceUnavailable {
+		t.Errorf("GET without MAS: %d, want 503", got)
+	}
+	for _, w := range writes {
+		if got := call(readOnly, w[0], w[1]); got != http.StatusForbidden {
+			t.Errorf("read-only %s %s: %d, want 403", w[0], w[1], got)
+		}
+		if got := call(writer, w[0], w[1]); got != http.StatusServiceUnavailable {
+			t.Errorf("writer %s %s without MAS: %d, want 503", w[0], w[1], got)
+		}
 	}
 }

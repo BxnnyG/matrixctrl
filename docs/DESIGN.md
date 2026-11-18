@@ -41,6 +41,7 @@ to guess.
 | `internal/hooks/` | Hook engine + runner + `builtin/ess_rtc_patches.go` (the four SFU patches, seeded at startup) |
 | `internal/k8s/` | client-go: component health, pods + container detail, events, node metrics, PVCs, dynamic-client patching |
 | `internal/auth/` | Bootstrap (bcrypt+JWT) and OIDC-via-MAS, hot-reloadable at runtime |
+| `internal/mas/` | MAS admin client: users, user actions, sessions, and since E125 invitation codes (`regtokens.go`, registration tokens, all pages) |
 | `internal/db/` | pgx/v5 pool + sequential migrations |
 
 **Frontend (React 18 + TanStack Router/Query, Vite)**
@@ -82,7 +83,7 @@ Legend: ✅ done · ⏳ open · ♾ standing rule (never "done" by design)
 | S10 Audit trail | ✅ (E17) | Middleware over the whole authenticated group, keyset-paginated read endpoint, UI at `/audit`. **This row previously claimed "table + middleware write" — the middleware never existed; 0 rows after two months.** Open: retention (P2-19) |
 | S11 Regression safety net | ♾ Rule | Four invariants, checked before every ship — never "finished". #4 ("the SFU patches survive a Helm upgrade") is no longer only a checklist line: E21 checks it continuously and shows it on the dashboard, after it was broken by an upgrade run outside MatrixCtrl and nobody noticed for a day |
 | S12 Centralisation | ♾ Rule | "More than one place?" → shared package. Re-decided per change |
-| S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions |
+| S13 User & room management | ✅ (E27, E28, E36, E41, E46, E47, E48, E65) | **Was "not started" in this table until 2026-09-03, four months after it shipped.** Users with lock/deactivate/admin/password (E27/E28) and GDPR erasure (E65); rooms with detail, members and block (E36/E41); both report queues with dispositions (E46/E48); media quarantine (E47). Deliberately absent: deleting rooms or media, bulk actions Since E125 (backend): invitation codes via MAS registration tokens, `/api/v1/invites` (page follows in the same etappe). |
 | S14 Day-2 operations (RTC/TLS/backup) | ⏳ ¾ (E19, E44, E45, E51, E68–E74, E102, E104, E106) | **RTC is substantially built** — ports read from the Services, reachability stated as unknown rather than guessed (E19), call history that survives the SFU restart (E44), the address-set fix (E45), the UDP buffer pre-flight (E51). **Backup exists and is complete since E102**: one archive with both databases (Synapse *and* MAS — under MSC3861 the accounts live in the latter), the media volume read out of the Synapse pod (E104 granted the `pods/exec` that needs), and the signing/macaroon/encryption keys sealed with a recovery key shown once. **The restore puts every part back since E106** — databases swapped rather than overwritten (the old one is renamed aside and kept), media streamed into the pod, keys merged so this installation’s database passwords survive. The end-to-end rehearsal against a live ESS is still outstanding (§4.106). **TLS & DNS has its own page since E115** — each certificate seen from the visitor and from the origin (§4.118). (This row read "backup/restore does not exist at all — checked 2026-09-03" until 2026-09-25, through six etappen that built it; §4.96) |
 | S15 Federation & bridges | ✅ (E117, E119) | Federation since E117. **Bridges since E119:** Hookshot (part of ESS) with the two functions ESS leaves off, switched through the settings card; appservice registrations listed without tokens, with reachability from inside the cluster. Open: registering a bridge from the panel |
 | S16 Compliance & scale insights | ⏳ ½ (E118) | **Worker insights since E118:** every Synapse process sampled per minute from its own metrics, 30 days; verdict from the weekly 95th percentile against the one-core ceiling of a Python process; recommendations only for an area carrying ≥ 25 %; live-read on production (0.4 % of a core over 8.5 days → no worker) and the playground. Cross-component audit: open |
@@ -5022,3 +5023,23 @@ error, release /helm error); sent messages are unchanged.
 release name main.go resolved, including auto-discovery in another namespace. `hooks-failed` is
 deliberately not a release failure (PROZESS case 8) and stays out of this etappe.
 Plan: [etappe-124](plans/etappe-124-menue-warnleiste.md).
+
+### §4.134 — Invitation codes (2026-11-18, etappe 125, backend)
+A closed server could only invite by creating the account or opening registration to everyone;
+MAS can bind registration to a code (registration token). **Decisions:** (1) `internal/mas/regtokens.go`
+wraps `/api/admin/v1/user-registration-tokens` (list over all pages, create, edit by PUT with both
+fields always sent so `null` clears, revoke/unrevoke). State word, strongest first: revoked,
+expired, used up, valid. (2) API `GET/POST /api/v1/invites`, `PUT /api/v1/invites/{id}`,
+`POST /api/v1/invites/{id}/revoke|unrevoke`; writes sit in the `RequireWrite` group, so a read-only
+role may read the list (codes included) but not change it. No MAS client: 503 with plain text.
+The audit trail records the path (MAS id) and no body, so a code never reaches it. (3) Task field
+`mas.registration_token_required` "Registrierung nur mit Einladungs-Code" next to
+`mas.password_registration`. **Key by MAS version:** from 1.20 `account.password_registration_token_required`,
+before that or with an unknown version the old `account.registration_token_required` (understood by
+every version, deprecated but still read in 1.27). The version is the running MAS image tag
+(`ComponentHealth` of the MAS workload, `ConfigHandler.SetMASVersion`), else a pinned
+`matrixAuthenticationService.image.tag`, else unknown. Reading honours both names (true under either
+wins); writing removes the other name from MatrixCtrl's own block so switching off really switches
+off. (4) The code requirement applies **only to password registration**; upstream providers
+(`internal/masupstream`) have their own switch and stay untouched; the field's help text says so.
+Frontend page `/invites` follows. Plan: [etappe-125](plans/etappe-125-einladungs-codes.md).

@@ -13,18 +13,19 @@ import (
 )
 
 type Deps struct {
-	Auth   *handlers.AuthHandler
-	Status *handlers.StatusHandler
-	Hooks  *handlers.HooksHandler
-	Helm   *handlers.HelmHandler
-	WS     *handlers.WSHandler
-	Config *handlers.ConfigHandler
-	Setup  *handlers.SetupHandler
-	Audit  *handlers.AuditHandler
-	RTC    *handlers.RTCHandler
-	Drift  *handlers.DriftHandler
-	Users  *handlers.UsersHandler
-	Rooms  *handlers.RoomsHandler
+	Auth    *handlers.AuthHandler
+	Status  *handlers.StatusHandler
+	Hooks   *handlers.HooksHandler
+	Helm    *handlers.HelmHandler
+	WS      *handlers.WSHandler
+	Config  *handlers.ConfigHandler
+	Setup   *handlers.SetupHandler
+	Audit   *handlers.AuditHandler
+	RTC     *handlers.RTCHandler
+	Drift   *handlers.DriftHandler
+	Users   *handlers.UsersHandler
+	Invites *handlers.InvitesHandler
+	Rooms   *handlers.RoomsHandler
 	// Federation reach needs nothing but the config; the destination list uses the
 	// operator's Matrix access like rooms (etappe 117).
 	Federation *handlers.FederationHandler
@@ -162,6 +163,16 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/api/v1/rtc/status", deps.RTC.Status)
 			r.Get("/api/v1/rtc/history", deps.RTC.History)
 			r.Get("/api/v1/users", deps.Users.List)
+		}
+
+		// Invitation codes = MAS registration tokens (etappe 125). Writes are POST/PUT
+		// inside the RequireWrite group, so a read-only role cannot create or revoke.
+		if deps.Invites != nil {
+			r.Get("/api/v1/invites", deps.Invites.List)
+			r.Post("/api/v1/invites", deps.Invites.Create)
+			r.Put("/api/v1/invites/{id}", deps.Invites.Update)
+			r.Post("/api/v1/invites/{id}/revoke", deps.Invites.Revoke(false))
+			r.Post("/api/v1/invites/{id}/unrevoke", deps.Invites.Revoke(true))
 		}
 
 		// Which MatrixCtrl is running, and whether a newer one exists (etappe 79).
