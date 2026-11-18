@@ -1180,3 +1180,11 @@ implemented, OIDC state consumed atomically via `DELETE … RETURNING` (CSRF-saf
   (`internal/hooks/builtin/ess_rtc_patches.go`) covers it. To decide: is TURN over TLS
   meant to keep the client address (then a chart value or a hook entry), or is the
   warning wrong for this service?
+
+- **P2-36 · A release tag does not wait for the tests.** **Open (verified 2026-11-18).**
+  `release.yml` builds and publishes on a `v*` tag without running `go test` / vitest; `ci.yml`
+  runs on pushes to `master` only and nothing links the two. `v0.1.131-rc.4` was tagged on a
+  commit whose `make check` was red (a router test still expected the old 503) and was
+  published to `:edge` anyway — caught only because the test cluster was updated to rc.5
+  instead. Fix: a test job in `release.yml` that the publish job `needs:`, or a check that
+  the tagged commit has a green `ci.yml` run. Locally: tag only behind `make check &&`.
